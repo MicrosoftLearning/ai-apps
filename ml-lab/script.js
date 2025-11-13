@@ -1994,7 +1994,7 @@ function displayUploadedFile(fileName) {
             <div class="data-preview" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e1e4e8;">
                 ${hasValidData ? `
                     <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
-                        Data Preview (${currentData.shape ? currentData.shape[0] : 0} rows, ${currentData.shape ? currentData.shape[1] : 0} columns)
+                        Data Preview (${currentData.shape ? escapeHtml(String(currentData.shape[0])) : 0} rows, ${currentData.shape ? escapeHtml(String(currentData.shape[1])) : 0} columns)
                     </div>
                 ` : `
                     <div style="font-size: 12px; color: #d73a49; margin-bottom: 8px;">
