@@ -545,7 +545,7 @@ async function runCell(cellId) {
         // Update tab order since textarea properties changed
         updateTabOrder();
     } catch (error) {
-        output.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        output.innerHTML = `<div class="error">Error: ${escapeHtml(error.message)}</div>`;
     } finally {
         // Restore buttons for code cells only
         runBtn.style.display = 'inline-block';
@@ -774,7 +774,8 @@ js.console.log("File uploaded: ${uploadedFileName}")
 
 // Simple markdown renderer
 function renderMarkdown(text) {
-    let html = text;
+    // First escape HTML to prevent XSS attacks
+    let html = escapeHtml(text);
     
     // Tables - handle pipe-separated values FIRST while line structure is completely intact
     html = html.replace(/^(\|[^|\n]*)+\|$/gim, function(match) {

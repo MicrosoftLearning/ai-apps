@@ -1,5 +1,12 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
 
+// Utility function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 class ChatPlayground {
     constructor() {
         // Core state
@@ -1851,7 +1858,7 @@ class ChatPlayground {
                 <div class="message-avatar ${role}-avatar">${avatar}</div>
                 <div class="message-role">${roleName}</div>
             </div>
-            <div class="message-content">${content}</div>
+            <div class="message-content">${escapeHtml(content)}</div>
         `;
         
         // Add image if provided

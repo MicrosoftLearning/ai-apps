@@ -1,4 +1,12 @@
 // Global variables - Updated: 2025-10-16 15:40:00 - Fixed PyScript to use proper training with ALL metrics
+
+// Utility function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    if (typeof text !== 'string') return text;
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 let currentStep = 1;
 let maxSteps = 5;
 let uploadedFiles = [];
@@ -1107,10 +1115,12 @@ function populateDatasetList() {
             datasetItem.className = 'dataset-item';
             const displayName = dataset.customName || dataset.filename;
             const datasetId = dataset.customName || dataset.filename;
+            const escapedDisplayName = escapeHtml(displayName);
+            const escapedDatasetId = escapeHtml(datasetId);
             datasetItem.innerHTML = `
                 <label class="dataset-option">
-                    <input type="radio" name="selected-dataset" value="${datasetId}" onchange="selectExistingDataset('${datasetId}')">
-                    <span class="dataset-name">${displayName}</span>
+                    <input type="radio" name="selected-dataset" value="${escapedDatasetId}" onchange="selectExistingDataset('${escapedDatasetId}')">
+                    <span class="dataset-name">${escapedDisplayName}</span>
                 </label>
             `;
             datasetList.appendChild(datasetItem);
@@ -1399,10 +1409,11 @@ function selectTaskType(value) {
     // Announce selection to screen readers
     announceToScreenReader(`Task type selected: ${text}`);
     
+    const escapedText = escapeHtml(text);
     selected.innerHTML = `
         <div class="selected-option">
             ${icon.outerHTML}
-            <span>${text}</span>
+            <span>${escapedText}</span>
         </div>
         <span class="dropdown-arrow">▼</span>
     `;
@@ -3776,7 +3787,7 @@ function updatePyScriptStatus(message, isReady) {
         if (isReady) {
             element.style.display = 'none';
         } else {
-            element.innerHTML = `<small>⏳ ${message}</small>`;
+            element.innerHTML = `<small>⏳ ${escapeHtml(message)}</small>`;
             element.style.display = 'block';
         }
     });
@@ -6345,7 +6356,7 @@ function testEndpoint() {
                 }
                 
                 // Display predictions in the requested format
-                responseDiv.innerHTML = `<pre>${JSON.stringify(predictions, null, 2)}</pre>`;
+                responseDiv.innerHTML = `<pre>${escapeHtml(JSON.stringify(predictions, null, 2))}</pre>`;
                 
             } catch (pyError) {
                 // Enhanced error message for data format issues
@@ -6364,7 +6375,7 @@ function testEndpoint() {
         
     } catch (error) {
         console.error('Test endpoint error:', error);
-        responseDiv.innerHTML = `<div style="color: #d73a49; padding: 10px; background: #ffeef0; border-radius: 4px; white-space: pre-wrap;">${error.message}</div>`;
+        responseDiv.innerHTML = `<div style="color: #d73a49; padding: 10px; background: #ffeef0; border-radius: 4px; white-space: pre-wrap;">${escapeHtml(error.message)}</div>`;
         resultsDiv.style.display = 'block';
     }
 }

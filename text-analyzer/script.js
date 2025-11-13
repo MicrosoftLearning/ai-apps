@@ -58,6 +58,13 @@ async function initializeNLP() {
 // Initialize when the page loads
 const nlpReady = initializeNLP();
 
+// Utility function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Get DOM elements
 const textInput = document.getElementById('textInput');
 const fileInput = document.getElementById('fileInput');
@@ -911,7 +918,7 @@ function displayKeyPhrases(phrases) {
     }
     
     const phrasesHTML = phrases.map(phrase => 
-        `<span class="key-phrase-tag">${phrase}</span>`
+        `<span class="key-phrase-tag">${escapeHtml(phrase)}</span>`
     ).join('');
     
     return `<div>${phrasesHTML}</div>`;
@@ -935,8 +942,8 @@ function displayEntities(entities) {
     
     const entitiesHTML = Object.entries(groupedEntities).map(([type, values]) => 
         `<div class="entity-item">
-            <span class="entity-type">${type}:</span>
-            <span>${values.join(', ')}</span>
+            <span class="entity-type">${escapeHtml(type)}:</span>
+            <span>${values.map(v => escapeHtml(v)).join(', ')}</span>
         </div>`
     ).join('');
     
@@ -953,7 +960,7 @@ function displaySummary(summaryData) {
             </p>
         </div>
         <div class="summary-content" style="background: #f5f5f5; padding: 15px; border-radius: 6px; line-height: 1.6;">
-            <p style="font-size: 0.95em; color: #333;">${summaryData.summary}</p>
+            <p style="font-size: 0.95em; color: #333;">${escapeHtml(summaryData.summary)}</p>
         </div>
         <div style="margin-top: 15px;">
             <p style="font-size: 0.85em; color: #999; font-style: italic;">

@@ -1,5 +1,13 @@
 // ML Lite - Machine Learning Application with PyScript Integration
 
+// Utility function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    if (typeof text !== 'string') return text;
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Global application state
 let appState = {
     currentTab: 0,
@@ -1184,7 +1192,7 @@ function displayPredictionResult(result) {
 // Log progress messages
 function logProgress(message) {
     const log = document.getElementById('progressLog');
-    log.innerHTML += `${new Date().toLocaleTimeString()}: ${message}\n`;
+    log.innerHTML += `${new Date().toLocaleTimeString()}: ${escapeHtml(message)}\n`;
     log.scrollTop = log.scrollHeight;
 }
 

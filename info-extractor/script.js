@@ -1,6 +1,16 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
 
-class InformationExtractor {
+// Information Extractor Application
+// Extract structured information from images
+
+// Utility function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+class InfoExtractorApp {
     constructor() {
         this.uploadedImages = [];
         this.selectedImageIndex = -1;
@@ -235,12 +245,13 @@ class InformationExtractor {
         thumbnailItem.setAttribute('aria-label', ariaLabel);
         
         const sampleOverlay = imageData.isSample ? '<div class="sample-overlay">[Sample]</div>' : '';
+        const escapedName = escapeHtml(imageData.name);
         
         thumbnailItem.innerHTML = `
-            <img src="${imageData.url}" alt="Thumbnail of ${imageData.name}" />
+            <img src="${imageData.url}" alt="Thumbnail of ${escapedName}" />
             ${sampleOverlay}
             <button class="thumbnail-remove" onclick="app.removeImage(${index})" 
-                    aria-label="Remove ${imageData.name}">×</button>
+                    aria-label="Remove ${escapedName}">×</button>
         `;
         
         thumbnailItem.addEventListener('click', (e) => {
@@ -1174,8 +1185,15 @@ Respond as a list of fields with their values.`;
         const errorHeading = this.errorSection.querySelector('h2');
         errorHeading.textContent = title;
         
-        // Handle newlines in the message
-        this.errorMessage.innerHTML = message.replace(/\n/g, '<br>');
+        // Handle newlines in the message - use textContent and convert \n to <br> elements safely
+        this.errorMessage.textContent = '';
+        const lines = message.split('\n');
+        lines.forEach((line, index) => {
+            this.errorMessage.appendChild(document.createTextNode(line));
+            if (index < lines.length - 1) {
+                this.errorMessage.appendChild(document.createElement('br'));
+            }
+        });
         
         // Force styling for fallback mode
         if (title === 'Fallback mode activated') {
