@@ -248,7 +248,7 @@ class InfoExtractorApp {
         const escapedName = escapeHtml(imageData.name);
         
         thumbnailItem.innerHTML = `
-            <img src="${imageData.url}" alt="Thumbnail of ${escapedName}" />
+            <img src="${escapeHtml(imageData.url)}" alt="Thumbnail of ${escapedName}" />
             ${sampleOverlay}
             <button class="thumbnail-remove" onclick="app.removeImage(${index})" 
                     aria-label="Remove ${escapedName}">×</button>

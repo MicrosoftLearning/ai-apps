@@ -2387,7 +2387,7 @@ function updatePreviewTableHeaders(headers) {
     if (!headerRow) return;
     
     headerRow.innerHTML = headers.map(header => 
-        `<th style="padding: 6px 8px; border: 1px solid #ddd; background: #f1f3f4; text-align: left; white-space: nowrap; font-weight: 600;">${header}</th>`
+        `<th style="padding: 6px 8px; border: 1px solid #ddd; background: #f1f3f4; text-align: left; white-space: nowrap; font-weight: 600;">${escapeHtml(header)}</th>`
     ).join('');
     
     // Also update the target column dropdown if visible
@@ -2988,7 +2988,7 @@ function trainModels(job) {
     } catch (error) {
         console.error('Training error:', error);
         document.getElementById('training-progress').innerHTML += 
-            `<div class="progress-item error">✗ Training failed: ${error.message}</div>`;
+            `<div class="progress-item error">✗ Training failed: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -3675,7 +3675,7 @@ function showHeaderValidationInterface(columnData) {
     
     dialog.innerHTML = `
         <h3>Column Headers Need Specification</h3>
-        <p><strong>Issue:</strong> ${columnData.error}</p>
+        <p><strong>Issue:</strong> ${escapeHtml(columnData.error)}</p>
         <p>Please review the data preview below and specify appropriate column headers:</p>
         <h4>Data Preview:</h4>
     `;
@@ -4195,8 +4195,8 @@ function updateBestModelSection(job) {
                         <span class="best-model-badge">Best Model</span>
                     </div>
                     <div class="best-model-algorithm">Algorithm name: 
-                        <button class="algorithm-link" onclick="navigateToChildJob('${bestModel.name.replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
-                            ${bestModel.name}
+                        <button class="algorithm-link" onclick="navigateToChildJob('${escapeHtml(bestModel.name).replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
+                            ${escapeHtml(bestModel.name)}
                         </button>
                     </div>
                     <div class="best-model-score">${typeof bestModel.primary_score === 'number' ? bestModel.primary_score.toFixed(4) : bestModel.primary_score}</div>
@@ -4392,8 +4392,8 @@ function updateModelsTabContent() {
             
             row.innerHTML = `
                 <td class="algorithm-cell">
-                    <button class="algorithm-link" onclick="navigateToChildJob('${model.name.replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
-                        ${model.display_name || model.name}
+                    <button class="algorithm-link" onclick="navigateToChildJob('${escapeHtml(model.name).replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
+                        ${escapeHtml(model.display_name || model.name)}
                     </button>
                     ${model.is_best ? '<span class="best-model-badge">Best Model</span>' : ''}
                 </td>
@@ -4549,7 +4549,7 @@ function updateChildJobOutputsContent() {
                 <div class="output-details">
                     <div class="output-item">
                         <div class="output-label">Model Output</div>
-                        <div class="output-value" id="child-output-model-asset">${childJob.displayName}-model</div>
+                        <div class="output-value" id="child-output-model-asset">${escapeHtml(childJob.displayName)}-model</div>
                     </div>
                 </div>
             </div>
@@ -4612,7 +4612,7 @@ function updateChildJobOutputsContent() {
                 <div class="output-details">
                     <div class="output-item">
                         <div class="output-label">Model Output</div>
-                        <div class="output-value">${childJob.displayName}-model (in progress)</div>
+                        <div class="output-value">${escapeHtml(childJob.displayName)}-model (in progress)</div>
                     </div>
                 </div>
             </div>
@@ -4630,7 +4630,7 @@ function updateChildJobOutputsContent() {
                 <div class="output-details">
                     <div class="output-item">
                         <div class="output-label">Model Output</div>
-                        <div class="output-value" id="child-output-model-asset">${childJob.displayName}-model</div>
+                        <div class="output-value" id="child-output-model-asset">${escapeHtml(childJob.displayName)}-model</div>
                     </div>
                 </div>
             </div>
@@ -5197,12 +5197,12 @@ function updateChildJobsTabContent() {
             <td>
                 <div class="child-job-name">
                     <span class="job-icon">🤖</span>
-                    <button class="algorithm-link" onclick="navigateToChildJob('${childJob.algorithm.replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
-                        ${childJob.displayName}
+                    <button class="algorithm-link" onclick="navigateToChildJob('${escapeHtml(childJob.algorithm).replace(/'/g, "\\'")}', currentJobDetails)" title="View child job details">
+                        ${escapeHtml(childJob.displayName)}
                     </button>
                 </div>
             </td>
-            <td>${childJob.parentJobName}</td>
+            <td>${escapeHtml(childJob.parentJobName)}</td>
             <td>
                 <span class="compute-type-tag">${childJob.computeType}</span>
             </td>
@@ -6516,14 +6516,14 @@ function updateConsumeCodeExample(featureColumns, registeredModel) {
                 // Format the value appropriately for Python
                 if (typeof value === 'string') {
                     // Escape quotes and wrap in quotes for string values
-                    const escapedValue = value.replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    return `    '${col}': '${escapedValue}'`;
+                    const escapedValue = value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    return `    '${escapeHtml(col)}': '${escapedValue}'`;
                 } else if (typeof value === 'number') {
-                    return `    '${col}': ${value}`;
+                    return `    '${escapeHtml(col)}': ${value}`;
                 } else {
                     // Handle other data types or convert to string
-                    const stringValue = String(value).replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    return `    '${col}': '${stringValue}'`;
+                    const stringValue = String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    return `    '${escapeHtml(col)}': '${stringValue}'`;
                 }
             });
         }
