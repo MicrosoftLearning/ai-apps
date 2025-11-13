@@ -1214,7 +1214,7 @@ Respond as a list of fields with their values.`;
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.app = new InformationExtractor();
+    window.app = new InfoExtractorApp();
 });
 
 // Handle any uncaught errors
