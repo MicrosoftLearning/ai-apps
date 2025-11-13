@@ -1977,7 +1977,7 @@ function displayUploadedFile(fileName) {
     // Basic uploaded file display
     let fileDisplay = `
         <div class="uploaded-file">
-            <span>📄 ${fileName}</span>
+            <span>📄 ${escapeHtml(fileName)}</span>
             <button type="button" onclick="removeUploadedFile()" style="margin-left: 10px; color: #d13438;">✕</button>
         </div>
     `;
