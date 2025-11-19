@@ -311,6 +311,14 @@ runBtn.addEventListener('click', async () => {
         return;
     }
     
+    // Clear results and show loading spinner
+    resultsContent.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px;">
+            <div class="loading-spinner" style="width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top: 4px solid #0078d4; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <p style="margin-top: 20px; color: #666;">Analyzing...</p>
+        </div>
+    `;
+    
     runBtn.disabled = true;
     const originalText = runBtn.innerHTML;
     runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="1.5"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="indefinite"/></circle></svg> Running...';
@@ -330,30 +338,35 @@ runBtn.addEventListener('click', async () => {
 async function analyzeText(text) {
     let html = '';
     
-    switch (currentMode) {
-        case 'sentiment':
-            const sentiment = await analyzeSentiment(text);
-            html = displaySentiment(sentiment);
-            break;
-        case 'language':
-            const language = await detectLanguage(text);
-            html = displayLanguage(language);
-            break;
-        case 'keyphrases':
-            const keyPhrases = await extractKeyPhrases(text);
-            html = displayKeyPhrases(keyPhrases);
-            break;
-        case 'entities':
-            const entities = await extractEntities(text);
-            html = displayEntities(entities);
-            break;
-        case 'summarize':
-            const summary = await summarizeText(text);
-            html = displaySummary(summary);
-            break;
+    try {
+        switch (currentMode) {
+            case 'sentiment':
+                const sentiment = await analyzeSentiment(text);
+                html = displaySentiment(sentiment);
+                break;
+            case 'language':
+                const language = await detectLanguage(text);
+                html = displayLanguage(language);
+                break;
+            case 'keyphrases':
+                const keyPhrases = await extractKeyPhrases(text);
+                html = displayKeyPhrases(keyPhrases);
+                break;
+            case 'entities':
+                const entities = await extractEntities(text);
+                html = displayEntities(entities);
+                break;
+            case 'summarize':
+                const summary = await summarizeText(text);
+                html = displaySummary(summary);
+                break;
+        }
+        
+        resultsContent.innerHTML = html;
+    } catch (error) {
+        console.error('Error in analyzeText:', error);
+        throw error;
     }
-    
-    resultsContent.innerHTML = html;
 }
 
 // Sentiment Analysis using NLP.js
@@ -532,12 +545,17 @@ async function detectLanguage(text) {
     if (isModelLoaded && engine && useAI) {
         try {
             console.log('Using AI model for language detection');
-            const prompt = `Detect the language of the following text and respond in this exact JSON format:
+            const prompt = `Detect the language of the following text. Pay special attention to non-Latin scripts like Chinese, Japanese, Korean, Arabic, etc. Respond in this exact JSON format:
 {
-  "language": "full language name (e.g., English, Spanish, French)",
-  "code": "ISO 639-1 two-letter code (e.g., en, es, fr)",
+  "language": "full language name",
+  "code": "ISO 639-1 two-letter code",
   "confidence": a number between 0.0 and 1.0
 }
+
+Examples:
+- Chinese text should return: {"language": "Chinese", "code": "zh", "confidence": 0.95}
+- Japanese text should return: {"language": "Japanese", "code": "ja", "confidence": 0.95}
+- English text should return: {"language": "English", "code": "en", "confidence": 0.95}
 
 Text to analyze:
 "${escapeForJson(text.substring(0, 500))}"
@@ -570,6 +588,25 @@ Respond only with the JSON object, no other text.`;
                 if (jsonMatch) {
                     try {
                         const parsed = JSON.parse(jsonMatch[0]);
+                        
+                        // Validate: If text contains obvious non-Latin scripts, override incorrect AI detection
+                        if (/[\u4E00-\u9FFF]/.test(text) && parsed.code !== 'zh') {
+                            console.log('AI detected wrong language for Chinese text, correcting...');
+                            return { alpha2: 'zh', alpha3: 'zho', language: 'Chinese', score: 0.95 };
+                        }
+                        if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text) && parsed.code !== 'ja') {
+                            console.log('AI detected wrong language for Japanese text, correcting...');
+                            return { alpha2: 'ja', alpha3: 'jpn', language: 'Japanese', score: 0.95 };
+                        }
+                        if (/[\uAC00-\uD7AF]/.test(text) && parsed.code !== 'ko') {
+                            console.log('AI detected wrong language for Korean text, correcting...');
+                            return { alpha2: 'ko', alpha3: 'kor', language: 'Korean', score: 0.95 };
+                        }
+                        if (/[\u0600-\u06FF]/.test(text) && parsed.code !== 'ar') {
+                            console.log('AI detected wrong language for Arabic text, correcting...');
+                            return { alpha2: 'ar', alpha3: 'ara', language: 'Arabic', score: 0.95 };
+                        }
+                        
                         return {
                             alpha2: parsed.code || 'en',
                             alpha3: parsed.code || 'en',
@@ -613,15 +650,16 @@ function simpleLanguageDetection(text) {
     const lowerText = text.toLowerCase();
     
     // Check for non-Latin scripts first (these are more definitive)
+    // IMPORTANT: Check these before word-based detection
     
     // Arabic script (U+0600 to U+06FF)
     if (/[\u0600-\u06FF]/.test(text)) {
         return { alpha2: 'ar', alpha3: 'ara', language: 'Arabic', score: 0.95 };
     }
     
-    // Chinese characters (U+4E00 to U+9FFF)
+    // Chinese characters (U+4E00 to U+9FFF) - Check early!
     if (/[\u4E00-\u9FFF]/.test(text)) {
-        return { alpha2: 'zh', alpha3: 'chi', language: 'Chinese', score: 0.95 };
+        return { alpha2: 'zh', alpha3: 'zho', language: 'Chinese', score: 0.95 };
     }
     
     // Japanese (Hiragana U+3040-U+309F, Katakana U+30A0-U+30FF)
