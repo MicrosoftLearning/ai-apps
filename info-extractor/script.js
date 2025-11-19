@@ -19,6 +19,7 @@ class InfoExtractorApp {
         this.engine = null;
         this.isModelLoaded = false;
         this.currentModelId = null;
+        this.useAI = true; // Default to using AI if available
         
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -40,6 +41,7 @@ class InfoExtractorApp {
         this.uploadSidebar.classList.add('ui-disabled');
         this.resultsPanel.classList.add('ui-disabled');
         this.analyzeBtn.disabled = true;
+        this.aiToggle.disabled = true;
         
         // Update loading text and progress
         this.updateModelLoadingProgress(0, 'Initializing model...');
@@ -56,6 +58,11 @@ class InfoExtractorApp {
         // Enable analyze button if image is selected (OCR still works without model)
         if (this.selectedImageIndex >= 0) {
             this.analyzeBtn.disabled = false;
+        }
+        
+        // Enable AI toggle (only if model loaded; will be disabled in error handler if model failed)
+        if (this.isModelLoaded) {
+            this.aiToggle.disabled = false;
         }
     }
 
@@ -95,6 +102,9 @@ class InfoExtractorApp {
         this.modelLoadingSection = document.getElementById('modelLoadingSection');
         this.modelLoadingText = document.getElementById('modelLoadingText');
         this.modelProgressFill = document.getElementById('modelProgressFill');
+        
+        // AI toggle
+        this.aiToggle = document.getElementById('aiToggle');
         
         // Zoom controls
         this.zoomInBtn = document.getElementById('zoomInBtn');
@@ -146,8 +156,16 @@ class InfoExtractorApp {
         // Retry button
         this.retryBtn.addEventListener('click', () => this.hideError());
         
+        // AI toggle
+        this.aiToggle.addEventListener('change', (e) => this.handleAIToggle(e));
+        
         // Drag and drop functionality
         this.setupDragAndDrop();
+    }
+
+    handleAIToggle(event) {
+        this.useAI = event.target.checked;
+        console.log('AI toggle changed. Use AI:', this.useAI);
     }
 
     setupDragAndDrop() {
@@ -493,6 +511,10 @@ class InfoExtractorApp {
             // Hide loading screen and show error after delay
             setTimeout(() => {
                 this.hideModelLoading();
+                // Disable the AI toggle since model failed to load
+                this.aiToggle.checked = false;
+                this.aiToggle.disabled = true;
+                this.useAI = false;
                 this.showError(`The AI model could not be loaded in this browser.\nThe app will use a fallback mode to extract fields using OCR and pattern-matching.`, 'Fallback mode activated');
                 // Still load the default receipt even if model fails
                 this.loadDefaultReceipt();
@@ -515,13 +537,38 @@ class InfoExtractorApp {
             this.updateProgress(10, 'Extracting text with OCR...');
             await this.performOCR(imageData.file);
             
-            // Step 2: Extract fields with LLM (only if model is loaded)
-            if (this.isModelLoaded && this.engine) {
-                console.log('Model is loaded, proceeding with field extraction');
-                this.updateProgress(60, 'Extracting field information...');
-                await this.extractFields();
+            // Step 2: Extract fields with LLM (only if model is loaded AND user wants to use AI)
+            if (this.isModelLoaded && this.engine && this.useAI) {
+                console.log('Model is loaded and AI is enabled, proceeding with field extraction');
+                this.updateProgress(60, 'Extracting field information with AI...');
+                try {
+                    await this.extractFields();
+                } catch (aiError) {
+                    // If AI extraction fails, show specific error and suggest disabling AI
+                    console.error('AI extraction failed:', aiError);
+                    this.hideProgress();
+                    this.enableUploadAndSelection();
+                    
+                    let aiErrorMessage = 'An error occurred during AI field extraction.\n\n';
+                    
+                    // Check for specific error types
+                    if (aiError.message.includes('memory') || aiError.message.includes('OOM') || aiError.message.includes('allocation')) {
+                        aiErrorMessage += 'This may be due to insufficient memory.\n\n';
+                    } else {
+                        aiErrorMessage += `Error: ${aiError.message}\n\n`;
+                    }
+                    
+                    aiErrorMessage += 'Try disabling the "Use Generative AI" toggle to use pattern-based extraction instead.';
+                    
+                    this.showError(aiErrorMessage, 'AI Extraction Failed');
+                    return;
+                }
             } else {
-                console.log('AI model not loaded, using heuristic field extraction. isModelLoaded:', this.isModelLoaded, 'engine:', !!this.engine);
+                if (!this.useAI) {
+                    console.log('AI disabled by user, using heuristic field extraction');
+                } else {
+                    console.log('AI model not loaded, using heuristic field extraction. isModelLoaded:', this.isModelLoaded, 'engine:', !!this.engine);
+                }
                 this.updateProgress(60, 'Extracting fields using pattern matching...');
                 this.extractFieldsHeuristic();
             }
@@ -1001,8 +1048,8 @@ Respond as a list of fields with their values.`;
             return;
         }
 
-        // Show heuristic extraction notice if model wasn't loaded but we have fields
-        if (!this.isModelLoaded) {
+        // Show heuristic extraction notice if AI wasn't used (either model not loaded or user disabled it)
+        if (!this.isModelLoaded || !this.useAI) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'field-message';
             messageDiv.style.backgroundColor = '#d1ecf1';
