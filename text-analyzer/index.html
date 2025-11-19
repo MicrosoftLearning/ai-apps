@@ -4,14 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Text Analyzer - Analyze sentiment, detect language, extract key phrases and entities</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header class="top-header">
-        <h1>Text Analyzer</h1>
+        <div class="header-content">
+            <h1>Text Analyzer</h1>
+            <div class="ai-toggle-container">
+                <label class="toggle-switch" for="aiToggle">
+                    <span class="toggle-label">Use Generative AI</span>
+                    <input type="checkbox" id="aiToggle" checked aria-label="Toggle Generative AI usage">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
     </header>
 
     <main class="container" role="main">
+        <!-- Model loading section -->
+        <div id="modelLoadingSection" class="model-loading-section" 
+             role="status" aria-live="polite" aria-label="AI model loading status">
+            <div class="model-loading-content">
+                <div class="loading-spinner" aria-hidden="true"></div>
+                <h3>Loading AI Model...</h3>
+                <p id="modelLoadingText">Initializing model, please wait...</p>
+                <div class="model-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="modelProgressFill" class="model-progress-fill"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="options-grid" role="tablist" aria-label="Analysis options">
             <!-- Analyze sentiment card (active) -->
             <div class="option-card active" data-option="sentiment" role="tab" aria-selected="true" aria-controls="workspace" tabindex="0">
@@ -147,6 +170,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@nlpjs/language-guesser@4/dist/language-guesser-min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@nlpjs/builtin-compromise@4/dist/builtin-compromise-min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@nlpjs/ner@4/dist/ner-min.js"></script>
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

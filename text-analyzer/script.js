@@ -1,6 +1,9 @@
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+
 // Text Analyzer Application
 // Uses NLP.js library for text analysis where available
 // Uses Compromise.js for entity extraction and proper noun detection
+// Uses WebLLM with Phi-2 model for AI-powered analysis when available
 
 let currentMode = 'sentiment';
 let nlpManager = null;
@@ -8,6 +11,12 @@ let sentimentAnalyzer = null;
 let languageGuesser = null;
 let ner = null;
 let nlp = null; // Compromise.js
+
+// WebLLM variables
+let engine = null;
+let isModelLoaded = false;
+let currentModelId = null;
+let useAI = true; // Default to using AI if available
 
 // Initialize NLP.js components
 async function initializeNLP() {
@@ -19,6 +28,12 @@ async function initializeNLP() {
         if (window.nlp) {
             nlp = window.nlp;
             console.log('Compromise.js initialized successfully');
+        }
+        
+        // Check if NLP.js libraries are loaded
+        if (!window['@nlpjs/core'] || !window['@nlpjs/core'].containerBootstrap) {
+            console.log('NLP.js libraries not loaded, will use fallback methods');
+            return false;
         }
         
         // Import from global window object
@@ -50,13 +65,141 @@ async function initializeNLP() {
         console.log('NLP.js components initialized successfully');
         return true;
     } catch (error) {
-        console.warn('Failed to initialize NLP.js, will use fallback methods:', error);
+        console.log('NLP.js not available, using fallback methods');
         return false;
     }
 }
 
 // Initialize when the page loads
 const nlpReady = initializeNLP();
+
+// WebLLM Model Initialization
+async function initializeModel() {
+    try {
+        console.log('Initializing WebLLM model...');
+        updateModelLoadingProgress(10, 'Checking WebLLM availability...');
+        
+        // Check if WebLLM is available
+        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+            console.error('WebLLM not available');
+            throw new Error('WebLLM not properly loaded');
+        }
+        
+        updateModelLoadingProgress(20, 'Loading available models...');
+        
+        // Get available models from WebLLM
+        const models = webllm.prebuiltAppConfig.model_list;
+        console.log('Available models:', models.map(m => m.model_id));
+        
+        // Filter for Phi models first
+        let availableModels = models.filter(model => 
+            model.model_id.toLowerCase().includes('phi')
+        );
+        
+        // If no Phi models, try other small models
+        if (availableModels.length === 0) {
+            availableModels = models.filter(model => 
+                model.model_id.toLowerCase().includes('llama-3.2-1b') ||
+                model.model_id.toLowerCase().includes('gemma-2-2b') ||
+                model.model_id.toLowerCase().includes('qwen')
+            );
+        }
+        
+        if (availableModels.length === 0) {
+            console.error('No compatible models found');
+            throw new Error('No compatible models found');
+        }
+        
+        console.log('Attempting to load model:', availableModels[0].model_id);
+        updateModelLoadingProgress(30, `Loading ${availableModels[0].model_id}...`);
+        
+        // Load the first available model
+        engine = await webllm.CreateMLCEngine(
+            availableModels[0].model_id,
+            {
+                initProgressCallback: (progress) => {
+                    const percentage = 30 + Math.round(progress.progress * 70);
+                    const progressText = `Loading ${availableModels[0].model_id}: ${Math.round(progress.progress * 100)}%`;
+                    updateModelLoadingProgress(percentage, progressText);
+                    console.log('Model loading progress:', Math.round(progress.progress * 100) + '%');
+                }
+            }
+        );
+        
+        currentModelId = availableModels[0].model_id;
+        isModelLoaded = true;
+        updateModelLoadingProgress(100, 'Model ready!');
+        console.log('Model loaded successfully:', currentModelId);
+        
+        // Hide loading screen after a brief delay
+        setTimeout(() => {
+            hideModelLoading();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Failed to initialize model:', error);
+        isModelLoaded = false;
+        
+        updateModelLoadingProgress(0, `Failed to load model`);
+        
+        // Hide loading screen and show fallback message
+        setTimeout(() => {
+            hideModelLoading();
+            const aiToggle = document.getElementById('aiToggle');
+            if (aiToggle) {
+                aiToggle.checked = false;
+                aiToggle.disabled = true;
+            }
+            useAI = false;
+            console.log('AI model could not be loaded. Fallback mode activated.');
+        }, 2000);
+    }
+}
+
+function showModelLoading() {
+    const modelLoadingSection = document.getElementById('modelLoadingSection');
+    if (modelLoadingSection) {
+        modelLoadingSection.style.display = 'flex';
+    }
+    
+    const container = document.querySelector('.container');
+    if (container) {
+        container.classList.add('ui-disabled');
+    }
+    
+    updateModelLoadingProgress(0, 'Initializing model...');
+}
+
+function hideModelLoading() {
+    const modelLoadingSection = document.getElementById('modelLoadingSection');
+    if (modelLoadingSection) {
+        modelLoadingSection.style.display = 'none';
+    }
+    
+    const container = document.querySelector('.container');
+    if (container) {
+        container.classList.remove('ui-disabled');
+    }
+}
+
+function updateModelLoadingProgress(percentage, text) {
+    const modelProgressFill = document.getElementById('modelProgressFill');
+    const modelLoadingText = document.getElementById('modelLoadingText');
+    
+    if (modelProgressFill) {
+        modelProgressFill.style.width = `${percentage}%`;
+    }
+    
+    if (modelLoadingText) {
+        modelLoadingText.textContent = text;
+    }
+    
+    const progressBar = document.querySelector('.model-progress-bar');
+    if (progressBar) {
+        progressBar.setAttribute('aria-valuenow', percentage);
+        progressBar.setAttribute('aria-valuetext', `${Math.round(percentage)}% - ${text}`);
+    }
+}
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -72,6 +215,19 @@ const runBtn = document.getElementById('runBtn');
 const resultsContent = document.getElementById('resultsContent');
 const charCount = document.querySelector('.char-count');
 const optionCards = document.querySelectorAll('.option-card');
+const aiToggle = document.getElementById('aiToggle');
+
+// AI toggle handler
+if (aiToggle) {
+    aiToggle.addEventListener('change', (e) => {
+        useAI = e.target.checked;
+        console.log('AI toggle changed. Use AI:', useAI);
+    });
+}
+
+// Initialize model on page load
+showModelLoading();
+initializeModel();
 
 // Option card selection
 optionCards.forEach(card => {
@@ -151,7 +307,7 @@ runBtn.addEventListener('click', async () => {
         await analyzeText(text);
     } catch (error) {
         console.error('Analysis error:', error);
-        resultsContent.innerHTML = '<p style="color: #d32f2f;">An error occurred during analysis. Please try again.</p>';
+        resultsContent.innerHTML = '<p style="color: #d32f2f;">An error occurred during analysis. Please try again. You may need to disable Generative AI mode,</p>';
     } finally {
         runBtn.disabled = false;
         runBtn.innerHTML = originalText;
@@ -172,15 +328,15 @@ async function analyzeText(text) {
             html = displayLanguage(language);
             break;
         case 'keyphrases':
-            const keyPhrases = extractKeyPhrases(text);
+            const keyPhrases = await extractKeyPhrases(text);
             html = displayKeyPhrases(keyPhrases);
             break;
         case 'entities':
-            const entities = extractEntities(text);
+            const entities = await extractEntities(text);
             html = displayEntities(entities);
             break;
         case 'summarize':
-            const summary = summarizeText(text);
+            const summary = await summarizeText(text);
             html = displaySummary(summary);
             break;
     }
@@ -190,7 +346,70 @@ async function analyzeText(text) {
 
 // Sentiment Analysis using NLP.js
 async function analyzeSentiment(text) {
-    // Try using NLP.js first
+    // Try using WebLLM AI first if available
+    if (isModelLoaded && engine && useAI) {
+        try {
+            console.log('Using AI model for sentiment analysis');
+            const prompt = `Analyze the sentiment of the following text and respond in this exact JSON format:
+{
+  "sentiment": "positive" or "negative" or "neutral",
+  "score": a number between -1.0 (very negative) and 1.0 (very positive),
+  "confidence": a number between 0.0 and 1.0
+}
+
+Text to analyze:
+"${text.replace(/"/g, '\\"')}"
+
+Respond only with the JSON object, no other text.`;
+
+            const response = await engine.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a sentiment analysis expert. Respond only with valid JSON."
+                    },
+                    {
+                        role: "user",
+                        content: prompt
+                    }
+                ],
+                max_tokens: 150,
+                temperature: 0.1
+            });
+            
+            if (response && response.choices && response.choices[0]) {
+                const result = response.choices[0].message.content;
+                console.log('AI sentiment response:', result);
+                
+                // Parse JSON response - handle markdown code blocks
+                let jsonText = result;
+                // Remove markdown code blocks if present
+                jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+                // Extract JSON object
+                const jsonMatch = jsonText.match(/\{[^{}]*\}/);
+                if (jsonMatch) {
+                    try {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        return {
+                            score: parsed.score || 0,
+                            comparative: parsed.score || 0,
+                            vote: parsed.sentiment || 'neutral',
+                            numWords: text.split(/\s+/).length,
+                            numHits: 0,
+                            type: parsed.sentiment || 'neutral',
+                            language: 'en'
+                        };
+                    } catch (parseError) {
+                        console.warn('Failed to parse JSON:', parseError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('AI sentiment analysis failed, using fallback:', error);
+        }
+    }
+    
+    // Try using NLP.js second
     if (sentimentAnalyzer) {
         try {
             const result = await sentimentAnalyzer.process('en', text);
@@ -297,7 +516,65 @@ function simpleSentimentAnalysis(text) {
 
 // Language Detection using NLP.js
 async function detectLanguage(text) {
-    // Try using NLP.js LanguageGuesser first
+    // Try using WebLLM AI first if available
+    if (isModelLoaded && engine && useAI) {
+        try {
+            console.log('Using AI model for language detection');
+            const prompt = `Detect the language of the following text and respond in this exact JSON format:
+{
+  "language": "full language name (e.g., English, Spanish, French)",
+  "code": "ISO 639-1 two-letter code (e.g., en, es, fr)",
+  "confidence": a number between 0.0 and 1.0
+}
+
+Text to analyze:
+"${text.substring(0, 500).replace(/"/g, '\\"')}"
+
+Respond only with the JSON object, no other text.`;
+
+            const response = await engine.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a language detection expert. Respond only with valid JSON."
+                    },
+                    {
+                        role: "user",
+                        content: prompt
+                    }
+                ],
+                max_tokens: 100,
+                temperature: 0.1
+            });
+            
+            if (response && response.choices && response.choices[0]) {
+                const result = response.choices[0].message.content;
+                console.log('AI language detection response:', result);
+                
+                // Parse JSON response - handle markdown code blocks
+                let jsonText = result;
+                jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+                const jsonMatch = jsonText.match(/\{[^{}]*\}/);
+                if (jsonMatch) {
+                    try {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        return {
+                            alpha2: parsed.code || 'en',
+                            alpha3: parsed.code || 'en',
+                            language: parsed.language || 'English',
+                            score: parsed.confidence || 0.8
+                        };
+                    } catch (parseError) {
+                        console.warn('Failed to parse JSON:', parseError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('AI language detection failed, using fallback:', error);
+        }
+    }
+    
+    // Try using NLP.js LanguageGuesser second
     if (languageGuesser) {
         try {
             const guesses = languageGuesser.guess(text, null, 1);
@@ -567,8 +844,13 @@ function getLanguageName(alpha3) {
 }
 
 // Key Phrase Extraction - uses Compromise.js if available, otherwise custom implementation
-function extractKeyPhrases(text) {
-    // Try using Compromise.js first
+async function extractKeyPhrases(text) {
+    // Try using WebLLM AI first if available
+    if (isModelLoaded && engine && useAI) {
+        return await extractKeyPhrasesAI(text);
+    }
+    
+    // Try using Compromise.js second
     if (nlp) {
         try {
             const doc = nlp(text);
@@ -646,11 +928,137 @@ function extractKeyPhrases(text) {
     return [...topPhrases, ...sortedWords].slice(0, 10);
 }
 
+async function extractKeyPhrasesAI(text) {
+    try {
+        console.log('Using AI model for key phrase extraction');
+        const prompt = `Extract 5-10 key phrases from the text below. Respond with a JSON array without any markdown formatting or code blocks:
+["phrase 1", "phrase 2", "phrase 3"]
+
+Text: "${text.substring(0, 1000).replace(/"/g, '\\"')}"
+
+Respond only with the JSON array, no markdown, no code blocks, no other text.`;
+
+        const response = await engine.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a key phrase extraction expert. Respond only with a valid JSON array of strings."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            max_tokens: 200,
+            temperature: 0.2
+        });
+        
+        if (response && response.choices && response.choices[0]) {
+            const result = response.choices[0].message.content;
+            console.log('AI key phrase response:', result);
+            
+            // Parse JSON response - handle markdown code blocks
+            let jsonText = result;
+            jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+            const jsonMatch = jsonText.match(/\[[^\[\]]*\]/);
+            if (jsonMatch) {
+                try {
+                    const phrases = JSON.parse(jsonMatch[0]);
+                    if (Array.isArray(phrases) && phrases.length > 0) {
+                        return phrases.slice(0, 10);
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse JSON:', parseError);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('AI key phrase extraction failed:', error);
+    }
+    
+    // Fallback to non-AI extraction
+    return extractKeyPhrasesNonAI(text);
+}
+
+function extractKeyPhrasesNonAI(text) {
+    // Try using Compromise.js
+    if (nlp) {
+        try {
+            const doc = nlp(text);
+            const phrases = [];
+            
+            const nounPhrases = doc.nouns().out('array');
+            phrases.push(...nounPhrases.slice(0, 5));
+            
+            const topics = doc.topics().out('array');
+            phrases.push(...topics.slice(0, 3));
+            
+            const verbs = doc.verbs().out('array');
+            phrases.push(...verbs.slice(0, 2));
+            
+            const uniquePhrases = [...new Set(phrases)]
+                .filter(phrase => phrase.length > 3)
+                .slice(0, 10);
+            
+            if (uniquePhrases.length > 0) {
+                return uniquePhrases;
+            }
+        } catch (error) {
+            console.warn('Compromise.js failed:', error);
+        }
+    }
+    
+    // Final fallback to simple extraction
+    const words = text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 4);
+    
+    const stopWords = ['about', 'after', 'before', 'being', 'could', 'during', 'every', 'first', 'found', 'going', 'great', 'having', 'include', 'other', 'should', 'their', 'there', 'these', 'those', 'through', 'using', 'where', 'which', 'would'];
+    const filteredWords = words.filter(word => !stopWords.includes(word));
+    
+    const wordCount = {};
+    filteredWords.forEach(word => {
+        wordCount[word] = (wordCount[word] || 0) + 1;
+    });
+    
+    const sentences = text.split(/[.!?]+/);
+    const phrases = [];
+    
+    sentences.forEach(sentence => {
+        const sentenceWords = sentence.toLowerCase()
+            .replace(/[^\w\s]/g, ' ')
+            .split(/\s+/)
+            .filter(w => w.length > 3);
+        
+        for (let i = 0; i < sentenceWords.length - 1; i++) {
+            if (!stopWords.includes(sentenceWords[i]) && !stopWords.includes(sentenceWords[i + 1])) {
+                phrases.push(sentenceWords[i] + ' ' + sentenceWords[i + 1]);
+            }
+        }
+    });
+    
+    const uniquePhrases = [...new Set(phrases)];
+    const topPhrases = uniquePhrases.slice(0, 10);
+    
+    const sortedWords = Object.entries(wordCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([word]) => word);
+    
+    return [...topPhrases, ...sortedWords].slice(0, 10);
+}
+
 // Entity Extraction - uses Compromise.js if available, otherwise custom implementation
-function extractEntities(text) {
+async function extractEntities(text) {
+    // Try using WebLLM AI first if available
+    if (isModelLoaded && engine && useAI) {
+        return await extractEntitiesAI(text);
+    }
+    
     const entities = [];
     
-    // Try using Compromise.js first
+    // Try using Compromise.js second
     if (nlp) {
         try {
             const doc = nlp(text);
@@ -802,8 +1210,171 @@ function extractEntitiesCustom(text) {
     });
     
     return entities.slice(0, 15); // Limit to 15 entities
-}// Text Summarization
-function summarizeText(text) {
+}
+
+async function extractEntitiesAI(text) {
+    try {
+        console.log('Using AI model for entity extraction');
+        const prompt = `Extract named entities and categorize them. Respond with a JSON array without any markdown formatting or code blocks:
+[{"type": "Person", "value": "name"}, {"type": "Place", "value": "location"}]
+
+Types: Person, Place, Organization, Date, Money, Email, Phone, Product, Event
+
+Text: "${text.substring(0, 1000).replace(/"/g, '\\"')}"
+
+Respond only with the JSON array, no markdown, no code blocks, no other text.`;
+
+        const response = await engine.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a named entity recognition expert. Respond only with a valid JSON array."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            max_tokens: 300,
+            temperature: 0.1
+        });
+        
+        if (response && response.choices && response.choices[0]) {
+            const result = response.choices[0].message.content;
+            console.log('AI entity extraction response:', result);
+            
+            // Parse JSON response - handle markdown code blocks
+            let jsonText = result;
+            jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+            const jsonMatch = jsonText.match(/\[[^\[\]]*(?:\{[^}]*\}[^\[\]]*)*\]/);
+            if (jsonMatch) {
+                try {
+                    const entities = JSON.parse(jsonMatch[0]);
+                    if (Array.isArray(entities) && entities.length > 0) {
+                        return entities.slice(0, 15);
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse JSON:', parseError);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('AI entity extraction failed:', error);
+    }
+    
+    // Fallback to non-AI extraction
+    return extractEntitiesNonAI(text);
+}
+
+function extractEntitiesNonAI(text) {
+    const entities = [];
+    
+    // Try using Compromise.js
+    if (nlp) {
+        try {
+            const doc = nlp(text);
+            
+            const people = doc.people().out('array');
+            people.forEach(person => {
+                entities.push({ type: 'Person', value: person });
+            });
+            
+            const places = doc.places().out('array');
+            places.forEach(place => {
+                entities.push({ type: 'Place', value: place });
+            });
+            
+            const orgs = doc.organizations().out('array');
+            orgs.forEach(org => {
+                entities.push({ type: 'Organization', value: org });
+            });
+            
+            const dates = doc.dates().out('array');
+            dates.forEach(date => {
+                entities.push({ type: 'Date', value: date });
+            });
+            
+            const money = doc.money().out('array');
+            money.forEach(m => {
+                entities.push({ type: 'Money', value: m });
+            });
+            
+            const emails = doc.emails().out('array');
+            emails.forEach(email => {
+                entities.push({ type: 'Email', value: email });
+            });
+            
+            if (entities.length > 0) {
+                return entities.slice(0, 15);
+            }
+        } catch (error) {
+            console.warn('Compromise.js entity extraction failed:', error);
+        }
+    }
+    
+    // Final fallback to custom implementation
+    return extractEntitiesCustom(text);
+}
+
+// Text Summarization
+async function summarizeText(text) {
+    // Try using WebLLM AI first if available
+    if (isModelLoaded && engine && useAI) {
+        return await summarizeTextAI(text);
+    }
+    
+    // Fallback to statistical summarization
+    return summarizeTextStatistical(text);
+}
+
+async function summarizeTextAI(text) {
+    try {
+        console.log('Using AI model for text summarization');
+        const prompt = `Summarize the following text in 2-4 sentences, capturing the main points:
+
+"${text.substring(0, 2000).replace(/"/g, '\\"')}"
+
+Provide only the summary, no other text.`;
+
+        const response = await engine.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expert text summarizer. Provide concise, accurate summaries."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            max_tokens: 200,
+            temperature: 0.3
+        });
+        
+        if (response && response.choices && response.choices[0]) {
+            const summary = response.choices[0].message.content.trim();
+            console.log('AI summary response:', summary);
+            
+            if (summary && summary.length > 0) {
+                const sentences = summary.match(/[^.!?]+[.!?]+/g) || [summary];
+                return {
+                    summary: summary,
+                    sentences: sentences,
+                    originalLength: text.length,
+                    summaryLength: summary.length,
+                    reduction: Math.round((1 - summary.length / text.length) * 100)
+                };
+            }
+        }
+    } catch (error) {
+        console.warn('AI text summarization failed:', error);
+    }
+    
+    // Fallback to statistical summarization
+    return summarizeTextStatistical(text);
+}
+
+function summarizeTextStatistical(text) {
     // Split into sentences
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
     
