@@ -1259,7 +1259,7 @@ Respond only with the JSON array, no markdown, no code blocks, no other text.`;
             let jsonText = result;
             jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
             // Use a simpler, more efficient regex to find JSON array
-            const jsonMatch = jsonText.match(/\[(?:[^\[\]]|\{[^}]*\})*?\]/);
+            const jsonMatch = jsonText.match(/\[[\s\S]*?\]/);
             if (jsonMatch) {
                 try {
                     const entities = JSON.parse(jsonMatch[0]);
