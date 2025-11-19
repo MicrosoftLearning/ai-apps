@@ -208,6 +208,18 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Utility function to properly escape text for JSON strings
+function escapeForJson(text) {
+    return text
+        .replace(/\\/g, '\\\\')  // Escape backslashes first
+        .replace(/"/g, '\\"')     // Escape quotes
+        .replace(/\n/g, '\\n')     // Escape newlines
+        .replace(/\r/g, '\\r')     // Escape carriage returns
+        .replace(/\t/g, '\\t')     // Escape tabs
+        .replace(/\f/g, '\\f')     // Escape form feeds
+        .replace(/\b/g, '\\b');    // Escape backspaces
+}
+
 // Get DOM elements
 const textInput = document.getElementById('textInput');
 const fileInput = document.getElementById('fileInput');
@@ -358,7 +370,7 @@ async function analyzeSentiment(text) {
 }
 
 Text to analyze:
-"${text.replace(/"/g, '\\"')}"
+"${escapeForJson(text)}"
 
 Respond only with the JSON object, no other text.`;
 
@@ -528,7 +540,7 @@ async function detectLanguage(text) {
 }
 
 Text to analyze:
-"${text.substring(0, 500).replace(/"/g, '\\"')}"
+"${escapeForJson(text.substring(0, 500))}"
 
 Respond only with the JSON object, no other text.`;
 
@@ -934,7 +946,7 @@ async function extractKeyPhrasesAI(text) {
         const prompt = `Extract 5-10 key phrases from the text below. Respond with a JSON array without any markdown formatting or code blocks:
 ["phrase 1", "phrase 2", "phrase 3"]
 
-Text: "${text.substring(0, 1000).replace(/"/g, '\\"')}"
+Text: "${escapeForJson(text.substring(0, 1000))}"
 
 Respond only with the JSON array, no markdown, no code blocks, no other text.`;
 
@@ -1220,7 +1232,7 @@ async function extractEntitiesAI(text) {
 
 Types: Person, Place, Organization, Date, Money, Email, Phone, Product, Event
 
-Text: "${text.substring(0, 1000).replace(/"/g, '\\"')}"
+Text: "${escapeForJson(text.substring(0, 1000))}"
 
 Respond only with the JSON array, no markdown, no code blocks, no other text.`;
 
@@ -1246,7 +1258,8 @@ Respond only with the JSON array, no markdown, no code blocks, no other text.`;
             // Parse JSON response - handle markdown code blocks
             let jsonText = result;
             jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-            const jsonMatch = jsonText.match(/\[[^\[\]]*(?:\{[^}]*\}[^\[\]]*)*\]/);
+            // Use a simpler, more efficient regex to find JSON array
+            const jsonMatch = jsonText.match(/\[(?:[^\[\]]|\{[^}]*\})*?\]/);
             if (jsonMatch) {
                 try {
                     const entities = JSON.parse(jsonMatch[0]);
@@ -1332,7 +1345,7 @@ async function summarizeTextAI(text) {
         console.log('Using AI model for text summarization');
         const prompt = `Summarize the following text in 2-4 sentences, capturing the main points:
 
-"${text.substring(0, 2000).replace(/"/g, '\\"')}"
+"${escapeForJson(text.substring(0, 2000))}"
 
 Provide only the summary, no other text.`;
 
