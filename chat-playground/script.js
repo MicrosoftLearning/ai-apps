@@ -20,6 +20,7 @@ class ChatPlayground {
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
+        this.wikipediaRequestCount = 0; // Track Wikipedia requests in fallback mode
 
         // Configuration objects
         this.config = {
@@ -1496,6 +1497,25 @@ class ChatPlayground {
             if (!this.webllmAvailable) {
                 // Wikipedia fallback mode
                 console.log('Using Wikipedia fallback mode');
+                
+                // Check Wikipedia request quota
+                if (this.wikipediaRequestCount >= 15) {
+                    // Remove typing indicator
+                    typingIndicator.remove();
+                    
+                    // Add quota exceeded message
+                    const assistantMessageEl = this.addMessage('assistant', 'Quota exceeded. Only 15 requests are permitted.');
+                    
+                    // Add to conversation history
+                    this.conversationHistory.push({ role: "user", content: userMessage });
+                    this.conversationHistory.push({ role: "assistant", content: 'Quota exceeded. Only 15 requests are permitted.' });
+                    
+                    return;
+                }
+                
+                // Increment Wikipedia request counter
+                this.wikipediaRequestCount++;
+                console.log(`Wikipedia request count: ${this.wikipediaRequestCount}/15`);
                 
                 // Remove typing indicator
                 typingIndicator.remove();
