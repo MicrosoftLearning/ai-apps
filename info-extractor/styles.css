@@ -77,7 +77,9 @@ header h1 {
 /* AI Toggle Switch */
 .ai-toggle-container {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
 }
 
 .toggle-switch {
@@ -147,6 +149,26 @@ header h1 {
 
 .toggle-switch input[type="checkbox"]:disabled {
     cursor: not-allowed;
+}
+
+/* AI Transparency Note */
+.ai-transparency-note {
+    font-size: 12px;
+}
+
+.ai-transparency-note a {
+    color: #0078d4;
+    text-decoration: none;
+}
+
+.ai-transparency-note a:hover {
+    text-decoration: underline;
+}
+
+.ai-transparency-note a:focus {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 label.toggle-switch:has(input:disabled) {
