@@ -121,6 +121,7 @@ The app uses the following prompts:
 
 - System prompt: `You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values.`
 - User prompt:
+
     ```
     The following text was extracted from a scanned receipt:
     ---
