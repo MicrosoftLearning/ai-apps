@@ -1,0 +1,5 @@
+- Remove the "Setup" heading and "Hide" toggle button the pane on the left. The pane should be fixed in place.
+- Change the "Give the model instructions and context" heading to "Instructions"
+- Remove the "Apply Changes" button for the instructions, and instead, dynamically update the this.currentSystemMessage variable with the text in the Instructions textbox as soon as it is changed. There is no need to restart the conversation when the instructions are changed.
+- When using the Wikipedia fallback option, in the summarizeText function, if the system message includes "short" or "concise", return only the FIRST sentence from the Wikipedia article (plus the '\n(Ref: Wikipedia)' citation) - otherwise use the existing logic to summarize the article.
+- When using the Wikipedia fallback option, if the "Temperature" model parameter is set to 2, randomly replace words in the response with random choices from the following words: "helicopter", "squirrel", "wibble", "flub", "dingbat", "bagel".
