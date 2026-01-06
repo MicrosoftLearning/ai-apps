@@ -2144,7 +2144,7 @@ class ChatPlayground {
         
         // Check if system message includes "short" or "concise"
         const systemMessageLower = this.currentSystemMessage.toLowerCase();
-        if (systemMessageLower.includes('short') || systemMessageLower.includes('concise') || systemMessageLower.includes('concise')) {
+        if (systemMessageLower.includes('short') || systemMessageLower.includes('concise') || systemMessageLower.includes('summary') || systemMessageLower.includes('summarize')) {
             // Return only the first sentence
             const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
             return sentences[0].trim() + '\n(Ref: Wikipedia)';
