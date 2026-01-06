@@ -150,7 +150,7 @@ The app uses the following prompts:
 In addition to WebLLM and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
-- [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground to retrieve relevant information from Wikipedia.
+- [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground and Speech Playground to retrieve relevant information from Wikipedia.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
 - [NLP.js](https://www.npmjs.com/package/@nlpjs/nlp) used by Text Analyzer for statistical text analysis.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer for statistical text analysis.
