@@ -1,10 +1,8 @@
 ## About this app
 
-This app is designed as a learning aid for anyone seeking to become familiar with Generative AI apps and agents. It's based on the user interface in the Microsoft Foundry portal, but does not use any Azure cloud services.
+This app is designed as a learning aid for anyone seeking to become familiar with the Speech capabilities of generative AI apps and agents. It's based on the user interface in Microsoft Foundry portal, but does not use any Azure cloud services.
 
 The language model used by the app is the **Microsoft Phi 3** mini SLM, hosted in the WebLLM module. WebLLM requires a modern browser that supports the WebGPU API, and an integrated or dedicated GPU on the computer. If WebLLM fails to load, the app is designed to fallback to a simpler mode in which it used Wikipedia as a knowledge source instead of a generative AI model. In this mode, responses may be less relevant and some functionality may not be available.
-
-The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement image classification, and the Web Speech API to support speech recognition and synthesis.
 
 ### Known issues
 

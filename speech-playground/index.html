@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Playground</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header role="banner">
+            <h1>Speech Playground</h1>
+            <p class="sr-only">A speech-based AI chat application using the Microsoft Phi 3 language model</p>
+        </header>
+        
+        <div class="chat-container" role="main">
+            <!-- Setup Panel -->
+            <div class="setup-panel" role="region" aria-label="Configuration panel">
+                <h2 class="sr-only">Application Settings</h2>
+                <div class="setup-content">
+                    <div class="model-section">
+                        <label for="model-select">Model</label>
+                        <select id="model-select" disabled aria-describedby="model-select-desc" tabindex="1">
+                            <option value="">Loading models...</option>
+                        </select>
+                        <div id="model-select-desc" class="sr-only">Select an AI model to generate responses. Phi-3-mini provides local processing, None uses Wikipedia search</div>
+                        
+                        <div class="progress-container" id="progress-container" role="progressbar" aria-live="polite" aria-label="Model download progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="progress-text">Downloading model: 0%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="instructions-section">
+                        <label for="system-message">Instructions</label>
+                        <textarea id="system-message" rows="3" aria-describedby="system-message-desc" tabindex="2">You are a helpful AI assistant that answers spoken questions with vocalized responses.</textarea>
+                        <div id="system-message-desc" class="sr-only">Set custom instructions that will guide the AI model's behavior and responses. This text will be appended with important instructions about response length</div>
+                    </div>
+                    
+                    <div class="voice-config">
+                        <label for="voice-select">Voice</label>
+                        <div class="voice-controls">
+                            <button id="preview-voice-btn" class="preview-btn" title="Preview selected voice" aria-label="Preview the selected voice with sample text" disabled>&#9657;</button>
+                            <select id="voice-select" class="form-select" disabled aria-describedby="voice-select-desc" tabindex="3">
+                                <option value="">Loading voices...</option>
+                            </select>
+                        </div>
+                        <div id="voice-select-desc" class="sr-only">Choose the voice for text-to-speech output. This voice will be used to read responses aloud</div>
+                    </div>
+                    
+                    <div class="setup-buttons" role="group" aria-label="Settings control buttons">
+                        <button id="apply-settings-btn" class="btn-primary" aria-label="Apply settings changes" tabindex="4">Apply changes</button>
+                        <button id="reset-settings-btn" class="btn-secondary" aria-label="Reset settings to defaults" tabindex="5">Reset</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Panel -->
+            <div class="chat-panel" role="region" aria-label="Chat interface">
+                <div class="chat-header">
+                    <h2>Chat</h2>
+                    <div class="chat-controls" role="group" aria-label="Chat action buttons">
+                        <button class="icon-btn" title="Clear chat" aria-label="Clear chat history" tabindex="6">🗑️</button>
+                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app" tabindex="7">?</button>
+                    </div>
+                </div>
+                
+                <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Chat conversation history">
+                    <div class="welcome-message" role="status" aria-live="assertive">
+                        <div class="chat-icon" aria-hidden="true"></div>
+                        <h3>Let's talk</h3>
+                        <p>Talk like you would to a person. The agent listens and responds.</p>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container" role="region" aria-label="Message input area">
+                    <div class="start-button-container" role="group" aria-label="Voice input control">
+                        <button id="start-btn" class="start-btn" aria-label="Start voice input. Press to begin speaking" tabindex="8">Start</button>
+                        <button id="cancel-btn" class="cancel-btn" style="display: none;" aria-label="Cancel current speech interaction" tabindex="9">✕</button>
+                    </div>
+                    <div class="input-info">
+                        <p class="ai-disclaimer">AI-generated content may be incorrect</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- About Modal -->
+    <div class="modal-overlay" id="about-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="about-modal-title">About this app</h2>
+                <button class="modal-close-btn" onclick="closeAboutModal()" aria-label="Close about dialog">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="about-content">
+                    <div class="highlighted-note">
+                        <p>📋 <a href="https://microsoftlearning.github.io/ai-apps/" target="_blank" rel="noopener noreferrer">Important details and AI transparency notes</a></p>
+                    </div>
+                    
+                    <p>This app is designed as a learning aid for anyone seeking to become familiar with the speech capabilities of generative AI apps and agents. It's based on the user interface in Microsoft Foundry portal, but does not use any Azure cloud services.</p>
+                    
+                    <p>The language model used by the app is the <strong>Microsoft Phi 3</strong> mini SLM, hosted in the WebLLM module. WebLLM requires a modern browser that supports the WebGPU API, and an integrated or dedicated GPU on the computer. If WebLLM fails to load, the app is designed to fallback to a simpler mode in which it used Wikipedia as a knowledge source instead of a generative AI model. In this mode, responses may be less relevant and some functionality may not be available.</p>
+                    
+                    <h3>Known issues</h3>
+                    <ul>
+                        <li>The initial download of the Microsoft Phi model may take a few minutes - particularly on low-bandwidth connections. Subsequent downloads should be quicker.</li>
+                        <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished!</li>
+                        <li>Microsoft Edge on ARM-based computers does not support Web Speech for speech recognition (speech to text), and returns a network error when attempting to capture input from the mic. Speech synthesis (text to speech) should still work.</li>
+                        <li>Older computers with slower processors and low amounts of memory may struggle to use WebLLM. You can switch the model to "None" to use the Wikipedia-based fallback option.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="closeAboutModal()" aria-label="Close about dialog">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speech Error Modal -->
+    <div class="modal-overlay" id="speech-error-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="speech-error-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="speech-error-modal-title">Speech Recognition Error</h2>
+                <button class="modal-close-btn" onclick="closeSpeechErrorModal()" aria-label="Close error dialog">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>Speech recognition is not available. This can happen when using Microsoft Edge on ARM-based devices or when the speech service cannot be reached.</p>
+                <p>You can type your question instead:</p>
+                <textarea id="manual-input" placeholder="Type your question here..." rows="4" aria-label="Text input for manual question entry" style="width: 100%; padding: 8px; border: 1px solid #d1d1d1; border-radius: 4px; font-family: inherit;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeSpeechErrorModal()" aria-label="Close without sending">Cancel</button>
+                <button class="btn-primary" onclick="sendManualInput()" aria-label="Send typed message">Send</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>
