@@ -6,7 +6,8 @@ All of the apps are designed to run locally in-browser. No data is uploaded to M
 
 ## Apps
 
-- [AI Chat Playground](./chat-playground/)
+- [Chat Playground](./chat-playground/)
+- [Speech Playground](./speech-playground/)
 - [Information Extractor](./info-extractor/)
 - [Text Analyzer](./text-analyzer/)
 - [Python ScriptBook](./scriptbook/)
@@ -41,6 +42,10 @@ Chat Playground provides the option to use generative AI or a fallback mode that
 - When the user uploads a data file, the app appends `Use this data to answer questions:{text-from-uploaded-file}` to the system prompt.
 - When the user enables text-to-speech, the app appends `Important: Always answer with a single, concise sentence.` to the system prompt.
 - When the user enables image analysis and uploads an image, the app appends `({image-class-prediction})` to the user prompt (where the image class prediction is the text label predicted for the image by the MobileNetV3 image classification model).
+
+#### Speech Playground
+
+Speech Playground provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "None" in the model list). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended..
 
 #### Text Analyzer
 
@@ -146,7 +151,7 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
 - [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground to retrieve relevant information from Wikipedia.
-- [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground for speech recognition and synthesis.
+- [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
 - [NLP.js](https://www.npmjs.com/package/@nlpjs/nlp) used by Text Analyzer for statistical text analysis.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer for statistical text analysis.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Information Extractor to perform OCR analysis.
