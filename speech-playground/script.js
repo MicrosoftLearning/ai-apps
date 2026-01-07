@@ -997,6 +997,13 @@ this.showToast(ChatPlayground.MESSAGES.TOAST.LOADING_MODEL(modelId));
             this.webllmAvailable = false;
             this.engine = null;
             this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_LOAD_FALLBACK);
+            // Hide progress indicator
+            this.hideElement('progressContainer');
+            // Change dropdown to "None (Wikipedia)"
+            const modelSelect = this.elements.modelSelect;
+            if (modelSelect) {
+                modelSelect.value = 'none';
+            }
             // Allow interaction with fallback mode
             this.appliedModelId = 'none';
             this.allowInteraction();
