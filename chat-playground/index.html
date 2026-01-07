@@ -11,6 +11,12 @@
 </head>
 <body>
     <div class="container">
+        <!-- Announce important status updates to screen readers -->
+        <div id="aria-announcer" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
+        
+        <!-- Skip links for keyboard navigation -->
+        <a href="#chat-messages" class="skip-link">Skip to main chat content</a>
+        
         <header>
             <h1>Chat playground</h1>
         </header>
@@ -25,7 +31,7 @@
                             <select id="model-select" disabled aria-describedby="model-select-desc">
                                 <option value="">Loading models...</option>
                             </select>
-                            <button class="parameters-btn" id="parameters-btn" title="Parameters" onclick="openParametersModal()" aria-label="Open parameters settings">&#128880;</button>
+                            <button class="parameters-btn" id="parameters-btn" title="Parameters" onclick="openParametersModal()" aria-label="Open parameters settings" tabindex="0">&#128880;</button>
                         </div>
                         <div id="model-select-desc" class="sr-only">Select an AI model to chat with</div>
                         
@@ -44,7 +50,7 @@
                     </div>
                     
                     <div class="collapsible-section">
-                        <button class="collapsible-btn" onclick="toggleSection('add-data')" aria-expanded="true" aria-controls="add-data" aria-label="Collapse tools section">
+                        <button class="collapsible-btn" onclick="toggleSection('add-data')" aria-expanded="true" aria-controls="add-data" aria-label="Tools section, currently expanded" tabindex="0">
                             ▼ Tools
                         </button>
                         <div class="collapsible-content" id="add-data" style="display: block;" role="region" aria-labelledby="add-data-header">
@@ -100,8 +106,8 @@
                 <div class="chat-header">
                     <h3>Chat</h3>
                     <div class="chat-controls">
-                        <button class="icon-btn" title="New chat" aria-label="Start new chat">&#128172;</button>
-                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app">?</button>
+                        <button class="icon-btn" title="New chat" aria-label="Start new chat" tabindex="0">&#128172;</button>
+                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app" tabindex="0">?</button>
                     </div>
                 </div>
                 
@@ -131,7 +137,7 @@
                         <button id="send-btn" disabled aria-label="Send message">➤</button>
                     </div>
                     <div class="input-info">
-                        <span class="disclaimer" aria-label="Disclaimer">AI-generated content may be incorrect</span>
+                        <span class="disclaimer" aria-label="Disclaimer: AI-generated content may be incorrect" role="status">AI-generated content may be incorrect</span>
                     </div>
                 </div>
             </div>

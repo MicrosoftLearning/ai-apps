@@ -682,6 +682,17 @@ class ChatPlayground {
             }
         });
         
+        // Add keyboard support for collapsible buttons
+        const collapsibleButtons = document.querySelectorAll('.collapsible-btn');
+        collapsibleButtons.forEach(button => {
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    button.click();
+                }
+            });
+        });
+        
         // Dynamic system message update
         this.systemMessage.addEventListener('input', () => {
             this.currentSystemMessage = this.systemMessage.value;
@@ -1401,15 +1412,28 @@ class ChatPlayground {
         this.userInput.disabled = isGenerating;
         
         if (isGenerating) {
-            this.sendBtn.textContent = '\u25a0'; // Purple/black square
+            this.sendBtn.textContent = '■'; // Purple/black square
             this.sendBtn.style.color = '#6c3fa5'; // Purple color
             this.sendBtn.disabled = false;
+            this.announceToScreenReader('AI is generating a response. Press the submit button to stop generation.');
         } else {
-            this.sendBtn.textContent = '\u27a4'; // Arrow
+            this.sendBtn.textContent = '➤'; // Arrow
             this.sendBtn.style.color = '#6c3fa5';
             this.sendBtn.disabled = false;
+            this.announceToScreenReader('Response generation completed.');
             // Return focus to input after response is complete
             this.userInput.focus();
+        }
+    }
+    
+    announceToScreenReader(message) {
+        const announcer = document.getElementById('aria-announcer');
+        if (announcer) {
+            announcer.textContent = message;
+            // Clear the message after a delay to allow screen reader to announce it
+            setTimeout(() => {
+                announcer.textContent = '';
+            }, 1000);
         }
     }
     
@@ -1448,6 +1472,9 @@ class ChatPlayground {
     // Removed updateTokenCount function - disclaimer is now static
     
     showToast(message) {
+        // Announce to screen readers
+        this.announceToScreenReader(message);
+        
         // Simple toast notification
         const toast = document.createElement('div');
         toast.style.cssText = `
