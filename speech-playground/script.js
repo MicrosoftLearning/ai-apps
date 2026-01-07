@@ -658,7 +658,7 @@ class ChatPlayground {
         "so", "some", "such",
         "than", "that", "that's", "the", "their", "theirs", "them", "themselves",
         "then", "there", "there's", "these", "they", "they'd", "they'll", "they're",
-        "they've", "this", "those", "through", "to", "too",
+        "they've", "this", "those", "through", "too",
         "under", "until", "up",
         "very",
         "was", "wasn't", "we", "we'd", "we'll", "we're", "we've",

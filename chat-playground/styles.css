@@ -685,10 +685,10 @@ header h1 {
 }
 
 #send-btn {
-    background: #d3d3d3;
-    border: none;
+    background: white;
+    border: 1px solid #e1e1e1;
     border-radius: 8px;
-    color: black;
+    color: #6c3fa5;
     padding: 12px 16px;
     cursor: pointer;
     font-size: 16px;
@@ -696,27 +696,52 @@ header h1 {
 }
 
 #send-btn:hover:not(:disabled) {
-    background: #c0c0c0;
+    background: #f9f9f9;
+    border-color: #6c3fa5;
 }
 
 #send-btn:disabled {
-    background: #d1d1d1;
+    background: white;
+    color: #d0d0d0;
+    border-color: #e1e1e1;
+    cursor: not-allowed;
+}
+
+.input-wrapper .attach-btn {
+    background: white;
+    border: 1px solid #e1e1e1;
+    padding: 12px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 0;
+    font-size: 16px;
+    color: #6c3fa5;
+}
+
+.input-wrapper .attach-btn:hover:not(:disabled) {
+    background: #f9f9f9;
+    border-color: #6c3fa5;
+}
+
+.input-wrapper .attach-btn:disabled {
+    color: #d0d0d0;
+    border-color: #e1e1e1;
     cursor: not-allowed;
 }
 
 .input-info {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     color: #666;
     font-size: 12px;
 }
 
-.token-count {
-    flex: 1;
+.disclaimer {
+    text-align: center;
 }
 
-.voice-btn, .stop-btn, .attach-btn {
+.stop-btn, .attach-btn {
     background: none;
     border: none;
     padding: 4px 8px;
@@ -725,7 +750,7 @@ header h1 {
     margin-left: 8px;
 }
 
-.voice-btn:hover, .stop-btn:hover, .attach-btn:hover {
+.stop-btn:hover, .attach-btn:hover {
     background: #f5f5f5;
 }
 
@@ -1144,7 +1169,7 @@ header h1 {
     text-align: center;
 }
 
-.voice-btn:disabled, .attach-btn:disabled {
+.attach-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
     background-color: #f3f2f1;
@@ -1200,7 +1225,7 @@ header h1 {
     }
 }
 
-.voice-btn:disabled:hover, .attach-btn:disabled:hover {
+.attach-btn:disabled:hover {
     background-color: #f3f2f1;
 }
 
@@ -1283,4 +1308,38 @@ header h1 {
 .about-content strong {
     color: #323130;
     font-weight: 600;
+}
+
+/* Image analysis section in left panel */
+.image-analysis-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #e1e1e1;
+}
+
+.image-analysis-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #323130;
+    margin: 0 0 8px 0;
+}
+
+.image-analysis-section .section-description {
+    font-size: 13px;
+    color: #605e5c;
+    margin: 0 0 12px 0;
+    line-height: 1.4;
+}
+
+/* Purple toggle styling */
+.purple-toggle .switch-slider {
+    background: #e7d4f5;
+}
+
+.purple-toggle input[type="checkbox"]:checked + .switch-label .switch-slider {
+    background: #6c3fa5;
+}
+
+.purple-toggle input[type="checkbox"]:checked + .switch-label .switch-slider::before {
+    transform: translateX(20px);
 }

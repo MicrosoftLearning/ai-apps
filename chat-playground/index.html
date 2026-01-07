@@ -73,6 +73,25 @@
                         </div>
                     </div>
                     
+                    <div class="image-analysis-section">
+                        <h4>Image analysis</h4>
+                        <p class="section-description">Enable the model to analyze and describe images.</p>
+                        <div class="toggle-switch purple-toggle">
+                            <input type="checkbox" id="image-analysis-toggle" aria-describedby="image-analysis-desc">
+                            <label for="image-analysis-toggle" class="switch-label">
+                                <span class="switch-slider" aria-hidden="true"></span>
+                                <span class="switch-text">Enable image analysis</span>
+                            </label>
+                            <div id="image-analysis-desc" class="sr-only">Toggle to enable AI analysis of uploaded images</div>
+                        </div>
+                        
+                        <div class="vision-progress-container" id="vision-progress-container" style="display: none;" role="progressbar" aria-live="polite" aria-label="Model download progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="vision-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="vision-progress-text">Downloading MobileNet model...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -81,8 +100,7 @@
                 <div class="chat-header">
                     <h3>Chat</h3>
                     <div class="chat-controls">
-                        <button class="icon-btn" title="Clear chat" aria-label="Clear chat history">🗑️</button>
-                        <button class="icon-btn" title="Settings" onclick="openChatCapabilitiesModal()" aria-label="Open chat settings and capabilities">⚙️</button>
+                        <button class="icon-btn" title="New chat" aria-label="Start new chat">&#128172;</button>
                         <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app">?</button>
                     </div>
                 </div>
@@ -102,123 +120,20 @@
                         </div>
                         <textarea 
                             id="user-input" 
-                            placeholder="Type user query here (Shift + Enter for new line)"
+                            placeholder="Chat with the model..."
                             rows="1"
                             disabled
                             aria-label="Type your message to the AI assistant"
                             aria-describedby="input-help"
                         ></textarea>
                         <div id="input-help" class="sr-only">Use Shift+Enter for new lines. Press Enter or click send to submit your message.</div>
+                        <button class="attach-btn" title="Upload image" id="attach-btn" disabled aria-label="Upload image for analysis">📎</button>
                         <button id="send-btn" disabled aria-label="Send message">➤</button>
                     </div>
                     <div class="input-info">
-                        <span class="token-count" aria-live="polite" aria-label="Token count">*1/128000 tokens in thread</span>
-                        <button class="voice-btn" title="Voice input" id="voice-btn" disabled aria-label="Start voice input">🎙️</button>
-                        <button class="attach-btn" title="Upload image" id="attach-btn" disabled aria-label="Upload image for analysis">📎</button>
-                        <button class="stop-btn" title="Stop generation" id="stop-btn" style="display: none;" aria-label="Stop AI response generation">⏹️</button>
+                        <span class="disclaimer" aria-label="Disclaimer">AI-generated content may be incorrect</span>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Chat Capabilities Modal -->
-    <div class="modal-overlay" id="chat-capabilities-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modal-title">Chat capabilities</h2>
-                <button class="modal-close-btn" onclick="closeChatCapabilitiesModal()" aria-label="Close settings dialog">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="speech-section" role="group" aria-labelledby="speech-section-title">
-                    <h3 id="speech-section-title">Speech</h3>
-                    
-                    <div class="speech-feature">
-                        <h4>Speech to text</h4>
-                        <p class="feature-description">The speech to text feature that allows spoken text to be used for input to the model can be enabled or disabled for the playground.</p>
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="speech-to-text-toggle" aria-describedby="stt-desc">
-                            <label for="speech-to-text-toggle" class="switch-label">
-                                <span class="switch-slider" aria-hidden="true"></span>
-                                <span class="switch-text">Enable speech to text</span>
-                            </label>
-                            <div id="stt-desc" class="sr-only">Toggle to enable or disable voice input for typing messages</div>
-                        </div>
-                    </div>
-                    
-                    <div class="speech-feature">
-                        <h4>Text to speech</h4>
-                        <p class="feature-description">The text to speech that reads the model responses can be enabled or disabled for the playground.</p>
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="text-to-speech-toggle" aria-describedby="tts-desc">
-                            <label for="text-to-speech-toggle" class="switch-label">
-                                <span class="switch-slider" aria-hidden="true"></span>
-                                <span class="switch-text">Enable text to speech</span>
-                            </label>
-                            <div id="tts-desc" class="sr-only">Toggle to enable or disable audio playback of AI responses</div>
-                        </div>
-                    </div>
-                    
-                    <div class="voice-config" role="group" aria-labelledby="voice-config-title">
-                        <div id="voice-config-title" class="sr-only">Voice configuration settings</div>
-                        <div class="config-row">
-                            <div class="config-item">
-                                <label for="voice-select">Voice configuration</label>
-                                <select id="voice-select" class="form-select" disabled aria-describedby="voice-select-desc">
-                                    <option value="">Loading voices...</option>
-                                </select>
-                                <div id="voice-select-desc" class="sr-only">Choose the voice for text-to-speech output</div>
-                            </div>
-                            <div class="config-item">
-                                <label for="voice-speed">Voice speed</label>
-                                <select id="voice-speed" class="form-select" disabled aria-describedby="voice-speed-desc">
-                                    <option value="1x" selected>1x</option>
-                                    <option value="0.5x">0.5x</option>
-                                    <option value="1.5x">1.5x</option>
-                                    <option value="2x">2x</option>
-                                </select>
-                                <div id="voice-speed-desc" class="sr-only">Adjust the playback speed of the voice</div>
-                            </div>
-                        </div>
-                        
-                        <div class="voice-sample">
-                            <label for="voice-sample-text">Voice sample</label>
-                            <div class="sample-container">
-                                <input type="text" class="sample-text" id="voice-sample-text" value="Hi, how can I help you today?" disabled aria-describedby="voice-sample-desc">
-                                <button class="play-btn" onclick="playVoiceSample()" disabled aria-label="Play voice sample">▶</button>
-                                <div id="voice-sample-desc" class="sr-only">Edit this text to test the selected voice and speed</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="vision-section" role="group" aria-labelledby="vision-section-title">
-                    <h3 id="vision-section-title">Vision</h3>
-                    
-                    <div class="vision-feature">
-                        <h4>Image analysis</h4>
-                        <p class="feature-description">The image analysis feature allows the model to analyze and describe images that are uploaded to the chat.</p>
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="image-analysis-toggle" aria-describedby="image-analysis-desc">
-                            <label for="image-analysis-toggle" class="switch-label">
-                                <span class="switch-slider" aria-hidden="true"></span>
-                                <span class="switch-text">Enable image analysis</span>
-                            </label>
-                            <div id="image-analysis-desc" class="sr-only">Toggle to enable AI analysis of uploaded images</div>
-                        </div>
-                        
-                        <div class="vision-progress-container" id="vision-progress-container" style="display: none;" role="progressbar" aria-live="polite" aria-label="Model download progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="vision-progress-fill"></div>
-                            </div>
-                            <div class="progress-text" id="vision-progress-text">Downloading MobileNet model...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="closeChatCapabilitiesModal()" aria-label="Close settings without saving">Close</button>
-                <button class="btn-primary" id="save-capabilities-btn" onclick="saveChatCapabilities()" aria-label="Save settings and apply changes">Save</button>
             </div>
         </div>
     </div>
@@ -294,13 +209,12 @@
                     
                     <p>The language model used by the app is the <strong>Microsoft Phi 3</strong> mini SLM, hosted in the WebLLM module. WebLLM requires a modern browser that supports the WebGPU API, and an integrated or dedicated GPU on the computer. If WebLLM fails to load, the app is designed to fallback to a simpler mode in which it used Wikipedia as a knowledge source instead of a generative AI model. In this mode, responses may be less relevant and some functionality may not be available.</p>
                     
-                    <p>The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement image classification, and the Web Speech API to support speech recognition and synthesis.</p>
+                    <p>The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement image classification.</p>
                     
                     <h3>Known issues</h3>
                     <ul>
                         <li>The initial download of the Microsoft Phi model may take a few minutes - particularly on low-bandwidth connections. Subsequent downloads should be quicker.</li>
                         <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished!</li>
-                        <li>Microsoft Edge on ARM-based computers does not support Web Speech for speech recognition (speech to text), and returns a network error when attempting to capture input from the mic. Speech synthesis (text to speech) should still work.</li>
                         <li>Older computers with slower processors and low amounts of memory may struggle to use WebLLM. You can switch the model to "None" to use the Wikipedia-based fallback option.</li>
                     </ul>
                 </div>

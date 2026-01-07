@@ -15,7 +15,6 @@ class ChatPlayground {
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
         this.isGenerating = false;
-        this.isSpeaking = false;
         this.stopRequested = false;
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
@@ -36,27 +35,11 @@ class ChatPlayground {
                 maxSize: 3 * 1024, // 3KB
                 allowedTypes: ['.txt']
             },
-            speechSettings: {
-                speechToText: false,
-                textToSpeech: false,
-                voice: '',
-                speed: '1x',
-                sampleText: 'Hi, how can I help you today?'
-            },
             visionSettings: {
                 imageAnalysis: false,
                 maxImageSize: 5 * 1024 * 1024, // 5MB
                 allowedImageTypes: ['image/jpeg', 'image/jpg', 'image/png']
             }
-        };
-
-        // Initialize speech settings directly
-        this.speechSettings = {
-            speechToText: false,
-            textToSpeech: false,
-            voice: '',
-            speed: '1x',
-            sampleText: 'Hi, how can I help you today?'
         };
 
         // Initialize vision settings directly (for backward compatibility)
@@ -65,22 +48,6 @@ class ChatPlayground {
             maxImageSize: 5 * 1024 * 1024, // 5MB
             allowedImageTypes: ['image/jpeg', 'image/jpg', 'image/png']
         };
-
-        // Ensure config object references work too
-        this.config.visionSettings = this.visionSettings;
-        this.config.fileUpload = this.config.fileUpload || {
-            content: null,
-            fileName: null,
-            maxSize: 3 * 1024,
-            allowedTypes: ['.txt']
-        };
-
-        // Vision and speech state
-        this.mobileNetModel = null;
-        this.isModelDownloading = false;
-        this.pendingImage = null;
-        this.recognition = null;
-        this.isListening = false;
 
         // Initialize DOM element registry
         this.elements = {};
@@ -119,9 +86,7 @@ class ChatPlayground {
         this.attachEventListeners();
         this.initializeParameterControls();
         this.initializeFileUpload();
-        this.populateVoices();
-        this.setupSpeechToggleListeners();
-        this.initializeSpeechRecognition();
+        this.setupImageAnalysisToggle();
         this.initializeModel();
     }
     
@@ -143,7 +108,6 @@ class ChatPlayground {
             sendBtn: 'send-btn',
             stopBtn: 'stop-btn',
             attachBtn: 'attach-btn',
-            voiceBtn: 'voice-btn',
             
             // File upload elements
             fileInput: 'file-input',
@@ -151,13 +115,6 @@ class ChatPlayground {
             fileName: 'file-name',
             fileSize: 'file-size',
             addDataBtn: 'add-data-btn',
-            
-            // Speech elements
-            speechToTextToggle: 'speech-to-text-toggle',
-            textToSpeechToggle: 'text-to-speech-toggle',
-            voiceSelect: 'voice-select',
-            voiceSpeed: 'voice-speed',
-            voiceSampleText: 'voice-sample-text',
             
             // Vision elements
             imageAnalysisToggle: 'image-analysis-toggle',
@@ -168,11 +125,7 @@ class ChatPlayground {
             // Input image elements
             inputThumbnailContainer: 'input-thumbnail-container',
             inputThumbnail: 'input-thumbnail',
-            removeThumbnailBtn: 'remove-thumbnail-btn',
-            
-            // Modal elements
-            chatCapabilitiesModal: 'chat-capabilities-modal',
-            saveCapabilitiesBtn: 'save-capabilities-btn'
+            removeThumbnailBtn: 'remove-thumbnail-btn'
         };
 
         // Populate elements object with actual DOM references
@@ -192,6 +145,11 @@ class ChatPlayground {
         this.sendBtn = this.elements.sendBtn;
         this.stopBtn = this.elements.stopBtn;
         this.attachBtn = this.elements.attachBtn;
+
+        // Initialize vision state
+        this.mobileNetModel = null;
+        this.isModelDownloading = false;
+        this.pendingImage = null;
     }
 
     // Getter for backward compatibility
@@ -427,23 +385,13 @@ class ChatPlayground {
     getEffectiveSystemMessage() {
         let systemMessage = this.currentSystemMessage;
         
-        // Remove any existing TTS instruction to avoid duplication
-        const ttsInstruction = '\n\nImportant: Always answer with a single, concise sentence.';
-        systemMessage = systemMessage.replace(ttsInstruction, '');
-        
         // Remove any existing file upload content to avoid duplication
-        // Use a more specific pattern that doesn't consume the TTS instruction
-        const fileDataPattern = /\n\n---\nUse this data to answer questions:\n.*?(?=\n\nImportant:|$)/s;
+        const fileDataPattern = /\n\n---\nUse this data to answer questions:\n.*?(?=$)/s;
         systemMessage = systemMessage.replace(fileDataPattern, '');
         
         // Append uploaded file content if available
         if (this.config.fileUpload.content) {
             systemMessage += '\n\n---\nUse this data to answer questions:\n' + this.config.fileUpload.content;
-        }
-        
-        // Add TTS instruction when text-to-speech is enabled
-        if (this.speechSettings && this.speechSettings.textToSpeech) {
-            systemMessage += ttsInstruction;
         }
         
         return systemMessage;
@@ -458,55 +406,7 @@ class ChatPlayground {
         // at request time to avoid storing large amounts of duplicate system messages.
     }
     
-    setupSpeechToggleListeners() {
-        // Setup toggle listeners for enabling/disabling controls
-        const speechToTextToggle = document.getElementById('speech-to-text-toggle');
-        const textToSpeechToggle = document.getElementById('text-to-speech-toggle');
-        const voiceBtn = document.getElementById('voice-btn');
-        const voiceSelect = document.getElementById('voice-select');
-        const voiceSpeed = document.getElementById('voice-speed');
-        const playBtn = document.querySelector('.play-btn');
-        const voiceSampleText = document.getElementById('voice-sample-text');
-
-        // Handle speech-to-text toggle
-        if (speechToTextToggle && voiceBtn) {
-            speechToTextToggle.addEventListener('change', (e) => {
-                const isEnabled = e.target.checked;
-                voiceBtn.disabled = !isEnabled;
-                this.speechSettings.speechToText = isEnabled;
-            });
-            // Initialize disabled state
-            voiceBtn.disabled = !speechToTextToggle.checked;
-            this.speechSettings.speechToText = speechToTextToggle.checked;
-        }
-
-        // Handle text-to-speech toggle
-        if (textToSpeechToggle) {
-            textToSpeechToggle.addEventListener('change', (e) => {
-                const isEnabled = e.target.checked;
-                if (voiceSelect) voiceSelect.disabled = !isEnabled;
-                if (voiceSpeed) voiceSpeed.disabled = !isEnabled;
-                if (playBtn) playBtn.disabled = !isEnabled;
-                if (voiceSampleText) voiceSampleText.disabled = !isEnabled;
-                
-                // Update speech settings
-                this.speechSettings.textToSpeech = isEnabled;
-                
-                // Restart conversation when TTS mode changes
-                this.restartConversation();
-            });
-            
-            // Initialize disabled states
-            const isEnabled = textToSpeechToggle.checked;
-            if (voiceSelect) voiceSelect.disabled = !isEnabled;
-            if (voiceSpeed) voiceSpeed.disabled = !isEnabled;
-            if (playBtn) playBtn.disabled = !isEnabled;
-            if (voiceSampleText) voiceSampleText.disabled = !isEnabled;
-            
-            // Initialize speech settings to match checkbox state
-            this.speechSettings.textToSpeech = isEnabled;
-        }
-
+    setupImageAnalysisToggle() {
         // Handle image analysis toggle
         const imageAnalysisToggle = document.getElementById('image-analysis-toggle');
         if (imageAnalysisToggle) {
@@ -530,339 +430,10 @@ class ChatPlayground {
         }
     }
 
-    saveSpeechSettings() {
-        // Save current speech settings
-        const speechToTextToggle = document.getElementById('speech-to-text-toggle');
-        const textToSpeechToggle = document.getElementById('text-to-speech-toggle');
-        const voiceSelect = document.getElementById('voice-select');
-        const voiceSpeed = document.getElementById('voice-speed');
-        const voiceSampleText = document.getElementById('voice-sample-text');
-
-        this.speechSettings = {
-            speechToText: speechToTextToggle ? speechToTextToggle.checked : false,
-            textToSpeech: textToSpeechToggle ? textToSpeechToggle.checked : false,
-            voice: voiceSelect ? voiceSelect.value : 'default',
-            speed: voiceSpeed ? voiceSpeed.value : '1x',
-            sampleText: voiceSampleText ? voiceSampleText.value : 'Hi, how can I help you today?'
-        };
-    }
-
-    restoreSpeechSettings() {
-        // Restore speech settings to current saved values
-        if (!this.speechSettings) {
-            // Initialize default settings if none exist
-            this.speechSettings = {
-                speechToText: false,
-                textToSpeech: false,
-                voice: '', // Will be set by populateVoices()
-                speed: '1x',
-                sampleText: 'Hi, how can I help you today?'
-            };
-        }
-
-        const speechToTextToggle = document.getElementById('speech-to-text-toggle');
-        const textToSpeechToggle = document.getElementById('text-to-speech-toggle');
-        const voiceSelect = document.getElementById('voice-select');
-        const voiceSpeed = document.getElementById('voice-speed');
-        const voiceSampleText = document.getElementById('voice-sample-text');
-
-        if (speechToTextToggle) speechToTextToggle.checked = this.speechSettings.speechToText;
-        if (textToSpeechToggle) textToSpeechToggle.checked = this.speechSettings.textToSpeech;
-        if (voiceSelect && this.speechSettings.voice) voiceSelect.value = this.speechSettings.voice;
-        if (voiceSpeed) voiceSpeed.value = this.speechSettings.speed;
-        if (voiceSampleText) voiceSampleText.value = this.speechSettings.sampleText;
-
-        // Update UI states
-        this.setupSpeechToggleListeners();
-    }
-
-    speakResponse(text) {
-        // Check if text-to-speech is enabled
-        if (!this.speechSettings || !this.speechSettings.textToSpeech) {
-            return;
-        }
-
-        // Check if speech synthesis is available
-        if (!('speechSynthesis' in window)) {
-            return;
-        }
-
-        // Stop any currently speaking utterance
-        speechSynthesis.cancel();
-
-        // Create new utterance
-        const utterance = new SpeechSynthesisUtterance(text);
-
-        // Configure voice if selected
-        if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-            const voices = speechSynthesis.getVoices();
-            const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
-            }
-        }
-
-        // Configure speed
-        const speedMap = { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2 };
-        utterance.rate = speedMap[this.speechSettings.speed] || 1;
-
-        // Configure other properties for better speech
-        utterance.pitch = 1;
-        utterance.volume = 1;
-
-        // Track speech state
-        this.isSpeaking = true;
-
-        // Handle speech end
-        utterance.onend = () => {
-            this.isSpeaking = false;
-            // Update UI only if typing is also complete
-            if (!this.isGenerating) {
-                this.updateUIForGeneration(false);
-            }
-        };
-
-        utterance.onerror = () => {
-            this.isSpeaking = false;
-            // Update UI only if typing is also complete
-            if (!this.isGenerating) {
-                this.updateUIForGeneration(false);
-            }
-        };
-
-        // Speak the response
-        speechSynthesis.speak(utterance);
-    }
-
-    populateVoices() {
-        const voiceSelect = document.getElementById('voice-select');
-        if (!voiceSelect) return;
-
-        const loadVoices = () => {
-            const voices = speechSynthesis.getVoices();
-            const microsoftVoices = voices.filter(voice => 
-                voice && voice.name &&
-                (voice.name.includes('Microsoft') || 
-                (voice.voiceURI && voice.voiceURI.includes('Microsoft')) ||
-                (voice.lang && voice.lang.startsWith('en')))
-            );
-
-            // Preserve current selection
-            const currentSelection = voiceSelect.value;
-
-            // Clear existing options
-            voiceSelect.innerHTML = '';
-
-            if (microsoftVoices.length > 0) {
-                // Add Microsoft voices
-                microsoftVoices.forEach((voice, index) => {
-                    if (!voice || !voice.name) return; // Skip invalid voices
-                    const option = document.createElement('option');
-                    option.value = voice.name;
-                    option.textContent = `${voice.name} (${voice.lang})`;
-                    
-                    // Restore previous selection, or use first voice as default
-                    if (currentSelection && voice.name === currentSelection) {
-                        option.selected = true;
-                        this.speechSettings.voice = voice.name;
-                    } else if (!currentSelection && index === 0) {
-                        option.selected = true;
-                        // Only update speech settings if no voice was previously selected
-                        if (!this.speechSettings.voice) {
-                            this.speechSettings.voice = voice.name;
-                        }
-                    }
-                    voiceSelect.appendChild(option);
-                });
-            } else {
-                // Fallback to all English voices if no Microsoft voices found
-                const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
-                if (englishVoices.length > 0) {
-                    englishVoices.forEach((voice, index) => {
-                        if (!voice || !voice.name) return; // Skip invalid voices
-                        const option = document.createElement('option');
-                        option.value = voice.name;
-                        option.textContent = `${voice.name} (${voice.lang})`;
-                        
-                        // Restore previous selection, or use first voice as default
-                        if (currentSelection && voice.name === currentSelection) {
-                            option.selected = true;
-                            this.speechSettings.voice = voice.name;
-                        } else if (!currentSelection && index === 0) {
-                            option.selected = true;
-                            if (!this.speechSettings.voice) {
-                                this.speechSettings.voice = voice.name;
-                            }
-                        }
-                        voiceSelect.appendChild(option);
-                    });
-                } else {
-                    // Final fallback
-                    const option = document.createElement('option');
-                    option.value = 'default';
-                    option.textContent = 'Default System Voice';
-                    option.selected = true;
-                    voiceSelect.appendChild(option);
-                    if (!this.speechSettings.voice) {
-                        this.speechSettings.voice = 'default';
-                    }
-                }
-            }
-        };
-
-        // Load voices immediately if available
-        if (speechSynthesis.getVoices().length > 0) {
-            loadVoices();
-        } else {
-            // Wait for voices to be loaded
-            speechSynthesis.addEventListener('voiceschanged', loadVoices);
-            // Also try after a short delay as fallback
-            setTimeout(loadVoices, 100);
-        }
-    }
-
-    initializeSpeechRecognition() {
-        // Check if speech recognition is supported
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.warn('Speech recognition not supported in this browser.');
-            return;
-        }
-
-        // Initialize speech recognition
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = false;
-        this.recognition.lang = 'en-US';
-        this.recognition.maxAlternatives = 1;
-
-        // Handle speech recognition events
-        this.recognition.onstart = () => {
-            console.log('Speech recognition started');
-            this.isListening = true;
-            this.updateVoiceButtonState();
-        };
-
-        this.recognition.onresult = (event) => {
-            const result = event.results[0];
-            if (result.isFinal) {
-                const transcript = result[0].transcript.trim();
-                console.log('Speech recognition result:', transcript);
-                
-                if (transcript) {
-                    // Add the transcribed text to the input field
-                    this.userInput.value = transcript;
-                    this.userInput.style.height = 'auto';
-                    this.userInput.style.height = Math.min(this.userInput.scrollHeight, 120) + 'px';
-                    
-                    // Automatically send the message
-                    this.handleSendMessage();
-                }
-            }
-        };
-
-        this.recognition.onend = () => {
-            console.log('Speech recognition ended');
-            this.isListening = false;
-            this.updateVoiceButtonState();
-        };
-
-        this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            this.isListening = false;
-            this.updateVoiceButtonState();
-            
-            if (event.error === 'no-speech') {
-                this.showToast('No speech detected. Please try again.');
-            } else if (event.error === 'network') {
-                this.showToast('Network error: Speech recognition requires internet connection to speech services.');
-            } else if (event.error === 'not-allowed') {
-                this.showToast('Microphone access denied. Please allow microphone access and try again.');
-            } else if (event.error === 'service-not-allowed') {
-                this.showToast('Speech recognition service not available. Please check your browser settings.');
-            } else {
-                this.showToast(`Speech recognition error: ${event.error}. Please try again.`);
-            }
-        };
-    }
-
-    updateVoiceButtonState() {
-        const voiceBtn = document.getElementById('voice-btn');
-        if (voiceBtn) {
-            voiceBtn.textContent = this.isListening ? '🔴' : '🎙️';
-            voiceBtn.title = this.isListening ? 'Listening...' : 'Voice input';
-        }
-    }
-
-    playBeep() {
-        // Create a short beep sound
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.2);
-    }
-
-    startVoiceInput() {
-        if (!this.recognition) {
-            this.showToast('Speech recognition not available.');
-            return;
-        }
-        
-        if (this.isListening) {
-            // Stop listening
-            try {
-                this.recognition.stop();
-            } catch (error) {
-                console.error('Error stopping speech recognition:', error);
-            }
-            return;
-        }
-        
-        // Play beep and start listening
-        this.playBeep();
-        
-        // Start speech recognition after a short delay to let the beep play
-        setTimeout(() => {
-            try {
-                // Abort any existing recognition session before starting a new one
-                try {
-                    this.recognition.abort();
-                } catch (e) {
-                    // Ignore abort errors
-                }
-                
-                // Wait a moment before starting new session
-                setTimeout(() => {
-                    this.recognition.start();
-                }, 100);
-            } catch (error) {
-                console.error('Error starting speech recognition:', error);
-                
-                // If we get an error, try to recreate the recognition object
-                if (error.message && error.message.includes('already started')) {
-                    this.showToast('Speech recognition already in progress. Please wait.');
-                } else {
-                    this.showToast('Could not start voice input. Try again or check browser permissions.');
-                }
-                
-                this.isListening = false;
-                this.updateVoiceButtonState();
-            }
-        }, 300);
-    }
-
     updateAttachButtonState() {
         if (this.attachBtn) {
-            this.attachBtn.disabled = !this.visionSettings.imageAnalysis;
+            // Only enable attach button if image analysis is enabled AND model is downloaded (not downloading)
+            this.attachBtn.disabled = !this.visionSettings.imageAnalysis || this.isModelDownloading || !this.mobileNetModel;
         }
     }
 
@@ -963,13 +534,14 @@ class ChatPlayground {
         } finally {
             this.isModelDownloading = false;
             this.updateSaveButtonState(); // Re-enable save button
+            this.updateAttachButtonState(); // Update attach button state (enable if model loaded, disable if error)
         }
     }
 
     handleImageUpload() {
         // Check if image analysis is enabled (required for both modes)
         if (!this.visionSettings.imageAnalysis) {
-            this.showToast('Please enable image analysis in Chat Capabilities first');
+            this.showToast('Please enable image analysis first');
             return;
         }
         
@@ -1114,14 +686,6 @@ class ChatPlayground {
         this.systemMessage.addEventListener('input', () => {
             this.currentSystemMessage = this.systemMessage.value;
         });
-        
-        this.stopBtn.addEventListener('click', () => this.stopGeneration());
-        
-        // Voice input button
-        const voiceBtn = document.getElementById('voice-btn');
-        if (voiceBtn) {
-            voiceBtn.addEventListener('click', () => this.startVoiceInput());
-        }
 
         // Attach button (image upload)
         if (this.attachBtn) {
@@ -1133,24 +697,6 @@ class ChatPlayground {
             this.userInput.style.height = 'auto';
             this.userInput.style.height = Math.min(this.userInput.scrollHeight, 120) + 'px';
         });
-        
-        // Voice selection change handler
-        const voiceSelect = document.getElementById('voice-select');
-        if (voiceSelect) {
-            voiceSelect.addEventListener('change', (e) => {
-                this.speechSettings.voice = e.target.value;
-                console.log('Voice changed to:', e.target.value);
-            });
-        }
-        
-        // Voice speed change handler
-        const voiceSpeed = document.getElementById('voice-speed');
-        if (voiceSpeed) {
-            voiceSpeed.addEventListener('change', (e) => {
-                this.speechSettings.speed = e.target.value;
-                console.log('Voice speed changed to:', e.target.value);
-            });
-        }
         
         // Clear chat button
         document.querySelector('.chat-controls .icon-btn').addEventListener('click', () => {
@@ -1426,7 +972,13 @@ class ChatPlayground {
     }
     
     async handleSendMessage() {
-        if (!this.isModelLoaded || this.isGenerating) return;
+        // If already generating, stop instead of sending
+        if (this.isGenerating) {
+            this.stopGeneration();
+            return;
+        }
+        
+        if (!this.isModelLoaded) return;
         
         let userMessage = this.userInput.value.trim();
         if (!userMessage && !this.pendingImage) return;
@@ -1465,12 +1017,6 @@ class ChatPlayground {
                 this.showToast('Error analyzing image. Sending message without analysis.');
             }
         }
-        
-        // Stop any ongoing speech
-        if ('speechSynthesis' in window) {
-            speechSynthesis.cancel();
-        }
-        this.isSpeaking = false;
         
         // Reset stop state and typing state
         this.stopRequested = false;
@@ -1546,11 +1092,6 @@ class ChatPlayground {
                 this.conversationHistory.push({ role: "user", content: userMessage });
                 this.conversationHistory.push({ role: "assistant", content: wikiResponse });
                 
-                // Speak if TTS is enabled
-                if (this.speechSettings && this.speechSettings.textToSpeech) {
-                    this.speakResponse(wikiResponse);
-                }
-                
                 return;
             }
             
@@ -1578,7 +1119,7 @@ class ChatPlayground {
             // Log the complete prompt being sent to the model
             console.log('=== COMPLETE PROMPT BEING SENT TO MODEL ===');
             console.log('Current System Message (from UI):', this.currentSystemMessage);
-            console.log('Effective System Message (with TTS/file data):', this.getEffectiveSystemMessage());
+            console.log('Effective System Message (with file data):', this.getEffectiveSystemMessage());
             console.log('Model:', this.currentModelId);
             console.log('Total messages:', messages.length);
             console.log('Messages:');
@@ -1594,16 +1135,8 @@ class ChatPlayground {
             // Add thinking indicator with animated dots
             const thinkingIndicator = this.addThinkingIndicator();
             
-            // Check if TTS is enabled to determine mode
-            const isTTSEnabled = this.speechSettings && this.speechSettings.textToSpeech;
-            
-            if (isTTSEnabled) {
-                // TTS Mode: Wait for complete response, then type and speak together
-                await this.handleTTSMode(messages, thinkingIndicator, userMessage);
-            } else {
-                // Streaming Mode: Stream and type immediately
-                await this.handleStreamingMode(messages, thinkingIndicator, userMessage);
-            }
+            // Always use streaming mode (no TTS)
+            await this.handleStreamingMode(messages, thinkingIndicator, userMessage);
             
         } catch (error) {
             console.error('Error generating response:', error);
@@ -1622,69 +1155,9 @@ class ChatPlayground {
             
             // Type out the error message
             await this.typeResponse(contentEl, errorMessage);
-            
-            // Speak the error message if text-to-speech is enabled
-            if (this.speechSettings && this.speechSettings.textToSpeech) {
-                this.speakResponse(errorMessage);
-            }
         } finally {
             this.isGenerating = false;
             this.updateUIForGeneration(false);
-        }
-    }
-
-    async handleTTSMode(messages, thinkingIndicator, userMessage) {
-        // TTS Mode: Get complete response first, then type and speak together
-        let fullResponse = '';
-        
-        const completion = await this.engine.chat.completions.create({
-            messages: messages,
-            temperature: this.modelParameters.temperature,
-            top_p: this.modelParameters.top_p,
-            max_tokens: this.modelParameters.max_tokens,
-            repetition_penalty: this.modelParameters.repetition_penalty,
-            stream: true
-        });
-        
-        // Collect the entire response
-        for await (const chunk of completion) {
-            if (!this.isGenerating) return;
-            
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-                fullResponse += content;
-            }
-        }
-        
-        // Remove thinking indicator
-        thinkingIndicator.remove();
-        
-        if (fullResponse.trim()) {
-            // Append file attribution if a file is uploaded
-            let displayResponse = fullResponse;
-            if (this.config.fileUpload.fileName) {
-                displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
-            }
-            
-            // Create message container
-            const assistantMessageEl = this.addMessage('assistant', '');
-            const contentEl = assistantMessageEl.querySelector('.message-content');
-            
-            // Start speaking and typing simultaneously
-            this.speakResponse(fullResponse); // Speak without attribution
-            await this.typeResponse(contentEl, displayResponse); // Type with attribution
-            
-            // Add to conversation history (without attribution)
-            this.conversationHistory.push({ role: "user", content: userMessage });
-            this.conversationHistory.push({ role: "assistant", content: fullResponse });
-            
-            // Update token count
-            this.updateTokenCount();
-        } else {
-            const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
-            const assistantMessageEl = this.addMessage('assistant', '');
-            const contentEl = assistantMessageEl.querySelector('.message-content');
-            await this.typeResponse(contentEl, fallbackMessage);
         }
     }
 
@@ -1769,9 +1242,6 @@ class ChatPlayground {
         // Add to conversation history (without file attribution, to prevent cumulative citations)
         this.conversationHistory.push({ role: "user", content: userMessage });
         this.conversationHistory.push({ role: "assistant", content: fullResponse });
-        
-        // Update token count
-        this.updateTokenCount();
     }
 
     addThinkingIndicator() {
@@ -1810,11 +1280,9 @@ class ChatPlayground {
         // Ensure full text is displayed
         contentEl.textContent = text;
         
-        // Mark typing as complete but don't update UI if still speaking
+        // Mark typing as complete
         this.isGenerating = false;
-        if (!this.isSpeaking) {
-            this.updateUIForGeneration(false);
-        }
+        this.updateUIForGeneration(false);
     }
 
     startTypingAnimation(contentEl, initialText) {
@@ -1874,10 +1342,8 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
         
-        // Only update UI if not speaking
-        if (!this.isSpeaking) {
-            this.updateUIForGeneration(false);
-        }
+        // Update UI
+        this.updateUIForGeneration(false);
     }
 
     async waitForTypingComplete() {
@@ -1932,21 +1398,16 @@ class ChatPlayground {
     }
     
     updateUIForGeneration(isGenerating) {
-        // Show stop button if either generating or speaking
-        const showStopButton = isGenerating || this.isSpeaking;
+        this.userInput.disabled = isGenerating;
         
-        this.sendBtn.disabled = showStopButton;
-        this.userInput.disabled = showStopButton;
-        this.stopBtn.style.display = showStopButton ? 'block' : 'none';
-        
-        if (showStopButton) {
-            if (this.isSpeaking && !isGenerating) {
-                this.sendBtn.textContent = '🔊'; // Speaking indicator
-            } else {
-                this.sendBtn.textContent = '⏳'; // Generating indicator
-            }
+        if (isGenerating) {
+            this.sendBtn.textContent = '\u25a0'; // Purple/black square
+            this.sendBtn.style.color = '#6c3fa5'; // Purple color
+            this.sendBtn.disabled = false;
         } else {
-            this.sendBtn.textContent = '➤';
+            this.sendBtn.textContent = '\u27a4'; // Arrow
+            this.sendBtn.style.color = '#6c3fa5';
+            this.sendBtn.disabled = false;
             // Return focus to input after response is complete
             this.userInput.focus();
         }
@@ -1954,7 +1415,6 @@ class ChatPlayground {
     
     stopGeneration() {
         this.isGenerating = false;
-        this.isSpeaking = false;
         this.stopRequested = true;
         
         // Stop typing animation
@@ -1962,42 +1422,15 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
         
-        // Stop any ongoing speech synthesis
-        if ('speechSynthesis' in window) {
-            speechSynthesis.cancel();
-        }
-        
         this.updateUIForGeneration(false);
     }
 
-    restartConversation(reason = 'tts-toggle') {
+    restartConversation(reason = 'user-action') {
         // Clear the conversation history and reset the chat UI
         this.clearChat();
         
         // Show a message to the user about the restart
-        let restartMessage;
-        const ttsStatus = this.speechSettings && this.speechSettings.textToSpeech 
-            ? ' (text-to-speech mode enabled)' 
-            : '';
-            
-        switch (reason) {
-            case 'system-message':
-                restartMessage = `Conversation restarted with updated system message${ttsStatus}.`;
-                break;
-            case 'file-upload':
-                restartMessage = `Conversation restarted with uploaded file data${ttsStatus}.`;
-                break;
-            case 'file-remove':
-                restartMessage = `Conversation restarted with file data removed${ttsStatus}.`;
-                break;
-            case 'tts-toggle':
-            default:
-                restartMessage = this.speechSettings && this.speechSettings.textToSpeech 
-                    ? 'Conversation restarted with text-to-speech mode enabled.' 
-                    : 'Conversation restarted with text-to-speech mode disabled.';
-                break;
-        }
-        
+        const restartMessage = 'Conversation restarted.';
         const systemMessageEl = this.addMessage('system', restartMessage);
         systemMessageEl.classList.add('system-restart-message');
     }
@@ -2010,19 +1443,9 @@ class ChatPlayground {
                 <h3>What do you want to chat about?</h3>
             </div>
         `;
-        this.updateTokenCount();
     }
     
-    updateTokenCount() {
-        // Approximate token count (rough estimate: 1 token ≈ 4 characters)
-        const totalChars = this.conversationHistory.reduce((acc, msg) => acc + msg.content.length, 0);
-        const approxTokens = Math.ceil(totalChars / 4);
-        
-        const tokenCountEl = document.querySelector('.token-count');
-        if (tokenCountEl) {
-            tokenCountEl.textContent = `*${approxTokens}/128000 tokens in thread`;
-        }
-    }
+    // Removed updateTokenCount function - disclaimer is now static
     
     showToast(message) {
         // Simple toast notification
@@ -2031,7 +1454,7 @@ class ChatPlayground {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #0078d4;
+            background: #6c3fa5;
             color: white;
             padding: 12px 16px;
             border-radius: 4px;
@@ -2062,12 +1485,40 @@ class ChatPlayground {
         console.log('Tokens:', tokens);
         
         // Remove common stop words only
-        const stopWords = new Set([
-            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-            'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-            'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'why',
-            'how', 'can', 'could', 'should', 'would', 'i', 'you', 'me', 'my', 'make',
-            'your', 'about', 'tell', 'give', 'show', 'find', 'get', 'do', 'does'
+        const stopWords = new Set(["a", "about", "above", "after", "again", "against", "all", "am",
+        "an", "and", "any", "are", "aren't", "as", "at",
+        "be", "because", "been", "before", "being", "below", "between", "both",
+        "but", "by",
+        "can't", "cannot", "could", "couldn't",
+        "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down", "during",
+        "each",
+        "few", "for", "from", "further",
+        "had", "hadn't", "has", "hasn't", "have", "haven't", "having",
+        "he", "he'd", "he'll", "he's",
+        "her", "here", "here's", "hers", "herself",
+        "him", "himself", "his",
+        "how", "how's",
+        "i", "i'd", "i'll", "i'm", "i've",
+        "if", "in", "into", "is", "isn't", "it", "it's", "its", "itself",
+        "let's",
+        "me", "more", "most", "mustn't", "my", "myself",
+        "no", "nor", "not",
+        "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours",
+        "ourselves", "out", "over", "own",
+        "same", "shan't", "she", "she'd", "she'll", "she's",
+        "should", "shouldn't",
+        "so", "some", "such", "tell",
+        "than", "that", "that's", "the", "their", "theirs", "them", "themselves",
+        "then", "there", "there's", "these", "they", "they'd", "they'll", "they're",
+        "they've", "this", "those", "through", "to", "too",
+        "under", "until", "up",
+        "very",
+        "was", "wasn't", "we", "we'd", "we'll", "we're", "we've",
+        "were", "weren't", "what", "what's", "when", "when's", "where", "where's",
+        "which", "while", "who", "who's", "whom", "why", "why's",
+        "with", "won't", "would", "wouldn't",
+        "you", "you'd", "you'll", "you're", "you've", "your", "yours",
+        "yourself", "yourselves"
         ]);
 
         // Keep all words that aren't stop words and are longer than 1 character
@@ -2367,105 +1818,6 @@ window.removeFile = function() {
     }
 };
 
-window.openChatCapabilitiesModal = function() {
-    const modal = document.getElementById('chat-capabilities-modal');
-    if (modal) {
-        // Store the currently focused element to restore later
-        window.lastFocusedElement = document.activeElement;
-        
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        
-        // Focus the modal for screen readers
-        setTimeout(() => {
-            const modalTitle = document.getElementById('modal-title');
-            if (modalTitle) {
-                modalTitle.focus();
-            }
-        }, 100);
-        
-        // Restore current settings when modal opens
-        if (window.chatPlaygroundApp) {
-            window.chatPlaygroundApp.restoreSpeechSettings();
-        }
-        
-        // Add keyboard trap for accessibility
-        window.trapFocus(modal);
-    }
-};
-
-window.closeChatCapabilitiesModal = function() {
-    const modal = document.getElementById('chat-capabilities-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto'; // Restore scrolling
-        
-        // Restore focus to the element that opened the modal
-        if (window.lastFocusedElement) {
-            window.lastFocusedElement.focus();
-            window.lastFocusedElement = null;
-        }
-        
-        // Remove keyboard trap
-        window.removeFocusTrap();
-        
-        // Restore original settings (cancel any unsaved changes)
-        if (window.chatPlaygroundApp) {
-            window.chatPlaygroundApp.restoreSpeechSettings();
-        }
-    }
-};
-
-window.playVoiceSample = function() {
-    // Get the voice sample text from the input field
-    const voiceSampleText = document.getElementById('voice-sample-text');
-    const sampleText = voiceSampleText ? voiceSampleText.value : 'Hi, how can I help you today?';
-    
-    // Simulate voice sample playback
-    const playBtn = document.querySelector('.play-btn');
-    if (playBtn) {
-        playBtn.textContent = '⏸️';
-        setTimeout(() => {
-            playBtn.textContent = '▶';
-        }, 2000); // Simulate 2-second sample
-    }
-    
-    // Here you would integrate with actual speech synthesis
-    if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(sampleText);
-        const voiceSelect = document.getElementById('voice-select');
-        const speedSelect = document.getElementById('voice-speed');
-        
-        if (voiceSelect && voiceSelect.value && voiceSelect.value !== 'default') {
-            const voices = speechSynthesis.getVoices();
-            const selectedVoice = voices.find(voice => voice.name === voiceSelect.value);
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
-            }
-        }
-        
-        const speedMap = { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2 };
-        utterance.rate = speedMap[speedSelect.value] || 1;
-        
-        speechSynthesis.speak(utterance);
-    }
-};
-
-window.saveChatCapabilities = function() {
-    // Save the current settings
-    if (window.chatPlaygroundApp) {
-        window.chatPlaygroundApp.saveSpeechSettings();
-        window.chatPlaygroundApp.showToast('Chat settings updated');
-    }
-    
-    // Close modal
-    const modal = document.getElementById('chat-capabilities-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-};
-
 window.openAboutModal = function() {
     const modal = document.getElementById('about-modal');
     if (modal) {
@@ -2711,7 +2063,7 @@ window.trapFocus = function(modal) {
                 }
             }
         } else if (e.key === 'Escape') {
-            window.closeChatCapabilitiesModal();
+            window.closeChatCapabilitiesModal(); // Modal removed
         }
     };
     
@@ -2729,16 +2081,6 @@ window.removeFocusTrap = function() {
 document.addEventListener('DOMContentLoaded', () => {
     window.chatPlaygroundApp = new ChatPlayground();
     
-    // Add modal click-outside-to-close functionality
-    const modal = document.getElementById('chat-capabilities-modal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                window.closeChatCapabilitiesModal();
-            }
-        });
-    }
-    
     // Add parameters modal click-outside-to-close functionality
     const parametersModal = document.getElementById('parameters-modal');
     if (parametersModal) {
@@ -2752,10 +2094,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals with Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            const capabilitiesModal = document.getElementById('chat-capabilities-modal');
-            if (capabilitiesModal && capabilitiesModal.style.display !== 'none') {
-                window.closeChatCapabilitiesModal();
-            }
             const parametersModal = document.getElementById('parameters-modal');
             if (parametersModal && parametersModal.style.display !== 'none') {
                 window.closeParametersModal();
