@@ -6,6 +6,7 @@ All of the apps are designed to run locally in-browser. No data is uploaded to M
 
 ## Apps
 
+- [Ask Andrew (sample AI agent)](./ask-andrew/)
 - [Chat Playground](./chat-playground/)
 - [Speech Playground](./speech-playground/)
 - [Information Extractor](./info-extractor/)
@@ -22,10 +23,10 @@ The AI functionality in these apps was developed with [Microsoft's principles fo
 
 The apps, including AI models, run in your local browser and no data is shared with Microsoft. No data from your browser, such as cookies or configuration data, is collected by any of these apps.
 
-In the **Chat Playground** app, depending on the app mode configuration, input to models (i.e. prompts) may be sent to third-party APIs. Specifically:
+In some cases, depending on the app mode configuration, input to models (i.e. prompts) may be sent to third-party APIs. Specifically:
 
-- When <u>not</u> using a generative AI model, keywords from prompts are sent to the [Wikipedia API](https://en.wikipedia.org/w/api.php) to retrieve relevant information from Wikipedia. Only text you explicitly enter into the chat API is sent to Wikpedia.
-- When Speech-to-text is enabled, speech input is processed by the browser's native [Web Speech API](https://webaudio.github.io/web-speech-api/) implementation, which may send audio to a server for processing. Speech input must be explicitly enabled the first time you use it in the app. Only your audio spoken when the microphone is active (with audible and visual indicators) is processed.
+- In **Chat Playground** and **Speech Playground**, when <u>not</u> using a generative AI model, keywords from prompts are sent to the [Wikipedia API](https://en.wikipedia.org/w/api.php) to retrieve relevant information from Wikipedia. Only text you explicitly enter into the chat API is sent to Wikipedia.
+- In **Speech Playground**, speech input is processed by the browser's native [Web Speech API](https://webaudio.github.io/web-speech-api/) implementation, which may send audio to a server for processing. Speech input must be explicitly enabled the first time you use it in the app. Only your audio spoken when the microphone is active is processed.
 
 ### Generative AI
 
@@ -34,6 +35,27 @@ The following apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.micr
 The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing. Some PC and browser combinations may not support the underlying WebGPU framework on which WebLLM depends, in which case generative AI functionality is not used by the apps.
 
 > **IMPORTANT**: Generative AI functionality in these apps is designed exclusively for *educational* use. Do <u>not</u> rely on the output from these apps for any real-world application, decision, or action.
+
+#### Ask Andrew (sample AI agent)
+
+Ask Andrew provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "Simple Mode"). When using generative AI, the system prompt is:
+
+```
+You are Andrew, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
+
+IMPORTANT: Follow these guidelines when responding:
+- Explain concepts clearly and concisely in a single paragraph based only on the provided context.
+- Keep responses short and focused on the question, with no headings.
+- Use examples and analogies when helpful.
+- Use simple language suitable for learners in a conversational, friendly tone.
+- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
+- If the context includes "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.", use that exact phrasing and no additional information.
+- Do not start responses with "A:" or "Q:".
+- Keep your responses concise and to the the point.
+- Do NOT provide links for more information (these will be added automatically later).
+```
+
+The index searched for context is in the [index.json](./ask-andrew/index.json) file and the search is performed locally in-browser. No prompt text or any other data is sent outside of the browser.
 
 #### Chat Playground
 
