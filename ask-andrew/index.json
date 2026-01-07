@@ -1,0 +1,521 @@
+[
+    {
+        "category": "AI Overview",
+        "link": "https://aka.ms/mslearn-ai-concepts",
+        "documents": [
+            {
+                "id": 1,
+                "title": "What is Artificial Intelligence?",
+                "keywords": [
+                    "artificial intelligence",
+                    "what is ai",
+                    "explain ai",
+                    "define ai",
+                    "cognitive computing"
+                ],
+                "content": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think, learn, and solve problems. It encompasses a broad range of technologies and approaches aimed at enabling computers to perform tasks that typically require human cognition. AI is built on the foundation of machine learning, and includes sub-areas such as generative AI, text analysis, speech, computer vision, and information extraction."
+            },
+            {
+                "id": 2,
+                "title": "Responsible AI",
+                "keywords": [
+                    "responsible ai",
+                    "ethics",
+                    "ethical",
+                    "safety",
+                    "fairness",
+                    "fair",
+                    "transparency",
+                    "accountability",
+                    "privacy",
+                    "bias"  
+                ],
+                "content": "Responsible AI involves the development and deployment of artificial intelligence systems in a manner that is ethical, transparent, and accountable. It emphasizes the importance of ensuring that AI technologies are designed to respect human rights, promote fairness, and mitigate potential risks associated with their use. Responsible AI practices include considerations for privacy, bias reduction, and the overall societal impact of AI applications. Microsoft defines a set of principles to guide the responsible development and use of AI technologies, including fairness, reliability and safety, privacy and security, inclusiveness, transparency, and accountability."
+            }
+        ]
+    },
+    {
+        "category": "Machine Learning",
+        "link": "https://aka.ms/mslearn-ml-concepts",
+        "documents": [
+            {
+                "id": 3,
+                "title": "Introduction to Machine Learning",
+                "keywords": [
+                    "machine learning",
+                    "ml",
+                    "predictive model",
+                    "predictive models",
+                    "predictive modeling",
+                    "supervised learning",
+                    "unsupervised learning",
+                    "features",
+                    "label"
+                ],
+                "content": "Machine Learning (ML) is the foundation for modern AI. It's a subset of data science that focuses on the development of algorithms and statistical models that enable computers to learn from and make predictions or decisions based on data. The input values for a machine learning model are 'features' of an observed entity (for example, the number of rooms in a house and its size in square feet). The mode encapsulates a mathematical function that is applied to the features to calculate a predicted 'label' (for example, the price of the house). ML can be broadly categorized into two types: supervised learning, where models are trained on labeled data; and unsupervised learning, which involves finding patterns in unlabeled data."
+            },
+            {
+                "id": 4,
+                "title": "Regression",
+                "keywords": [
+                    "regression",
+                    "regressor",
+                    "regressors",
+                    "linear regression"
+                ],
+                "content": "Regression is a type of supervised machine learning technique used to predict continuous numerical values based on input features. For example, you might use regression to predict the number of ice creams sold on a given day based on the temperature. Regression involves modeling the relationship between a dependent variable (the value to be predicted) and one or more independent variables (the input features). Linear regression, one of the simplest forms of regression, assumes a linear relationship between the input features and the output. More complex regression techniques can capture non-linear relationships and interactions among features."
+            },
+            {
+                "id": 5,
+                "title": "Classification",
+                "keywords": [
+                    "classification",
+                    "classifier",
+                    "classifiers",
+                    "binary classification",
+                    "multiclass classification",
+                    "logistic regression"
+                ],
+                "content": "Classification is a supervised machine learning technique used to categorize entities into predefined categories, or 'classes'. Binary classification is used to predict one of two possible outcomes (true/false, yes/no), while multiclass classification involves predicting one of three or more classes. For example, you might use binary classification to predict whether or not a patient has a particular disease based on symptoms and clinical metrics, while you might use multiclass classification to predict which of three species a penguin is based on its size, weight, and other measurements. Classification models learn from labeled training data to identify patterns that can be used to calculate the probability of each possible label based on the feature values."
+            },
+            {
+                "id": 6,
+                "title": "Clustering",
+                "keywords": [
+                    "clustering",
+                    "cluster",
+                    "clusters",
+                    "k-means"
+                ],
+                "content": "Clustering is an unsupervised machine learning technique used to group similar entities into clusters based on their features. Unlike supervised learning techniques such as classification, clustering does not rely on labeled data; instead, it identifies inherent patterns and structures within the data. For example, clustering can be used in customer segmentation to group customers with similar purchasing behaviors or demographics. Common clustering algorithms include K-means and hierarchical clustering. Clustering helps in discovering natural groupings in data, which can be useful for various applications such as market research, image segmentation, and anomaly detection."
+            },
+            {
+                "id": 7,
+                "title": "Deep Learning and Neural Networks",
+                "keywords": [
+                    "deep learning",
+                    "neural network",
+                    "artificial neural network",
+                    "fully connected network",
+                    "multi layer perceptron"
+                ],
+                "content": "Deep Learning is a specialized subset of machine learning that utilizes artificial neural networks with multiple layers (hence 'deep') to model complex patterns in data. Neural networks are inspired by the structure and function of the human brain, consisting of interconnected nodes (neurons) that process information. Deep learning has been particularly successful in tasks such as image and speech recognition, natural language processing, and game playing. Neural networks are trained by adjusting the 'weights' applied to input values in each neuron based on the difference between predicted and actual outcomes (known as the 'loss' in the model)."
+            }
+        ]
+    },
+    {
+        "category": "Generative AI and Agents",
+        "link": "https://aka.ms/mslearn-intro-gen-ai",
+        "documents": [
+            {
+                "id": 8,
+                "title": "Introduction to Generative AI",
+                "keywords": [
+                    "generative ai",
+                    "genai",
+                    "prompt",
+                    "prompts",
+                    "prompt engineering"
+                ],
+                "content": "Generative AI refers to a class of artificial intelligence models that are capable of generating new content, such as text, images, audio, or video, based on the data they have been trained on. These models are typically large language models (LLMs) that use deep learning techniques, particularly transformer architectures with attention mechanisms, to define a vocabulary of semantically meaningful tokens and generate coherent and contextually relevant outputs. The input to a generative AI model is a natural language 'prompt', containing instructions or questions that guide the model in producing the desired content. Prompt engineering is the process of crafting effective prompts to elicit high-quality responses from generative AI models."
+            },
+            {
+                "id": 9,
+                "title": "Large Language Models",
+                "keywords": [
+                    "large language model",
+                    "large language models",
+                    "llm",
+                    "llms",
+                    "gpt"
+                ],
+                "content": "Large Language Models (LLMs) are a type of artificial intelligence model designed to understand and generate human language. They are built using transformer architectures that utilize attention mechanisms to process and generate text. LLMs work by converting tokens (words or parts of words) into embeddings, which are vectors with multiple numeric 'dimensions', allowing the model to capture semantic meaning and context. These models are capable of performing a wide range of natural language processing tasks, including translation, summarization, and question-answering."
+            },
+            {
+                "id": 26,
+                "title": "AI Agents",
+                "keywords": [
+                    "agents",
+                    "agent",
+                    "agentic ai",
+                    "agentic",
+                    "ai agent",
+                    "ai agents",
+                    "multi-agent"
+                ],
+                "content": "AI agents are generative AI apps designed to autonomously perform tasks or make decisions on behalf of users. They can operate independently or collaboratively in multi-agent systems to achieve complex objectives. AI agents typically consist of (a.) a large language model (LLM) that acts as the agent's 'brain', (b.) instructions that define the agent's job description and expected behavior, and (c.) tools that the agent can use to interact with external systems to retrieve information or initiate tasks. For example, an AI agent might be designed to assist with finding information about expense limits and policies, and submitting expense claims."
+            },
+            {
+                "id": 27,
+                "title": "Transformer models and Attention",
+                "keywords": [
+                    "transformer",
+                    "transformers",
+                    "attention",
+                    "self-attention",
+                    "multi-head attention",
+                    "encoder",
+                    "decoder",
+                    "encoder-decoder",
+                    "embedding",
+                    "embeddings",
+                    "vectors",
+                    "vector",
+                    "tokens",
+                    "token"
+                ],
+                "content": "Transformer models evolved from natural language processing (NLP) and are now widely used in generative AI applications. They work by decomposing training data into 'tokens' (often words, or parts of words) and mapping the tokens to vectors (like [120, 245, 89, ...]) in which each numeric dimension represents a semantic characteristic of the token. The vectors are calculated based on how the tokens appear in context to one another using self-attention mechanisms that allow the model to weigh the influence of each token on the tokens around it This process embeds semantic meaning into the vectors, so they're generally referred to as 'embeddings'. Multi-head attention enables the model to focus on multiple aspects of the input simultaneously, improving its ability to capture complex relationships. Transformers consist of encoder and decoder components that work together to process input data and generate outputs. This architecture has revolutionized AI by enabling more effective handling of sequential data and long-range dependencies when making 'next word' predictions."
+            },
+            {
+                "id": 28,
+                "title": "Prompt Engineering",
+                "keywords": [
+                    "prompt engineering",
+                    "prompt",
+                    "prompts",
+                    "instruction",
+                    "instructions",
+                    "few shot learning",
+                    "zero shot learning"
+                ],
+                "content": "Prompt Engineering is the process of designing and refining input prompts to effectively communicate with generative AI models, such as large language models (LLMs). A well-crafted prompt can significantly influence the quality and relevance of the model's output. Prompt engineering involves techniques such as providing clear instructions, using examples (few-shot learning), and structuring prompts to guide the model's response. Few-shot learning involves including a few examples in the prompt to help the model understand the desired output format, while zero-shot learning relies on the model's pre-existing knowledge without any examples. Effective prompt engineering is essential for maximizing the capabilities of generative AI models across various applications."
+            },
+            {
+                "id": 29,
+                "title": "Fine-tuning and Custom Models",
+                "keywords": [
+                    "fine tuning",
+                    "fine-tune",
+                    "custom model",
+                    "custom models",
+                    "transfer learning"
+                ],
+                "content": "Fine-tuning is the process of adapting a pre-trained large language model (LLM) to a specific task or domain by training it on a smaller, task-specific dataset. This approach leverages the general knowledge and language understanding already learned by the base model, allowing it to perform well on specialized tasks with less data and computational resources. Custom models are created through fine-tuning to meet specific requirements, such as industry-specific terminology or unique use cases. Transfer learning is a related concept where knowledge gained from one task is applied to improve performance on another related task. Fine-tuning and custom models enable organizations to tailor generative AI capabilities to their specific needs while benefiting from the strengths of large pre-trained models."
+            },
+            {
+                "id": 30,
+                "title": "Evaluation of Generative AI Models",
+                "keywords": [
+                    "evaluation",
+                    "evaluate",
+                    "model evaluation",
+                    "generative ai evaluation",
+                    "accuracy",
+                    "coherence",
+                    "relevance",
+                    "diversity"
+                ],
+                "content": "Evaluating generative AI models is crucial to ensure their outputs are accurate, coherent, relevant, and diverse. Common evaluation metrics include accuracy (how well the model's outputs match expected results), coherence (the logical flow and consistency of generated content), relevance (the degree to which outputs address the input prompt), and diversity (the variety of outputs produced by the model). Evaluation can be performed using automated metrics, human judgment, or a combination of both. Continuous evaluation helps in refining models, improving performance, and ensuring that generative AI systems meet user expectations and application requirements."
+            },
+            {
+                "id": 31,
+                "title": "Retrieval-Augmented Generation (RAG)",
+                "keywords": [
+                    "retrieval augmented generation",
+                    "rag",
+                    "knowledge retrieval",
+                    "external knowledge",
+                    "contextual information"
+                ],
+                "content": "Retrieval-Augmented Generation (RAG) combines generative AI models with external knowledge sources to improve the accuracy and relevance of generated content. By retrieving relevant information from databases, documents, or the web; and using it to augment the prompt, RAG systems provide contextual information that enhances the model's responses. This approach is particularly useful for tasks requiring up-to-date or domain-specific knowledge, enabling more informed and reliable outputs. RAG integrates retrieval mechanisms with generation capabilities, offering a powerful solution for applications like question answering, summarization, and personalized content creation."
+            }
+        ]
+    },
+    {
+        "category": "Text Analysis",
+        "link": "https://aka.ms/mslearn-nlp",
+        "documents": [
+            {
+                "id": 10,
+                "title": "Common Text Analysis Techniques",
+                "keywords": [
+                    "text",
+                    "text analysis",
+                    "text analytics",
+                    "analyze text",
+                    "term frequency",
+                    "tf-idf",
+                    "tfidf",
+                    "stemming",
+                    "lemmatization",
+                    "parts of speech",
+                    "pos tagging",
+                    "tokenization"
+                ],
+                "content": "Text Analysis encompasses various techniques for processing and extracting insights from textual data. Term Frequency (TF) measures how often a term appears in a document, while TF-IDF (Term Frequency-Inverse Document Frequency) weighs terms by their importance across a corpus of documents. Stemming and lemmatization are techniques for reducing words to their base or root form (for example, 'running' to 'run'), helping to normalize text for analysis. Parts-of-speech (POS) tagging identifies the grammatical role of each word in a sentence (noun, verb, adjective, etc.), which is useful for understanding sentence structure and meaning."
+            },
+            {
+                "id": 33,
+                "title": "Natural Language Processing",
+                "keywords": [
+                    "natural language processing",
+                    "nlp"
+                ],
+                "content": "Natural Language Processing (NLP) is a field of artificial intelligence that focuses on the interaction between computers and human language. It involves the development of algorithms and models that enable machines to understand, interpret, and generate human language in a meaningful way; including generative AI large language models. NLP techniques are used in various text analysis applications such as keyword extraction, sentiment analysis, and summarization."
+            },
+            {
+                "id": 11,
+                "title": "Text Summarization",
+                "keywords": [
+                    "text summarization",
+                    "summarization",
+                    "extractive summarization",
+                    "abstractive summarization",
+                    "textrank",
+                    "summary"
+                ],
+                "content": "Text Summarization is the process of creating a concise and coherent summary of a longer text document while preserving its key information. There are two main approaches: Extractive Summarization selects and combines the most important sentences from the original text without modification. TextRank is a popular extractive algorithm that uses graph-based ranking to identify key sentences. Abstractive Summarization generates new sentences that capture the essence of the original text, similar to how a human might paraphrase. Large Language Models (LLMs) are commonly used for abstractive summarization as they can understand context and generate fluent, coherent summaries."
+            },
+            {
+                "id": 12,
+                "title": "Key Term Extraction",
+                "keywords": [
+                    "key term extraction",
+                    "key phrase extraction",
+                    "keyword extraction",
+                    "term extraction",
+                    "important terms"
+                ],
+                "content": "Key Term Extraction is the process of automatically identifying the most important and relevant terms, phrases, or concepts in a text document. This technique helps in understanding the main topics and themes within large volumes of text. Key term extraction algorithms typically use statistical methods (such as TF-IDF), linguistic features (such as noun phrases), or machine learning models to identify terms that are most representative of the document's content. The extracted terms can be used for document indexing, search optimization, topic modeling, and content categorization."
+            },
+            {
+                "id": 13,
+                "title": "Text Classification",
+                "keywords": [
+                    "text classification",
+                    "classify text",
+                    "text categorization",
+                    "sentiment analysis",
+                    "sentiment",
+                    "analyze sentiment",
+                    "predict sentiment",
+                    "opinion mining",
+                    "document classification"
+                ],
+                "content": "Text Classification is the task of assigning predefined categories or labels to text documents based on their content. This is a supervised machine learning task that requires labeled training data. Common applications include spam detection, topic categorization, and language identification. Sentiment Analysis is a specific type of text classification that determines the emotional tone or opinion expressed in text, typically categorizing it as positive, negative, or neutral. Sentiment analysis is widely used in social media monitoring, customer feedback analysis, and brand reputation management. Modern text classification often uses deep learning models such as transformers that can capture complex semantic relationships in text."
+            }
+        ]
+    },
+    {
+        "category": "Speech",
+        "link": "https://aka.ms/mslearn-ai-speech",
+        "documents": [
+            {
+                "id": 14,
+                "title": "Overview of Speech",
+                "keywords": [
+                    "speech",
+                    "voice",
+                    "audio",
+                    "speak",
+                    "speaking",
+                    "talk",
+                    "talking"
+                ],
+                "content": "Speech technologies enable computers to understand and generate human speech. Common use cases include voice assistants, transcription services that convert spoken words to text, accessibility tools for people with disabilities, language translation, and automated customer service systems. Speech processing involves two main tasks: Speech Recognition (converting spoken words to text) and Speech Synthesis (converting text to spoken words). These technologies have become increasingly accurate and natural-sounding with advances in deep learning and neural networks."
+            },
+            {
+                "id": 15,
+                "title": "Speech Recognition (Speech to Text)",
+                "keywords": [
+                    "speech to text",
+                    "speech-to-text",
+                    "speech recognition",
+                    "stt",
+                    "mfcc",
+                    "mfccs",
+                    "mel frequency cepstral coefficients",
+                    "phoneme",
+                    "phonemes",
+                    "acoustic model",
+                    "language model",
+                    "word prediction"
+                ],
+                "content": "Speech Recognition, also known as Speech-to-Text (STT), is the process of converting spoken language into written text. The process begins by capturing audio as a frequency wave, which represents the vibration patterns of sound over time. The audio is then processed to extract Mel-Frequency Cepstral Coefficients (MFCCs), which are numerical features that represent the power spectrum of sound in a way that mimics human auditory perception. These features are fed into an acoustic model that identifies phonemes (the smallest units of sound in language, such as 'k' or 'ae'). Finally, a language model predicts likely sequences of words based on the phonemes and linguistic context, producing the final transcription. Modern speech recognition systems use deep learning models like recurrent neural networks (RNNs) and transformers to achieve high accuracy."
+            },
+            {
+                "id": 16,
+                "title": "Speech Synthesis (Text to Speech)",
+                "keywords": [
+                    "tts",
+                    "text to speech",
+                    "text-to-speech",
+                    "speech synthesis",
+                    "voice generation",
+                    "grapheme",
+                    "graphemes",
+                    "prosody",
+                    "intonation",
+                    "pitch",
+                    "vocoder"
+                ],
+                "content": "Speech Synthesis, also known as Text-to-Speech (TTS), is the process of converting written text into spoken audio. The process begins by converting graphemes (written letters or letter combinations) into phonemes (sounds). Next, prosody is applied, which involves determining the rhythm, stress, and intonation patterns that make speech sound natural and expressive. This includes adjusting pitch (how high or low the voice sounds), duration (how long each sound lasts), and emphasis. Finally, post-processing generates the audio waveform that represents the actual sound wave to be played through speakers. Modern neural TTS systems use deep learning to produce highly natural and expressive speech that closely resembles human voices."
+            }
+        ]
+    },
+    {
+        "category": "Computer Vision",
+        "link": "https://aka.ms/mslearn-vision",
+        "documents": [
+            {
+                "id": 17,
+                "title": "Computer Vision Overview",
+                "keywords": [
+                    "computer vision",
+                    "vision",
+                    "image classification",
+                    "object detection",
+                    "semantic segmentation",
+                    "visual recognition",
+                    "image analysis",
+                    "photo",
+                    "photograph",
+                    "picture",
+                    "camera"
+                ],
+                "content": "Computer Vision is a field of artificial intelligence that enables computers to understand and interpret visual information from images and videos. Common computer vision tasks include: Image Classification (identifying what's in an image, such as recognizing a photo contains a cat), Object Detection (locating and identifying multiple objects within an image with bounding boxes), Semantic Segmentation (classifying every pixel in an image to identify distinct regions and objects), and image captioning (combining visual and textual information to understand images in context). Common models used in computer vision include convolutional neural networks (CNNs) and vision transformers (ViTs). Computer vision is used in applications ranging from autonomous vehicles and medical imaging to facial recognition and augmented reality."
+            },
+            {
+                "id": 18,
+                "title": "Image Processing",
+                "keywords": [
+                    "image processing",
+                    "pixel",
+                    "pixels",
+                    "resolution",
+                    "filter",
+                    "filters",
+                    "convolution",
+                    "edge detection"
+                ],
+                "content": "Image Processing involves manipulating and analyzing digital images to extract information or enhance their quality. Digital images are composed of pixels, which are tiny dots that each have a color value (typically represented as RGB - red, green, blue). Resolution refers to the number of pixels in an image, typically expressed as width × height (for example, 1920×1080). Filters are mathematical operations applied to images to enhance features or extract patterns. Common filters include edge detection filters (which identify boundaries between objects), blur filters (which smooth images), and sharpening filters. Convolution is a fundamental operation in image processing where a filter (kernel) slides across an image, performing calculations at each position to produce a new output image."
+            },
+            {
+                "id": 19,
+                "title": "Convolutional Neural Networks",
+                "keywords": [
+                    "convolutional neural network",
+                    "convolutional neural networks",
+                    "cnn",
+                    "cnns",
+                    "feature extraction layers",
+                    "pooling layers",
+                    "fully connected layers",
+                    "kernel"
+                ],
+                "content": "Convolutional Neural Networks (CNNs) are specialized deep learning architectures designed for processing grid-like data such as images. CNNs consist of three main types of layers: Feature Extraction Layers (convolutional layers) apply filters (also called kernels) that slide across the image to detect patterns like edges, textures, and shapes. Early layers detect simple features while deeper layers combine these to recognize complex patterns. Pooling Layers reduce the spatial dimensions of the data by downsampling, typically using max pooling (taking the maximum value) or average pooling. This reduces computational complexity and helps the model become invariant to small translations. Fully-Connected Layers at the end of the network combine all the extracted features to make final predictions, such as classifying the image into categories."
+            },
+            {
+                "id": 20,
+                "title": "Vision Transformers",
+                "keywords": [
+                    "visual transformer",
+                    "visual transformers",
+                    "vision transformer",
+                    "vision transformers",
+                    "image transformer",
+                    "image transformers",
+                    "vit",
+                    "vits",
+                    "multimodal models",
+                    "patch",
+                    "patches",
+                    "cross-model attention",
+                    "shared vector space",
+                    "image captioning"
+                ],
+                "content": "Visual Transformers (ViT) adapt the transformer architecture, originally designed for natural language processing, to computer vision tasks. Instead of processing images through convolutional layers, ViTs divide images into patches (small squares), convert each patch into a linear vector (embedding), and process them using self-attention mechanisms to understand relationships between different parts of the image. Multimodal models extend this concept by using cross-modal attention to create a shared vector space where both images and their text descriptions are represented. This allows the model to understand the relationship between visual and textual information, enabling tasks like image captioning (generating text descriptions of images), visual question answering, and image-text matching. These models have revolutionized computer vision by enabling more flexible and powerful visual understanding."
+            },
+            {
+                "id": 21,
+                "title": "Image Generation",
+                "keywords": [
+                    "image generation",
+                    "diffusion",
+                    "diffusion model",
+                    "video generation",
+                    "generative model",
+                    "denoising",
+                    "image creation",
+                    "text to image",
+                    "video creation"
+                ],
+                "content": "Image Generation is the process of creating new images using AI models. Diffusion Models are a popular approach that works by gradually adding random noise to training images until they become pure noise, then learning to reverse this process. To generate a new image, the model starts with random noise and iteratively denoises it, guided by text prompts or other conditions, until a coherent image emerges. This process allows for creating highly detailed and creative images based on text descriptions. Video Generation extends these techniques to create sequences of frames that form coherent videos, either from text descriptions or by transforming existing videos. Diffusion models have become the foundation for popular image generation systems like DALL-E, Midjourney, and Stable Diffusion."
+            }
+        ]
+    },
+    {
+        "category": "Information Extraction",
+        "link": "https://aka.ms/mslearn-ai-info",
+        "documents": [
+            {
+                "id": 22,
+                "title": "Overview of Information Extraction",
+                "keywords": [
+                    "information extraction",
+                    "document processing",
+                    "document intelligence",
+                    "content understanding",
+                    "document",
+                    "documents",
+                    "form",
+                    "forms",
+                    "invoice processing",
+                    "receipt processing",
+                    "form processing"
+                ],
+                "content": "Information Extraction is the process of automatically extracting structured information from unstructured or semi-structured documents. Common use cases include processing invoices, receipts, forms, contracts, and identity documents to extract key information like dates, amounts, names, and addresses. The typical pipeline consists of three stages: First, Optical Character Recognition (OCR) detects and extracts text from images or scanned documents. Second, Field Extraction identifies and extracts specific pieces of information (fields) from the extracted text. Third, Field Mapping and Normalization converts the extracted information into a standardized format suitable for downstream processing or database storage. This technology enables automation of document-heavy workflows in industries like finance, healthcare, and legal services."
+            },
+            {
+                "id": 23,
+                "title": "Optical Character Recognition (OCR)",
+                "keywords": [
+                    "optical character recognition",
+                    "ocr",
+                    "text detection",
+                    "text extraction",
+                    "character recognition",
+                    "text region"
+                ],
+                "content": "Optical Character Recognition (OCR) is the technology used to convert images of text into machine-readable text data. The OCR process consists of two main stages: Text Detection identifies and locates regions in an image that contain text. This involves detecting text areas, often using computer vision techniques to find bounding boxes around text regions, even when text is at different angles or sizes. Text Extraction then recognizes the actual characters within these regions and converts them into digital text. Modern OCR systems use deep learning models like convolutional neural networks (CNNs) and recurrent neural networks (RNNs) to achieve high accuracy even with challenging inputs like handwritten text, low-quality scans, or complex layouts. OCR is a fundamental technology for digitizing printed documents, enabling searchability, and automating document processing workflows."
+            },
+            {
+                "id": 24,
+                "title": "Field Extraction and Mapping",
+                "keywords": [
+                    "field mapping",
+                    "data extraction",
+                    "key-value pairs"
+                ],
+                "content": "Field Extraction and Mapping is the process of identifying specific pieces of information (fields) in extracted text and converting them into a structured, usable format. Field Extraction uses techniques like named entity recognition (NER), pattern matching, and machine learning to identify key information such as dates, amounts, names, addresses, and other relevant data. This often involves understanding the context and relationships between different pieces of text. Field Mapping then associates the extracted fields with target schema fields in a database or application. Normalization and Standardization convert the extracted data into consistent formats - for example, converting various date formats (like '01/15/2025', 'Jan 15, 2025', '15-01-2025') into a standard format (like '2025-01-15'), or standardizing currency amounts and addresses. This ensures the extracted information can be reliably used in downstream systems and applications."
+            }
+        ]
+    },
+     {
+        "category": "Microsoft Foundry",
+        "link": "https://aka.ms/mslearn-start-foundry",
+        "documents": [
+            {
+                "id": 32,
+                "title": "Microsoft Foundry",
+                "keywords": [
+                    "Foundry",
+                    "Azure"
+                ],
+                "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions. I can't provide you with detailed steps about how to use Microsoft Foundry - you should refer to official Microsoft training and documentation."
+            }
+        ]
+    },
+    {
+        "category": "AI Concepts",
+        "link": "https://aka.ms/mslearn-ai-concepts-intro",
+        "documents": [
+            {
+                "id": 25,
+                "title": "Introduction to AI Concepts",
+                "keywords": [],
+                "content": "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts."
+            }
+        ]
+    }
+]
