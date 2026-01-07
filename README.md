@@ -40,7 +40,6 @@ The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScrip
 Chat Playground provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "None" in the model list). The default system prompt is `You are an AI assistant that helps people find information`. Additionally, the app makes the following augmentations to prompts:
 
 - When the user uploads a data file, the app appends `Use this data to answer questions:{text-from-uploaded-file}` to the system prompt.
-- When the user enables text-to-speech, the app appends `Important: Always answer with a single, concise sentence.` to the system prompt.
 - When the user enables image analysis and uploads an image, the app appends `({image-class-prediction})` to the user prompt (where the image class prediction is the text label predicted for the image by the MobileNetV3 image classification model).
 
 #### Speech Playground
