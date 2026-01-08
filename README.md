@@ -104,6 +104,6 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer for statistical text analysis.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for statistical text analysis.
-- [retext-keywords] (https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
+- [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by ML Lab, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
