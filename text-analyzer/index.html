@@ -3,176 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text Analyzer - Analyze sentiment, detect language, extract key phrases and entities</title>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Text Analyzer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header class="top-header">
-        <div class="header-content">
+    <main class="container">
+        <header class="header">
             <h1>Text Analyzer</h1>
-            <div class="ai-toggle-container">
-                <label class="toggle-switch" for="aiToggle">
-                    <span class="toggle-label">Use Generative AI</span>
-                    <input type="checkbox" id="aiToggle" checked aria-label="Toggle Generative AI usage">
-                    <span class="toggle-slider"></span>
-                </label>
-                <small class="ai-transparency-note">
-                    <a href="https://microsoftlearning.github.io/ai-apps/" target="_blank" rel="noopener noreferrer">AI transparency notes</a>
-                </small>
-            </div>
-        </div>
-    </header>
+        </header>
 
-    <main class="container" role="main">
-        <!-- Model loading section -->
-        <div id="modelLoadingSection" class="model-loading-section" 
-             role="status" aria-live="polite" aria-label="AI model loading status">
-            <div class="model-loading-content">
-                <div class="loading-spinner" aria-hidden="true"></div>
-                <h3>Loading AI Model...</h3>
-                <p id="modelLoadingText">Initializing model, please wait...</p>
-                <div class="model-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                    <div id="modelProgressFill" class="model-progress-fill"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="options-grid" role="tablist" aria-label="Analysis options">
-            <!-- Analyze sentiment card (active) -->
-            <div class="option-card active" data-option="sentiment" role="tab" aria-selected="true" aria-controls="workspace" tabindex="0">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sentiment analysis icon showing document with happy face">
-                        <title>Sentiment analysis</title>
-                        <line x1="20" y1="35" x2="35" y2="35" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="45" x2="35" y2="45" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="55" x2="28" y2="55" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <circle cx="65" cy="40" r="15" fill="#FFF3E0"/>
-                        <circle cx="60" cy="38" r="2" fill="#FF9800"/>
-                        <circle cx="70" cy="38" r="2" fill="#FF9800"/>
-                        <path d="M 58,46 Q 65,50 72,46" stroke="#FF9800" stroke-width="2" fill="none"/>
+        <div class="features-section">
+            <h2 class="sr-only">Select an analysis feature</h2>
+            <div class="features-grid" role="group" aria-label="Analysis features">
+                <button class="feature-card" data-feature="sentiment" aria-label="Analyze sentiment: Detect positive, negative and neutral sentiment in text. Get more insights by mining opinions." tabindex="0">
+                    <svg class="feature-icon" viewBox="0 0 100 100" fill="none">
+                        <defs>
+                            <linearGradient id="sentimentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#FFD93D;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#FFA500;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="10" y="15" width="32" height="40" rx="3" fill="#E8F4F8" stroke="#A8D8E8" stroke-width="1.5"/>
+                        <text x="26" y="32" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">Aa</text>
+                        <circle cx="65" cy="32" r="22" fill="url(#sentimentGrad)" stroke="#FF9500" stroke-width="2"/>
+                        <circle cx="59" cy="28" r="2.5" fill="white"/>
+                        <circle cx="71" cy="28" r="2.5" fill="white"/>
+                        <path d="M 59 35 Q 65 38 71 35" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
                     </svg>
-                </div>
-                <h3>Analyze sentiment</h3>
-                <p>Detect positive, negative and neutral sentiment in text. Get more insights by mining opinions.</p>
-            </div>
+                    <h2>Analyze sentiment</h2>
+                    <p>Detect positive, negative and neutral sentiment in text. Get more insights by mining opinions.</p>
+                </button>
 
-            <!-- Detect language card -->
-            <div class="option-card" data-option="language" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Language detection icon showing document with multilingual characters">
-                        <title>Language detection</title>
-                        <line x1="20" y1="35" x2="35" y2="35" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="45" x2="35" y2="45" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="55" x2="28" y2="55" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <text x="55" y="42" font-size="16" fill="#1E88E5" font-weight="bold">{ع}</text>
-                        <text x="55" y="58" font-size="16" fill="#1E88E5" font-weight="bold">{あ}</text>
+                <button class="feature-card" data-feature="phrases" aria-label="Extract key phrases: Identify the most important points in a piece of text." tabindex="0">
+                    <svg class="feature-icon" viewBox="0 0 100 100" fill="none">
+                        <defs>
+                            <linearGradient id="phrasesGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#9D5FFF;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#6B5BFD;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="14" y="18" width="28" height="40" rx="2.5" fill="#F3E8FF" stroke="#D8B4FE" stroke-width="1.5"/>
+                        <line x1="19" y1="25" x2="37" y2="25" stroke="#A78BFA" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="19" y1="32" x2="32" y2="32" stroke="#A78BFA" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="19" y1="39" x2="37" y2="39" stroke="#A78BFA" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="19" y1="46" x2="30" y2="46" stroke="#A78BFA" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M 50 20 Q 70 28 50 36" fill="url(#phrasesGrad)"/>
+                        <circle cx="68" cy="28" r="12" fill="url(#phrasesGrad)"/>
+                        <text x="68" y="32" font-size="14" text-anchor="middle" fill="white" font-weight="bold">+</text>
                     </svg>
-                </div>
-                <h3>Detect language</h3>
-                <p>Evaluate text and detect a wide range of languages, variants, dialects.</p>
-            </div>
+                    <h2>Extract key phrases</h2>
+                    <p>Identify the most important points in a piece of text.</p>
+                </button>
 
-            <!-- Extract key phrases card -->
-            <div class="option-card" data-option="keyphrases" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Key phrase extraction icon showing document with highlighted phrases">
-                        <title>Key phrase extraction</title>
-                        <line x1="20" y1="35" x2="35" y2="35" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="45" x2="35" y2="45" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="55" x2="28" y2="55" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <rect x="55" y="35" width="25" height="10" rx="5" fill="#9C27B0" opacity="0.7"/>
-                        <rect x="55" y="50" width="20" height="10" rx="5" fill="#9C27B0" opacity="0.5"/>
+                <button class="feature-card" data-feature="entities" aria-label="Extract named entities: Identify different entities in text and categorize them into predefined types." tabindex="0">
+                    <svg class="feature-icon" viewBox="0 0 100 100" fill="none">
+                        <defs>
+                            <linearGradient id="entitiesGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#00D4D4;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#0AAAA0;stop-opacity:1" />
+                            </linearGradient>
+                            <linearGradient id="entitiesGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#FF6B9D;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#FF5A8D;stop-opacity:1" />
+                            </linearGradient>
+                            <linearGradient id="entitiesGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#4FC3F7;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#0097A7;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <circle cx="22" cy="26" r="5.5" fill="url(#entitiesGrad1)"/>
+                        <rect x="16" y="34" width="12" height="15" rx="1.5" fill="url(#entitiesGrad1)"/>
+                        <circle cx="52" cy="28" r="6" fill="url(#entitiesGrad2)"/>
+                        <rect x="45" y="36" width="14" height="18" rx="2" fill="url(#entitiesGrad2)"/>
+                        <circle cx="78" cy="30" r="5" fill="url(#entitiesGrad3)"/>
+                        <rect x="72" y="38" width="12" height="14" rx="1.5" fill="url(#entitiesGrad3)"/>
+                        <path d="M 22 52 L 32 52" stroke="url(#entitiesGrad1)" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M 45 52 L 60 52" stroke="url(#entitiesGrad2)" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M 72 52 L 82 52" stroke="url(#entitiesGrad3)" stroke-width="2.5" stroke-linecap="round"/>
                     </svg>
-                </div>
-                <h3>Extract key phrases</h3>
-                <p>Identify the most important points in a piece of text.</p>
-            </div>
+                    <h2>Extract named entities</h2>
+                    <p>Identify different entities in text and categorize them into predefined types.</p>
+                </button>
 
-            <!-- Extract named entities card -->
-            <div class="option-card" data-option="entities" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Entity extraction icon showing document with categorized entities">
-                        <title>Named entity extraction</title>
-                        <line x1="20" y1="35" x2="35" y2="35" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="45" x2="35" y2="45" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="55" x2="28" y2="55" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <rect x="52" y="33" width="8" height="8" fill="#1E88E5"/>
-                        <rect x="63" y="33" width="8" height="8" fill="#1E88E5"/>
-                        <rect x="74" y="33" width="8" height="8" fill="#1E88E5"/>
-                        <rect x="52" y="48" width="8" height="8" fill="#1E88E5"/>
-                        <rect x="63" y="48" width="8" height="8" fill="#1E88E5"/>
+                <button class="feature-card" data-feature="summary" aria-label="Summarize text: Summarize and extract key information at scale from text." tabindex="0">
+                    <svg class="feature-icon" viewBox="0 0 100 100" fill="none">
+                        <defs>
+                            <linearGradient id="summaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#34D399;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="14" y="16" width="38" height="14" rx="1.5" fill="#D1FAE5" stroke="#6EE7B7" stroke-width="1.5"/>
+                        <line x1="19" y1="23" x2="42" y2="23" stroke="#10B981" stroke-width="1.3" stroke-linecap="round"/>
+                        <rect x="14" y="38" width="72" height="38" rx="2.5" fill="url(#summaryGrad)"/>
+                        <line x1="21" y1="48" x2="76" y2="48" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="21" y1="58" x2="68" y2="58" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="21" y1="68" x2="63" y2="68" stroke="white" stroke-width="2" stroke-linecap="round"/>
                     </svg>
-                </div>
-                <h3>Extract named entities</h3>
-                <p>Identify different entities in text and categorize them into pre-defined types.</p>
-            </div>
-
-            <!-- Summarize text card -->
-            <div class="option-card" data-option="summarize" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Text summarization icon showing document being condensed">
-                        <title>Text summarization</title>
-                        <line x1="20" y1="35" x2="35" y2="35" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="45" x2="35" y2="45" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="20" y1="55" x2="28" y2="55" stroke="#7CB342" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="45" y1="30" x2="45" y2="65" stroke="#BDBDBD" stroke-width="2"/>
-                        <path d="M 58,38 Q 60,33 62,38" stroke="#1E88E5" stroke-width="2" fill="none" stroke-linecap="round"/>
-                        <polygon points="62,38 65,36 63,40" fill="#1E88E5"/>
-                        <path d="M 62,52 Q 60,57 58,52" stroke="#1E88E5" stroke-width="2" fill="none" stroke-linecap="round"/>
-                        <polygon points="58,52 55,54 57,50" fill="#1E88E5"/>
-                        <line x1="55" y1="42" x2="57" y2="48" stroke="#1E88E5" stroke-width="1.5" stroke-dasharray="2,2"/>
-                        <line x1="63" y1="42" x2="61" y2="48" stroke="#1E88E5" stroke-width="1.5" stroke-dasharray="2,2"/>
-                    </svg>
-                </div>
-                <h3>Summarize text</h3>
-                <p>Summarize and extract key information at scale from text</p>
+                    <h2>Summarize text</h2>
+                    <p>Summarize and extract key information at scale from text.</p>
+                </button>
             </div>
         </div>
 
-        <div class="workspace" id="workspace" role="tabpanel">
-            <div class="text-input-section">
-                <label for="textInput" class="visually-hidden">Text to analyze</label>
-                <textarea id="textInput" 
-                          placeholder="Select a sample, upload a file or enter your text here" 
-                          aria-label="Enter text to analyze"
-                          aria-describedby="charCount"></textarea>
-                <div class="input-footer">
-                    <span id="charCount" class="char-count" aria-live="polite">0 / 5000</span>
-                    <div class="action-buttons">
-                        <label for="fileInput" class="icon-btn" title="Upload text file">
-                            <span class="visually-hidden">Upload text file</span>
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path d="M9 3v8H6l4 4 4-4h-3V3H9zm8 11v3H3v-3H1v3c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-3h-2z"/>
-                            </svg>
-                            <input type="file" id="fileInput" accept=".txt" style="display: none;" aria-label="Upload text file">
-                        </label>
-                        <button id="runBtn" class="run-btn" disabled aria-label="Run text analysis">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                <path d="M4 2v12l10-6z"/>
-                            </svg>
-                            Run
-                        </button>
+        <div class="main-content">
+            <div class="input-section">
+                <div class="input-controls">
+                    <label for="text-input">Text Input</label>
+                </div>
+                <textarea id="text-input" placeholder="Select a sample, upload a file or enter your text here" aria-label="Text input area" tabindex="0"></textarea>
+                <div class="button-group">
+                    <button id="upload-btn" class="upload-icon-btn" aria-label="Upload a text file" tabindex="0">
+                        &#128206;
+                    </button>
+                    <button id="run-btn" class="run-btn" aria-label="Run the selected analysis" tabindex="0">
+                        <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"></path>
+                        </svg>
+                    </button>
+                </div>
+                <input type="file" id="file-input" accept=".txt" style="display: none;">
+            </div>
+
+            <div class="sidebar">
+                <div class="details-panel">
+                    <h2>Details</h2>
+                    <div id="results-container" role="region" aria-label="Analysis results" aria-live="polite">
+                        <p class="placeholder-text">Your details will appear after you enter or upload some text and press Run</p>
                     </div>
                 </div>
             </div>
-
-            <div class="results-panel" role="region" aria-label="Analysis results">
-                <h2>Details</h2>
-                <div id="resultsContent" class="results-content" aria-live="polite">
-                    <p class="placeholder-text">Your details will appear after you enter or upload some text and press Run.</p>
-                </div>
-            </div>
         </div>
-    </main>
 
-    <script src="https://unpkg.com/compromise@14.9.0/builds/compromise.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/core@4/dist/core-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/lang-en-min@4/dist/lang-en-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/sentiment@4/dist/sentiment-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/language-guesser@4/dist/language-guesser-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/builtin-compromise@4/dist/builtin-compromise-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@nlpjs/ner@4/dist/ner-min.js"></script>
-    <script type="module" src="script.js"></script>
+        </main>
+
+    <!-- Scripts for NLP libraries -->
+    <!-- Load retext and retext-keywords as ES modules -->
+    <script type="module">
+        import { retext } from 'https://esm.sh/retext@8?bundle'
+        import retextKeywords from 'https://esm.sh/retext-keywords@8?bundle'
+        
+        window.retextLib = { retext, retextKeywords }
+    </script>
+    
+    <!-- TextRank for summarization -->
+    <script src="https://cdn.jsdelivr.net/npm/textrank/textrank.min.js"></script>
+    <!-- Compromise.js for NLP tasks -->
+    <script src="https://unpkg.com/compromise"></script>
+    
+    <script src="script.js"></script>
 </body>
 </html>

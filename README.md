@@ -66,78 +66,7 @@ Chat Playground provides the option to use generative AI or a fallback mode that
 
 #### Speech Playground
 
-Speech Playground provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "None" in the model list). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended..
-
-#### Text Analyzer
-
-Text Analyzer provides the option to use generative AI, or a fallback mode that uses statistical text analysis techniques (which you can explicitly activate by disabling the *Use Generative AI* toggle). The prompts used by the app depend on the specific analysis being performed:
-
-- **Sentiment analysis**:
-    - System prompt: `You are a sentiment analysis expert. Respond only with valid JSON`
-    - User prompt: `{User-entered or uploaded text}`
-- **Language detection**:
-    - System prompt: `You are a language detection expert. Respond only with valid JSON.`
-    - User prompt:
-
-    ```
-    Detect the language of the following text. Pay special attention to 
-        non-Latin scripts like Chinese, Japanese, Korean, Arabic, etc. Respond in this exact JSON format:
-    {
-      "language": "full language name",
-      "code": "ISO 639-1 two-letter code",
-      "confidence": a number between 0.0 and 1.0
-    }
-    
-    Examples:
-    - Chinese text should return: {"language": "Chinese", "code": "zh", "confidence": 0.95}
-    - Japanese text should return: {"language": "Japanese", "code": "ja", "confidence": 0.95}
-    - English text should return: {"language": "English", "code": "en", "confidence": 0.95}
-    
-    Text to analyze:
-    "{first 500 characters of the user-entered or uploaded text}"
-    
-    Respond only with the JSON object, no other text.
-    ```
-
-- **Key-phrase extraction**:
-    - System prompt: `You are a key phrase extraction expert. Respond only with a valid JSON array of strings.`
-    - User prompt:
-
-    ```
-    Extract 5-10 key phrases from the text below. Respond with a JSON array without any markdown formatting or code blocks:
-    ["phrase 1", "phrase 2", "phrase 3"]
-    
-    Text: "{first 1000 characters of the user-entered or uploaded text}"
-    
-    Respond only with the JSON array, no markdown, no code blocks, no other text.
-    ```
-
-- **Entity recognition**
-    - System prompt: `You are a named entity recognition expert. Respond only with a valid JSON array.`
-    - User prompt:
-
-    ```
-    Extract named entities and categorize them. Respond with a JSON array without any markdown formatting or code blocks:
-    [{"type": "Person", "value": "name"}, {"type": "Place", "value": "location"}]
-    
-    Types: Person, Place, Organization, Date, Money, Email, Phone, Product, Event
-    
-    Text: "{first 1000 characters of the user-entered or uploaded text}"
-    
-    Respond only with the JSON array, no markdown, no code blocks, no other text.
-    ```
-
-- **Text summarization**:
-    - System prompt: `You are an expert text summarizer. Provide concise, accurate summaries.`
-    - User prompt:
-
-    ```
-    Summarize the following text in 2-4 sentences, capturing the main points:
-    
-    "{first 2000 characters of the user-entered or uploaded text}"
-    
-    Provide only the summary, no other text.
-    ```
+Speech Playground provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "None" in the model list). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended.
 
 #### Information Extractor
 
@@ -173,7 +102,8 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
 - [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground and Speech Playground to retrieve relevant information from Wikipedia.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
-- [NLP.js](https://www.npmjs.com/package/@nlpjs/nlp) used by Text Analyzer for statistical text analysis.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer for statistical text analysis.
+- [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for statistical text analysis.
+- [retext-keywords] (https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by ML Lab, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
