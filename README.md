@@ -102,8 +102,8 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
 - [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground and Speech Playground to retrieve relevant information from Wikipedia.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
-- [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer for statistical text analysis.
-- [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for statistical text analysis.
 - [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
+- [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer to support named entity recognition.
+- [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by ML Lab, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
