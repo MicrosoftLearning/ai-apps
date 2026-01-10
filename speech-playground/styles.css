@@ -530,6 +530,33 @@ header h1 {
     transform: scale(1.2);
 }
 
+.cc-btn {
+    background: none;
+    border: none;
+    color: #000;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 12px;
+    transition: all 0.2s ease;
+    margin-right: 8px;
+}
+
+.cc-btn:hover {
+    color: #333;
+    background: #f0f0f0;
+    border-radius: 4px;
+}
+
+.cc-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.message.hidden {
+    display: none;
+}
+
 .input-info {
     display: flex;
     justify-content: center;

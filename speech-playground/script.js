@@ -56,6 +56,7 @@ class ChatPlayground {
         this.recognition = null;
         this.voicesAvailable = false;
         this.voicesLoaded = false;
+        this.showCaptions = false; // Track whether to show conversation text during input
 
         // Initialize DOM element registry
         this.elements = {};
@@ -209,6 +210,14 @@ class ChatPlayground {
                 this.previewVoice();
             });
         }
+
+        // Handle CC toggle button
+        const ccBtn = document.getElementById('cc-btn');
+        if (ccBtn) {
+            this.addEventListenerTracked(ccBtn, 'click', () => {
+                this.toggleCaptions();
+            });
+        }
     }
 
     applySettings() {
@@ -340,14 +349,12 @@ class ChatPlayground {
 
         const loadVoices = () => {
             const voices = speechSynthesis.getVoices();
+            // Get all English voices (both local and online-capable)
             const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
 
-            // If voices have already been loaded, preserve the current dropdown selection
-            if (this.voicesLoaded) {
-                return; // Already loaded, don't rebuild
-            }
-            
-            this.voicesLoaded = true;
+            // Preserve currently selected voice before rebuilding
+            const currentlySelectedVoice = voiceSelect.value;
+
             voiceSelect.innerHTML = '';
 
             if (englishVoices.length > 0) {
@@ -356,12 +363,18 @@ class ChatPlayground {
                     if (!voice || !voice.name) return;
                     const option = document.createElement('option');
                     option.value = voice.name;
-                    option.textContent = `${voice.name} (${voice.lang})`;
+                    // Label local voices as "Local" for clarity; online voices will be unmarked
+                    const localLabel = voice.localService ? ' (Local)' : '';
+                    option.textContent = `${voice.name} (${voice.lang})${localLabel}`;
                     voiceSelect.appendChild(option);
                 });
                 
-                // Select applied voice if set, otherwise select first voice
-                if (this.appliedVoice) {
+                // Restore the user's selection: prioritize currently selected, then applied, then first voice
+                if (currentlySelectedVoice && englishVoices.find(v => v.name === currentlySelectedVoice)) {
+                    voiceSelect.value = currentlySelectedVoice;
+                    this.speechSettings.voice = currentlySelectedVoice;
+                    this.pendingVoice = currentlySelectedVoice;
+                } else if (this.appliedVoice) {
                     voiceSelect.value = this.appliedVoice;
                     this.speechSettings.voice = this.appliedVoice;
                     this.pendingVoice = this.appliedVoice;
@@ -493,11 +506,18 @@ class ChatPlayground {
         // Update UI to show listening state
         const startBtn = document.getElementById('start-btn');
         const cancelBtn = document.getElementById('cancel-btn');
+        const ccBtn = document.getElementById('cc-btn');
         const chatIcon = document.querySelector('.chat-icon');
 
         if (startBtn) startBtn.style.display = 'none';
         if (cancelBtn) cancelBtn.style.display = 'inline-block';
+        if (ccBtn) ccBtn.style.display = 'none';  // Hide during listening to prevent interference
         if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
+        
+        // Reset captions to hidden at start of new conversation
+        this.showCaptions = false;
+        this.updateCCButton();
+        this.updateMessageVisibility();
         
         this.updateWelcomeState('Listening...', 'Speak now..');
 
@@ -523,13 +543,16 @@ class ChatPlayground {
         // Update UI - show processing state
         const startBtn = document.getElementById('start-btn');
         const cancelBtn = document.getElementById('cancel-btn');
+        const ccBtn = document.getElementById('cc-btn');
 
         if (startBtn) startBtn.style.display = 'none';
         if (cancelBtn) cancelBtn.style.display = 'inline-block';
+        if (ccBtn) ccBtn.style.display = 'inline-block';  // Show CC button now that listening is done
         
         this.updateWelcomeState('Processing...', 'This can take some time...');
 
-        // Store the messages to display later after speaking
+        // Add user message to chat immediately (respecting current CC visibility)
+        this.addMessageToChat(transcript, 'user');
         this.pendingUserMessage = transcript;
 
         // Send to model
@@ -570,7 +593,8 @@ class ChatPlayground {
                 responseText = await this.queryWikipedia(userMessage);
             }
 
-            // Store the assistant message to display later
+            // Add assistant message to chat immediately (respecting current CC visibility)
+            this.addMessageToChat(responseText, 'assistant');
             this.pendingAssistantMessage = responseText;
 
             // Update UI to "Speaking..." state only if voices are available
@@ -615,6 +639,12 @@ class ChatPlayground {
         contentDiv.textContent = text;
 
         messageDiv.appendChild(contentDiv);
+        
+        // Hide message by default if captions are off and we're in a conversation
+        if (!this.showCaptions && (this.isListening || this.isGenerating || this.isSpeaking)) {
+            messageDiv.classList.add('hidden');
+        }
+        
         this.chatMessages.appendChild(messageDiv);
 
         // Scroll to bottom
@@ -844,6 +874,7 @@ class ChatPlayground {
     previewVoice() {
         const voices = speechSynthesis.getVoices();
         const voiceSelect = this.elements.voiceSelect;
+        const previewBtn = document.getElementById('preview-voice-btn');
         const selectedVoiceName = voiceSelect ? voiceSelect.value : this.pendingVoice;
 
         if (!selectedVoiceName) {
@@ -851,32 +882,71 @@ class ChatPlayground {
             return;
         }
 
+        const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+        if (!selectedVoice) {
+            this.showToast('Voice not found');
+            return;
+        }
+
         // Cancel any ongoing speech
         speechSynthesis.cancel();
 
+        // Show testing state on button
+        if (previewBtn) {
+            previewBtn.disabled = true;
+            previewBtn.textContent = '...';
+            previewBtn.style.color = '#d32f2f';
+        }
+
         const utterance = new SpeechSynthesisUtterance('This is my voice.');
         utterance.text = 'This is my voice.';
-        
-        const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
-        if (selectedVoice) {
-            utterance.voice = selectedVoice;
-        }
-        
+        utterance.voice = selectedVoice;
         utterance.rate = 1;
-        speechSynthesis.speak(utterance);
+
+        // Show different message for online vs local voices
+        const isOnline = !selectedVoice.localService;
+        if (isOnline) {
+            this.showToast('Testing online voice...');
+        }
+
+        const resetButton = () => {
+            if (previewBtn) {
+                previewBtn.disabled = false;
+                previewBtn.textContent = '▶';
+                previewBtn.style.color = '';
+            }
+        };
+
+        utterance.onerror = (event) => {
+            const errorCode = event.error || 'unknown error';
+            console.error('Voice preview error:', errorCode);
+            const errorMessage = isOnline 
+                ? `Online voice failed: ${errorCode}. Check internet connection or try a local voice.`
+                : `Voice preview failed: ${errorCode}. This voice may not be available.`;
+            this.showToast(errorMessage);
+            resetButton();
+        };
+
+        utterance.onend = () => {
+            if (isOnline) {
+                this.showToast('Online voice confirmed working!');
+            }
+            resetButton();
+        };
+
+        try {
+            speechSynthesis.speak(utterance);
+        } catch (error) {
+            console.error('Failed to start voice preview:', error);
+            this.showToast(`Failed to start voice preview: ${error.message}`);
+            resetButton();
+        }
     }
 
     onSpeechComplete() {
-        // Display the pending messages now that speaking is complete
-        if (this.pendingUserMessage) {
-            this.addMessageToChat(this.pendingUserMessage, 'user');
-            this.pendingUserMessage = null;
-        }
-        
-        if (this.pendingAssistantMessage) {
-            this.addMessageToChat(this.pendingAssistantMessage, 'assistant');
-            this.pendingAssistantMessage = null;
-        }
+        // Messages already added to chat during Processing/Speaking states
+        this.pendingUserMessage = null;
+        this.pendingAssistantMessage = null;
 
         // Reset UI to welcome state
         this.resetToWelcomeState();
@@ -886,10 +956,24 @@ class ChatPlayground {
         const chatIcon = document.querySelector('.chat-icon');
         const startBtn = document.getElementById('start-btn');
         const cancelBtn = document.getElementById('cancel-btn');
+        const ccBtn = document.getElementById('cc-btn');
 
         if (chatIcon) chatIcon.style.animation = 'none';
         if (startBtn) startBtn.style.display = 'inline-block';
         if (cancelBtn) cancelBtn.style.display = 'none';
+        if (ccBtn) ccBtn.style.display = 'none';
+        
+        // Always show all messages when conversation ends, regardless of CC state
+        if (this.chatMessages) {
+            const messages = this.chatMessages.querySelectorAll('.message');
+            messages.forEach(msg => {
+                msg.classList.remove('hidden');
+            });
+        }
+        
+        // Reset captions state to off for next conversation
+        this.showCaptions = false;
+        this.updateCCButton();
         
         this.updateWelcomeState("Let's talk", 'Talk like you would to a person. The agent listens and responds.');
     }
@@ -904,6 +988,37 @@ class ChatPlayground {
         } else {
             if (startBtn) startBtn.textContent = 'Start';
             if (cancelBtn) cancelBtn.style.display = 'none';
+        }
+    }
+
+    updateCCButton() {
+        const ccBtn = document.getElementById('cc-btn');
+        if (!ccBtn) return;
+        
+        if (this.showCaptions) {
+            ccBtn.innerHTML = '[<s>cc</s>]';
+        } else {
+            ccBtn.innerHTML = '[cc]';
+        }
+    }
+
+    toggleCaptions() {
+        this.showCaptions = !this.showCaptions;
+        this.updateCCButton();
+        this.updateMessageVisibility();
+    }
+
+    updateMessageVisibility() {
+        // Show or hide all messages based on showCaptions state
+        if (this.chatMessages) {
+            const messages = this.chatMessages.querySelectorAll('.message');
+            messages.forEach(msg => {
+                if (this.showCaptions) {
+                    msg.classList.remove('hidden');
+                } else {
+                    msg.classList.add('hidden');
+                }
+            });
         }
     }
 
@@ -1105,15 +1220,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.chatPlaygroundApp.recognition.stop();
             }
             
-            // Display pending messages before clearing them
-            if (window.chatPlaygroundApp.pendingUserMessage) {
-                window.chatPlaygroundApp.addMessageToChat(window.chatPlaygroundApp.pendingUserMessage, 'user');
-            }
-            if (window.chatPlaygroundApp.pendingAssistantMessage) {
-                window.chatPlaygroundApp.addMessageToChat(window.chatPlaygroundApp.pendingAssistantMessage, 'assistant');
-            }
-            
-            // Clear pending messages
+            // Clear pending messages (they're already in chat or not yet added)
             window.chatPlaygroundApp.pendingUserMessage = null;
             window.chatPlaygroundApp.pendingAssistantMessage = null;
             
