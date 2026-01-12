@@ -1061,7 +1061,7 @@ class ChatPlayground {
                 console.log('Using Wikipedia fallback mode');
                 
                 // Check Wikipedia request quota
-                if (this.wikipediaRequestCount >= 15) {
+                if (this.wikipediaRequestCount >= 20) {
                     // Remove typing indicator
                     typingIndicator.remove();
                     
@@ -1077,7 +1077,7 @@ class ChatPlayground {
                 
                 // Increment Wikipedia request counter
                 this.wikipediaRequestCount++;
-                console.log(`Wikipedia request count: ${this.wikipediaRequestCount}/15`);
+                console.log(`Wikipedia request count: ${this.wikipediaRequestCount}/20`);
                 
                 // Remove typing indicator
                 typingIndicator.remove();

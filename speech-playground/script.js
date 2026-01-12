@@ -770,19 +770,26 @@ class ChatPlayground {
 
     async queryWikipedia(userMessage) {
         try {
-            this.wikipediaRequestCount++;
-            
-            // Extract keywords from user input
-            let keywords = await this.extractKeywords(userMessage);
-            console.log('Extracted keywords from message:', keywords);
 
-            // Search Wikipedia with keywords
-            console.log('Searching Wikipedia with:', keywords);
-            const articleText = await this.searchWikipedia(keywords);
-            
-            // Summarize the text to keep it concise
-            const summary = await this.summarizeText(articleText);
+            let summary = '';
 
+            if (this.wikipediaRequestCount >= 20) {
+                summary = "You've reached your quota limit for requests.";
+            }
+            else {
+                this.wikipediaRequestCount++;
+                
+                // Extract keywords from user input
+                let keywords = await this.extractKeywords(userMessage);
+                console.log('Extracted keywords from message:', keywords);
+
+                // Search Wikipedia with keywords
+                console.log('Searching Wikipedia with:', keywords);
+                const articleText = await this.searchWikipedia(keywords);
+                
+                // Summarize the text to keep it concise
+                summary = await this.summarizeText(articleText);
+            }
             return summary;
 
         } catch (error) {
