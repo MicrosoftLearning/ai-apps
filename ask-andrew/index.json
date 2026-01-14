@@ -218,6 +218,15 @@
                     "contextual information"
                 ],
                 "content": "Retrieval-Augmented Generation (RAG) combines generative AI models with external knowledge sources to improve the accuracy and relevance of generated content. By retrieving relevant information from databases, documents, or the web; and using it to augment the prompt, RAG systems provide contextual information that enhances the model's responses. This approach is particularly useful for tasks requiring up-to-date or domain-specific knowledge, enabling more informed and reliable outputs. RAG integrates retrieval mechanisms with generation capabilities, offering a powerful solution for applications like question answering, summarization, and personalized content creation."
+            },
+            {
+                "id": 34,
+                "title": "Model Context Protocol (MCP)",
+                "keywords": [
+                    "model context protocol",
+                    "mcp"
+                ],
+                "content": "To find and connect to tools, agents can use the Model Context Protocol (MCP). MCP is a standardized way for AI agents to discover and interact with external tools and services. By adhering to MCP, agents can seamlessly integrate various functionalities, such as accessing databases, APIs, or other resources, to enhance their capabilities and perform complex tasks more effectively."
             }
         ]
     },
