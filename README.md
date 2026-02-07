@@ -26,7 +26,7 @@ The apps, including AI models, run in your local browser and no data is shared w
 In some cases, depending on the app mode configuration, input to models (i.e. prompts) may be sent to third-party APIs. Specifically:
 
 - In **Chat Playground** and **Speech Playground**, when <u>not</u> using a generative AI model, keywords from prompts are sent to the [Wikipedia API](https://en.wikipedia.org/w/api.php) to retrieve relevant information from Wikipedia. Only text you explicitly enter into the chat API is sent to Wikipedia.
-- In **Speech Playground**, speech input is processed by the browser's native [Web Speech API](https://webaudio.github.io/web-speech-api/) implementation, which may send audio to a server for processing. Speech input must be explicitly enabled the first time you use it in the app. Only your audio spoken when the microphone is active is processed.
+- In **Ask Andrew** and **Speech Playground**, speech input is processed by the browser's native [Web Speech API](https://webaudio.github.io/web-speech-api/) implementation, which may send audio to a server for processing. Speech input must be explicitly enabled the first time you use it in the app. Only your audio spoken when the microphone is active is processed.
 
 ### Generative AI
 
@@ -101,7 +101,7 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
 - [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground and Speech Playground to retrieve relevant information from Wikipedia.
-- [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Chat Playground and Speech Playground for speech recognition and synthesis.
+- [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Andrew and Speech Playground for speech recognition and synthesis.
 - [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer to support named entity recognition.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for text summarization.
