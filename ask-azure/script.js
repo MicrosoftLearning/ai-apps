@@ -89,12 +89,19 @@ IMPORTANT: Follow these guidelines when responding:
         const saved = localStorage.getItem('askAndrewFoundryConfig');
         if (saved) {
             try {
-                this.config = JSON.parse(saved);
-                this.elements.foundryEndpoint.value = this.config.endpoint || '';
-                this.elements.foundryKey.value = this.config.apiKey || '';
-                this.elements.foundryDeployment.value = this.config.deployment || '';
-                this.elements.foundryRegion.value = this.config.region || '';
+                const savedConfig = JSON.parse(saved);
+                // Load non-sensitive config from storage
+                this.config.endpoint = savedConfig.endpoint || '';
+                this.config.deployment = savedConfig.deployment || '';
+                this.config.region = savedConfig.region || '';
+                // Note: apiKey is NOT loaded from storage for security reasons
                 
+                this.elements.foundryEndpoint.value = this.config.endpoint;
+                this.elements.foundryKey.value = ''; // API key must be re-entered each session
+                this.elements.foundryDeployment.value = this.config.deployment;
+                this.elements.foundryRegion.value = this.config.region;
+                
+                // Only mark as configured if API key is present in memory
                 if (this.config.endpoint && this.config.apiKey && this.config.deployment) {
                     this.isConfigured = true;
                 }
@@ -144,8 +151,13 @@ IMPORTANT: Follow these guidelines when responding:
         this.config.deployment = deployment;
         this.config.region = region;
         
-        // Save to localStorage
-        localStorage.setItem('askAndrewFoundryConfig', JSON.stringify(this.config));
+        // Save non-sensitive config to localStorage (do not persist apiKey)
+        const configToPersist = {
+            endpoint: this.config.endpoint,
+            deployment: this.config.deployment,
+            region: this.config.region
+        };
+        localStorage.setItem('askAndrewFoundryConfig', JSON.stringify(configToPersist));
         
         this.isConfigured = true;
         statusDiv.textContent = 'Configuration saved successfully!';
@@ -1113,10 +1125,10 @@ IMPORTANT: Follow these guidelines when responding:
 
     async synthesizeSpeech(text) {
         try {
-            // Strip HTML tags and convert to plain text
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = text;
-            const plainText = tempDiv.textContent || tempDiv.innerText || '';
+            // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const plainText = doc.body.textContent || '';
             
             if (!plainText.trim()) {
                 return;
