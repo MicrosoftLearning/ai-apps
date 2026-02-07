@@ -175,13 +175,14 @@ IMPORTANT: Follow these guidelines when responding:
         // Mic button should be enabled if speech is supported, regardless of config
         this.elements.micBtn.disabled = !this.recognition;
         
+        // Enable input and send button regardless of config state
+        // The sendMessage() function will handle showing a message if not configured
+        this.elements.userInput.disabled = false;
+        this.elements.sendBtn.disabled = false;
+        
         if (this.isConfigured) {
-            this.elements.userInput.disabled = false;
-            this.elements.sendBtn.disabled = false;
             this.elements.restartBtn.disabled = false;
         } else {
-            this.elements.userInput.disabled = true;
-            this.elements.sendBtn.disabled = true;
             this.elements.restartBtn.disabled = true;
         }
     }
@@ -254,13 +255,12 @@ IMPORTANT: Follow these guidelines when responding:
 
     async startAzureSpeechRecognition() {
         if (!this.isConfigured) {
-            alert('Please configure your Microsoft Foundry connection first (including the Azure region for speech).');
+            this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
             return;
         }
         
         if (!this.config.region) {
-            alert('Please add the Azure region to your configuration for speech-to-text to work.');
-            this.showConfigModal();
+            this.addMessage('assistant', 'Please add the Azure region to your configuration for speech-to-text to work.');
             return;
         }
 
@@ -785,12 +785,6 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async sendMessage() {
-        if (!this.isConfigured) {
-            alert('Please configure your Microsoft Foundry connection first using the ⚙️ Configure button.');
-            this.showConfigModal();
-            return;
-        }
-        
         const userMessage = this.elements.userInput.value.trim();
         
         if (!userMessage || this.isGenerating) return;
@@ -803,13 +797,19 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.userInput.value = '';
         this.elements.userInput.style.height = 'auto';
         
+        // Add user message to chat
+        this.addMessage('user', userMessage);
+        
+        // Check if configured
+        if (!this.isConfigured) {
+            this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+            return;
+        }
+        
         // Disable input while processing
         this.elements.userInput.disabled = true;
         this.elements.sendBtn.disabled = true;
         this.elements.micBtn.disabled = true;
-        
-        // Add user message to chat
-        this.addMessage('user', userMessage);
         
         // Check if this is an initial greeting (only if no messages yet)
         const messageCount = this.elements.chatMessages.querySelectorAll('.message').length;
