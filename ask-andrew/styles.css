@@ -279,8 +279,8 @@ header h1 {
 }
 
 .user-avatar {
-    background: linear-gradient(135deg, #f093fb, #f5576c);
-    box-shadow: 0 2px 8px rgba(245, 87, 108, 0.3);
+    background: linear-gradient(135deg, #4da6ff, #0078d4);
+    box-shadow: 0 2px 8px rgba(0, 120, 212, 0.3);
 }
 
 .message-content {
