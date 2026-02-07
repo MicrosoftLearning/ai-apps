@@ -20,6 +20,9 @@ class AskAndrew {
         this.ttsToken = null;
         this.ttsTokenExpiry = null;
         this.recordingTimeout = null;
+        this.shouldStop = false;
+        this.currentAudio = null;
+        this.isSpeaking = false;
         
         this.elements = {
             chatContainer: document.getElementById('chat-container'),
@@ -509,14 +512,18 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     setupEventListeners() {
-        // Send button click
+        // Send message or stop response
         this.elements.sendBtn.addEventListener('click', () => {
-            this.sendMessage();
+            if (this.isGenerating || this.isSpeaking) {
+                this.stopResponse();
+            } else {
+                this.sendMessage();
+            }
         });
         
         // Enter key to send (Shift+Enter for new line)
         this.elements.userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating) {
+            if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating && !this.isSpeaking) {
                 e.preventDefault();
                 this.sendMessage();
             }
@@ -789,6 +796,9 @@ IMPORTANT: Follow these guidelines when responding:
         
         if (!userMessage || this.isGenerating) return;
         
+        // Reset stop flag
+        this.shouldStop = false;
+        
         // Store voice input flag before clearing
         const usedVoice = this.usedVoiceInput;
         this.usedVoiceInput = false;
@@ -806,9 +816,9 @@ IMPORTANT: Follow these guidelines when responding:
             return;
         }
         
-        // Disable input while processing
+        // Disable input while processing and change button to stop
         this.elements.userInput.disabled = true;
-        this.elements.sendBtn.disabled = true;
+        this.setStopButtonState();
         this.elements.micBtn.disabled = true;
         
         // Check if this is an initial greeting (only if no messages yet)
@@ -822,11 +832,11 @@ IMPORTANT: Follow these guidelines when responding:
                 
                 // Synthesize speech if user used voice input
                 if (usedVoice && this.config.region) {
-                    this.synthesizeSpeech(greetingResponse);
+                    await this.synthesizeSpeech(greetingResponse);
                 }
                 
                 this.elements.userInput.disabled = false;
-                this.elements.sendBtn.disabled = false;
+                this.setSendButtonState();
                 if (this.recognition) this.elements.micBtn.disabled = false;
                 return;
             }
@@ -840,9 +850,50 @@ IMPORTANT: Follow these guidelines when responding:
         
         // Re-enable input
         this.elements.userInput.disabled = false;
-        this.elements.sendBtn.disabled = false;
+        // Only reset button if not speaking
+        if (!this.isSpeaking) {
+            this.setSendButtonState();
+        }
         if (this.recognition) this.elements.micBtn.disabled = false;
         this.elements.userInput.focus();
+    }
+
+    setStopButtonState() {
+        this.elements.sendBtn.disabled = false;
+        this.elements.sendBtn.title = 'Stop response';
+        this.elements.sendBtn.setAttribute('aria-label', 'Stop response');
+        const icon = this.elements.sendBtn.querySelector('.send-icon');
+        if (icon) {
+            icon.textContent = '■';
+            icon.style.color = 'white';
+        }
+    }
+
+    setSendButtonState() {
+        this.elements.sendBtn.disabled = false;
+        this.elements.sendBtn.title = 'Send message';
+        this.elements.sendBtn.setAttribute('aria-label', 'Send message');
+        const icon = this.elements.sendBtn.querySelector('.send-icon');
+        if (icon) {
+            icon.textContent = '▶';
+            icon.style.color = '';
+        }
+    }
+
+    stopResponse() {
+        this.shouldStop = true;
+        
+        // Stop any playing audio
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio.currentTime = 0;
+            this.currentAudio = null;
+        }
+        
+        this.isSpeaking = false;
+        
+        // Reset button state immediately
+        this.setSendButtonState();
     }
 
     
@@ -939,13 +990,14 @@ IMPORTANT: Follow these guidelines when responding:
                 formattedResponse += `<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;"><p><strong>Learn more:</strong> ${linkHtml}</p>`;
             }
             
-            // Synthesize speech if user used voice input (only the model response, not the links)
-            if (usedVoiceInput && this.config.region) {
-                this.synthesizeSpeech(response);
-            }
+            // Start typing animation and speech synthesis at the same time
+            const typingPromise = this.animateTyping(messageTextDiv, formattedResponse, 10);
+            const speechPromise = (usedVoiceInput && this.config.region && !this.shouldStop) 
+                ? this.synthesizeSpeech(response)
+                : Promise.resolve();
             
-            // Animate the typing effect
-            await this.animateTyping(messageTextDiv, formattedResponse, 10);
+            // Wait for both to complete
+            await Promise.all([typingPromise, speechPromise]);
             
             // Add to conversation history
             this.conversationHistory.push({
@@ -1056,6 +1108,14 @@ IMPORTANT: Follow these guidelines when responding:
         let currentHtml = '';
         
         for (let i = 0; i < chars.length; i++) {
+            // Check if we should stop
+            if (this.shouldStop) {
+                // Display remaining content immediately
+                element.innerHTML = htmlContent;
+                this.scrollToBottom();
+                return false; // Return false to indicate interrupted
+            }
+            
             currentHtml += chars[i];
             
             // Update the element with current content
@@ -1073,6 +1133,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Ensure final content is complete and properly formatted
         element.innerHTML = htmlContent;
         this.scrollToBottom();
+        return true; // Return true to indicate completed normally
     }
 
     scrollToBottom() {
@@ -1124,6 +1185,12 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async synthesizeSpeech(text) {
+        if (this.shouldStop) {
+            return;
+        }
+        
+        this.isSpeaking = true;
+        
         try {
             // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
             const parser = new DOMParser();
@@ -1131,6 +1198,7 @@ IMPORTANT: Follow these guidelines when responding:
             const plainText = doc.body.textContent || '';
             
             if (!plainText.trim()) {
+                this.isSpeaking = false;
                 return;
             }
             
@@ -1188,18 +1256,51 @@ IMPORTANT: Follow these guidelines when responding:
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
             
-            // Play the audio
-            audio.play().catch(error => {
-                console.error('Error playing synthesized speech:', error);
-            });
+            // Store reference to current audio
+            this.currentAudio = audio;
             
-            // Clean up the URL after audio finishes
-            audio.onended = () => {
+            // Check again if we should stop before playing
+            if (this.shouldStop) {
                 URL.revokeObjectURL(audioUrl);
-            };
+                this.currentAudio = null;
+                this.isSpeaking = false;
+                this.setSendButtonState();
+                return;
+            }
+            
+            // Play the audio and wait for it to finish
+            await new Promise((resolve, reject) => {
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    resolve();
+                };
+                
+                audio.onerror = (error) => {
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    reject(error);
+                };
+                
+                audio.play().catch(error => {
+                    console.error('Error playing synthesized speech:', error);
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    reject(error);
+                });
+            });
             
         } catch (error) {
             console.error('Error synthesizing speech:', error);
+            this.currentAudio = null;
+            this.isSpeaking = false;
+            this.setSendButtonState();
         }
     }
 
