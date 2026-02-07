@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ask Andrew - AI Learning Assistant</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Skip to main content link for keyboard navigation -->
+    <a href="#chat-messages" class="skip-link">Skip to main chat content</a>
+    
+    <div class="container" role="main" aria-label="Ask Andrew Chat Application">
+        <header role="banner">
+            <h1 id="app-title">🎓 Ask Andrew</h1>
+            <p class="subtitle" id="app-subtitle">A sample AI assistant for educational purposes only</p>
+        </header>
+        
+        <div class="chat-wrapper">
+            <!-- Chat Interface -->
+            <div class="chat-container" id="chat-container" role="region" aria-labelledby="chat-title">
+                <div class="chat-header" role="banner">
+                    <div class="header-content">
+                        <h2 id="chat-title">💬 Chat with Andrew</h2>
+                        <div class="header-buttons" role="toolbar" aria-label="Chat controls">
+                            <button class="about-btn" id="about-btn" 
+                                    title="About this app" 
+                                    aria-label="Learn about Ask Andrew">
+                                ℹ️ About
+                            </button>
+                            <button class="config-btn" id="config-btn" 
+                                    title="Configure Microsoft Foundry connection" 
+                                    aria-label="Configure Microsoft Foundry connection">
+                                ⚙️ Configure
+                            </button>
+                            <button class="restart-btn" id="restart-btn" 
+                                    title="Restart conversation" 
+                                    aria-label="Start a new chat conversation">
+                                🔄 New Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat conversation">
+                    <div class="welcome-message" role="article" aria-label="Welcome message from Andrew">
+                        <div class="avatar andrew-avatar" aria-hidden="true">
+                            <img src="images/andrew-icon.png" alt="Andrew the AI assistant avatar" class="avatar-image">
+                        </div>
+                        <div class="message-content">
+                            <p class="message-author">Andrew</p>
+                            <p>Hi! I'm Andrew, a simple AI assistant. I can help you understand AI concepts. What would you like to learn about today?</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-area" role="form" aria-label="Message input form">
+                    <div class="input-wrapper">
+                        <button id="mic-btn" class="mic-btn" 
+                                title="Voice input" 
+                                aria-label="Voice input"
+                                type="button">
+                            <span class="mic-icon" aria-hidden="true">&#127897;</span>
+                        </button>
+                        <label for="user-input" class="visually-hidden">Your question about AI topics</label>
+                        <textarea 
+                            id="user-input" 
+                            placeholder="Ask a question about AI topics..."
+                            rows="1"
+                            aria-label="Type your question about AI topics here"
+                            aria-describedby="chat-description search-status"
+                            aria-required="false"
+                        ></textarea>
+                        <button id="send-btn" class="send-btn" 
+                                title="Send message" 
+                                aria-label="Send message"
+                                type="submit">
+                            <span class="send-icon" aria-hidden="true">▶</span>
+                        </button>
+                    </div>
+                    <div class="example-questions">
+                        <p class="example-label" id="example-label">Try asking:</p>
+                        <div class="example-buttons" role="region" aria-labelledby="example-label">
+                            <button class="example-btn" data-question="What's the relationship between machine learning and artificial intelligence?" 
+                                    aria-label="Ask about the relationship between machine learning and artificial intelligence">
+                                What's the relationship between machine learning and artificial intelligence?
+                            </button>
+                            <button class="example-btn" data-question="What is generative AI?" 
+                                    aria-label="Ask about generative AI">
+                                What is generative AI?
+                            </button>
+                            <button class="example-btn" data-question="How does a large language model work?" 
+                                    aria-label="Ask how a large language model works">
+                                How does a large language model work?
+                            </button>
+                            <button class="example-btn" data-question="What is agentic AI?" 
+                                    aria-label="Ask about agentic AI">
+                                What is agentic AI?
+                            </button>
+                            <button class="example-btn" data-question="What is computer vision?" 
+                                    aria-label="Ask about computer vision">
+                                What is computer vision?
+                            </button>
+                            <button class="example-btn" data-question="Tell me about AI speech" 
+                                    aria-label="Ask about AI speech">
+                                Tell me about AI speech
+                            </button>
+                        </div>
+                    </div>
+                    <div class="input-info">
+                        <span id="search-status" class="search-status" role="status" aria-live="polite" aria-atomic="true"></span>
+                    </div>
+                    <div class="disclaimer">
+                        <p>AI-generated content can contain mistakes</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer role="contentinfo">
+            <p>Powered by Microsoft Foundry</p>
+        </footer>
+    </div>
+
+    <!-- About App Modal -->
+    <div id="about-modal" class="modal" role="dialog" aria-labelledby="about-modal-title" aria-modal="true" aria-describedby="about-modal-description" style="display: none;">
+        <div class="modal-overlay" aria-hidden="true"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="about-modal-title">🎓 About Ask Andrew</h2>
+                <button class="modal-close" id="about-modal-close" aria-label="Close about dialog" title="Close" type="button">×</button>
+            </div>
+            <div class="modal-body" id="about-modal-description">
+                <p><strong>Ask Andrew</strong> is a sample AI agent designed to help you understand artificial intelligence concepts and topics.</p>
+                <p>📋 <a href="https://microsoftlearning.github.io/ai-apps/" target="_blank" rel="noopener noreferrer">Important details and AI transparency notes (opens in new window)</a></p>
+                <h3>Features</h3>
+                <ul>
+                    <li><strong>Intelligent Search:</strong> Searches through a curated knowledge base to find relevant AI concepts</li>
+                    <li><strong>AI-Powered Responses:</strong> Uses Microsoft Foundry models to generate clear, contextual explanations</li>
+                    <li><strong>Voice Input:</strong> Ask questions using your voice for a hands-free experience</li>
+                </ul>
+                
+                <h3>How It Works</h3>
+                <p>Ask Andrew combines semantic search with Microsoft Foundry AI models to provide accurate, educational responses about AI concepts. Your questions are sent to Microsoft Foundry along with relevant context from the knowledge base.</p>
+                
+                <h3>Getting Started</h3>
+                <p>Click the ⚙️ Configure button to set up your Microsoft Foundry connection (endpoint, API key, and region). Then try asking questions like "What is machine learning?" or "Explain artificial intelligence".</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" id="about-modal-ok" aria-label="Close about dialog" type="button">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Foundry Configuration Modal -->
+    <div id="config-modal" class="modal" role="dialog" aria-labelledby="config-modal-title" aria-modal="true" aria-describedby="config-modal-description" style="display: none;">
+        <div class="modal-overlay" aria-hidden="true"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="config-modal-title">⚙️ Microsoft Foundry Configuration</h2>
+                <button class="modal-close" id="config-modal-close" aria-label="Close configuration dialog" title="Close" type="button">×</button>
+            </div>
+            <div class="modal-body" id="config-modal-description">
+                <p>Configure your Microsoft Foundry connection to enable AI-powered responses.</p>
+                
+                <div class="config-form">
+                    <div class="form-group">
+                        <label for="foundry-endpoint">Endpoint URL:</label>
+                        <input type="url" 
+                               id="foundry-endpoint" 
+                               placeholder="https://your-resource.inference.ai.azure.com"
+                               autocomplete="off"
+                               aria-describedby="endpoint-help">
+                        <small id="endpoint-help" class="form-help">Your Foundry inference endpoint</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="foundry-key">API Key:</label>
+                        <input type="password" 
+                               id="foundry-key" 
+                               placeholder="Enter your API key"
+                               autocomplete="off"
+                               aria-describedby="key-help">
+                        <small id="key-help" class="form-help">Your Foundry API key</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="foundry-deployment">Model Deployment:</label>
+                        <input type="text" 
+                               id="foundry-deployment" 
+                               placeholder="e.g., gpt-4.1-mini"
+                               autocomplete="off"
+                               aria-describedby="deployment-help">
+                        <small id="deployment-help" class="form-help">Your model deployment name</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="foundry-region">Azure Region:</label>
+                        <input type="text" 
+                               id="foundry-region" 
+                               placeholder="e.g., westus, eastus"
+                               autocomplete="off"
+                               aria-describedby="region-help">
+                        <small id="region-help" class="form-help">Azure region for speech services (e.g., westus)</small>
+                    </div>
+                    
+                    <div class="config-status" id="config-status" role="status" aria-live="polite"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-secondary" id="config-cancel" aria-label="Cancel configuration" type="button">Cancel</button>
+                <button class="modal-btn modal-btn-primary" id="config-save" aria-label="Save configuration" type="button">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="script.js?v=71"></script>
+</body>
+</html>

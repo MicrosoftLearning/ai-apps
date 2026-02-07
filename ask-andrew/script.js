@@ -46,7 +46,7 @@ IMPORTANT: Follow these guidelines when responding:
 - Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
 - If the context includes "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.", use that exact phrasing and no additional information.
 - Do not start responses with "A:" or "Q:".
-- Keep your responses concise and to the the point.
+- Keep your responses concise and to the point.
 - Do NOT provide links for more information (these will be added automatically later).`;
 
         this.initialize();
