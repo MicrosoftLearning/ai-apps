@@ -13,6 +13,7 @@ class AskAndrew {
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
+        this.usedVoiceInput = false;
         
         this.elements = {
             progressSection: document.getElementById('progress-section'),
@@ -22,6 +23,7 @@ class AskAndrew {
             chatMessages: document.getElementById('chat-messages'),
             userInput: document.getElementById('user-input'),
             sendBtn: document.getElementById('send-btn'),
+            micBtn: document.getElementById('mic-btn'),
             restartBtn: document.getElementById('restart-btn'),
             searchStatus: document.getElementById('search-status'),
             modeToggle: document.getElementById('mode-toggle'),
@@ -212,6 +214,11 @@ IMPORTANT: Follow these guidelines when responding:
                 e.preventDefault();
                 this.restartConversation();
             }
+        });
+        
+        // Microphone button
+        this.elements.micBtn.addEventListener('click', () => {
+            this.handleMicClick();
         });
         
         // Restart button
@@ -458,6 +465,10 @@ IMPORTANT: Follow these guidelines when responding:
         
         if (!userMessage || this.isGenerating) return;
         
+        // Store voice input flag before clearing
+        const usedVoice = this.usedVoiceInput;
+        this.usedVoiceInput = false;
+        
         // Clear input and reset height
         this.elements.userInput.value = '';
         this.elements.userInput.style.height = 'auto';
@@ -481,7 +492,7 @@ IMPORTANT: Follow these guidelines when responding:
         const searchResult = this.searchContext(userMessage);
         
         // Generate response
-        await this.generateResponse(userMessage, searchResult);
+        await this.generateResponse(userMessage, searchResult, usedVoice);
     }
 
     updateSendButton(isGenerating) {
@@ -589,11 +600,16 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
-    async generateResponse(userMessage, searchResult) {
+    async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         // Use simple mode if explicitly enabled or if WebGPU not available
         if (this.simpleMode || !this.webGPUAvailable) {
-            this.generateSimpleResponse(userMessage, searchResult);
+            this.generateSimpleResponse(userMessage, searchResult, usedVoiceInput);
             return;
+        }
+        
+        // Play random audio if voice input was used
+        if (usedVoiceInput) {
+            this.playRandomResponseAudio();
         }
         
         const { context, categories, links } = searchResult;
@@ -789,8 +805,13 @@ IMPORTANT: Follow these guidelines when responding:
         this.scrollToBottom();
     }
 
-    async generateSimpleResponse(userMessage, searchResult) {
+    async generateSimpleResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links, documents } = searchResult || { context: null, categories: [], links: [], documents: [] };
+        
+        // Play random audio if voice input was used
+        if (usedVoiceInput) {
+            this.playRandomResponseAudio();
+        }
         
         // If no matches, use the fallback from searchContext (AI Concepts category)
         if (!documents || documents.length === 0) {
@@ -869,7 +890,71 @@ IMPORTANT: Follow these guidelines when responding:
     scrollToBottom() {
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
+    
+    playRandomResponseAudio() {
+        // Randomly select one of the 7 audio files
+        const audioNumber = Math.floor(Math.random() * 7) + 1;
+        const audioPath = `audio/response_${audioNumber}.wav`;
+        
+        const audio = new Audio(audioPath);
+        audio.play().catch(error => {
+            console.error('Error playing audio:', error);
+        });
+    }
 
+    handleMicClick() {
+        // Check if Speech Recognition is available
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            this.addMessage('assistant', 'Speech input is not available in this browser.');
+            return;
+        }
+        
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        
+        // Visual feedback - button appears active while listening
+        this.elements.micBtn.style.opacity = '0.6';
+        this.elements.micBtn.title = 'Listening...';
+        this.elements.micBtn.setAttribute('aria-label', 'Listening to your voice input');
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            this.elements.userInput.value = transcript;
+            this.autoResizeTextarea();
+            this.usedVoiceInput = true;
+            this.sendMessage();
+        };
+        
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            this.addMessage('assistant', 'Speech input is not available.');
+            this.elements.micBtn.style.opacity = '1';
+            this.elements.micBtn.title = 'Voice input';
+            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
+        };
+        
+        recognition.onend = () => {
+            this.elements.micBtn.style.opacity = '1';
+            this.elements.micBtn.title = 'Voice input';
+            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
+        };
+        
+        try {
+            recognition.start();
+            console.log('Speech recognition started');
+        } catch (error) {
+            console.error('Error starting speech recognition:', error);
+            this.addMessage('assistant', 'Speech input is not available.');
+            this.elements.micBtn.style.opacity = '1';
+            this.elements.micBtn.title = 'Voice input';
+            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
+        }
+    }
+    
     restartConversation() {
         if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
             // Clear conversation history

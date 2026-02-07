@@ -493,6 +493,42 @@ header h1 {
     box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
 }
 
+.mic-btn {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #0078d4, #50a0e8);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    font-size: 1.3em;
+    line-height: 1;
+}
+
+.mic-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 120, 212, 0.4);
+}
+
+.mic-btn:focus {
+    outline: 3px solid #0078d4;
+    outline-offset: 3px;
+}
+
+.mic-btn:active {
+    transform: translateY(0);
+}
+
+.mic-icon {
+    display: block;
+    line-height: 1;
+}
+
 .send-btn {
     width: 48px;
     height: 48px;
@@ -506,6 +542,8 @@ header h1 {
     justify-content: center;
     transition: all 0.2s;
     flex-shrink: 0;
+    font-size: 1.3em;
+    line-height: 1;
 }
 
 .send-btn:hover {
@@ -523,10 +561,8 @@ header h1 {
 }
 
 .send-icon {
-    font-size: 1.3em;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
+    line-height: 1;
 }
 
 .input-info {
