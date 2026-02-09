@@ -186,16 +186,6 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="foundry-deployment">Model Deployment:</label>
-                        <input type="text" 
-                               id="foundry-deployment" 
-                               placeholder="e.g., gpt-4.1-mini"
-                               autocomplete="off"
-                               aria-describedby="deployment-help">
-                        <small id="deployment-help" class="form-help">Your model deployment name</small>
-                    </div>
-                    
-                    <div class="form-group">
                         <label for="foundry-region">Azure Region:</label>
                         <input type="text" 
                                id="foundry-region" 
@@ -203,6 +193,16 @@
                                autocomplete="off"
                                aria-describedby="region-help">
                         <small id="region-help" class="form-help">Azure region for speech services (e.g., westus)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="foundry-deployment">Model Deployment:</label>
+                        <input type="text" 
+                               id="foundry-deployment" 
+                               placeholder="e.g., gpt-4.1-mini"
+                               autocomplete="off"
+                               aria-describedby="deployment-help">
+                        <small id="deployment-help" class="form-help">Your model deployment name</small>
                     </div>
                     
                     <div class="config-status" id="config-status" role="status" aria-live="polite"></div>

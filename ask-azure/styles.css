@@ -637,7 +637,7 @@ footer {
 }
 
 .modal-header {
-    padding: 25px 30px 20px;
+    padding: 15px 30px 12px;
     border-bottom: 1px solid #e9ecef;
     display: flex;
     align-items: center;
@@ -677,11 +677,11 @@ footer {
 }
 
 .modal-body {
-    padding: 25px 30px;
+    padding: 15px 30px;
 }
 
 .modal-body p {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     line-height: 1.6;
 }
 
@@ -713,7 +713,7 @@ footer {
 }
 
 .modal-footer {
-    padding: 20px 30px 25px;
+    padding: 12px 30px 15px;
     border-top: 1px solid #e9ecef;
     display: flex;
     justify-content: flex-end;
@@ -759,18 +759,18 @@ footer {
 
 /* Configuration Form Styles */
 .config-form {
-    margin-top: 20px;
+    margin-top: 10px;
 }
 
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 .form-group label {
     display: block;
     font-weight: 600;
     color: #333;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     font-size: 0.95em;
 }
 
@@ -796,7 +796,7 @@ footer {
 
 .form-help {
     display: block;
-    margin-top: 6px;
+    margin-top: 4px;
     color: #666;
     font-size: 0.85em;
     line-height: 1.4;
