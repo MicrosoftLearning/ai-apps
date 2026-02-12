@@ -11,7 +11,7 @@
     <div class="container">
         <header role="banner">
             <h1>Speech Playground</h1>
-            <p class="sr-only">A speech-based AI chat application using the Microsoft Phi 3 language model</p>
+            <p class="sr-only">A speech-based AI chat application using Microsoft Phi 3 (GPU) or SmolLM2 (CPU) language models</p>
         </header>
         
         <div class="chat-container" role="main">
@@ -24,7 +24,7 @@
                         <select id="model-select" disabled aria-describedby="model-select-desc" tabindex="1">
                             <option value="">Loading models...</option>
                         </select>
-                        <div id="model-select-desc" class="sr-only">Select an AI model to generate responses. Phi-3-mini provides local processing, None uses Wikipedia search</div>
+                        <div id="model-select-desc" class="sr-only">Select an AI model to generate responses. Phi-3-mini (GPU) provides local processing, SmolLM2 (CPU) is a fallback option</div>
                         
                         <div class="progress-container" id="progress-container" role="progressbar" aria-live="polite" aria-label="Model download progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                             <div class="progress-bar">
@@ -36,15 +36,15 @@
                     
                     <div class="instructions-section">
                         <label for="system-message">Instructions</label>
-                        <textarea id="system-message" rows="3" aria-describedby="system-message-desc" tabindex="2">You are a helpful AI assistant that answers spoken questions with vocalized responses.</textarea>
-                        <div id="system-message-desc" class="sr-only">Set custom instructions that will guide the AI model's behavior and responses. This text will be appended with important instructions about response length</div>
+                        <textarea id="system-message" rows="3" maxlength="2000" aria-describedby="system-message-desc" tabindex="2">You are a helpful AI assistant that answers spoken questions with vocalized responses.</textarea>
+                        <div id="system-message-desc" class="sr-only">Set custom instructions that will guide the AI model's behavior and responses. This text will be appended with important instructions about response length. Maximum 2000 characters.</div>
                     </div>
                     
                     <div class="voice-config">
                         <label for="voice-select">Voice</label>
                         <div class="voice-controls">
-                            <button id="preview-voice-btn" class="preview-btn" title="Preview selected voice" aria-label="Preview the selected voice with sample text" disabled>&#9657;</button>
-                            <select id="voice-select" class="form-select" disabled aria-describedby="voice-select-desc" tabindex="3">
+                            <button id="preview-voice-btn" class="preview-btn" title="Preview selected voice" aria-label="Preview the selected voice with sample text" disabled tabindex="3">&#9657;</button>
+                            <select id="voice-select" class="form-select" disabled aria-describedby="voice-select-desc" tabindex="4">
                                 <option value="">Loading voices...</option>
                             </select>
                         </div>
@@ -52,8 +52,8 @@
                     </div>
                     
                     <div class="setup-buttons" role="group" aria-label="Settings control buttons">
-                        <button id="apply-settings-btn" class="btn-primary" aria-label="Apply settings changes" tabindex="4">Apply changes</button>
-                        <button id="reset-settings-btn" class="btn-secondary" aria-label="Reset settings to defaults" tabindex="5">Reset</button>
+                        <button id="apply-settings-btn" class="btn-primary" aria-label="Apply settings changes" tabindex="5">Apply changes</button>
+                        <button id="reset-settings-btn" class="btn-secondary" aria-label="Reset settings to defaults" tabindex="6">Reset</button>
                     </div>
                 </div>
             </div>
@@ -63,8 +63,8 @@
                 <div class="chat-header">
                     <h2>Chat</h2>
                     <div class="chat-controls" role="group" aria-label="Chat action buttons">
-                        <button class="icon-btn" title="Clear chat" aria-label="Clear chat history" tabindex="6">🗑️</button>
-                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app" tabindex="7">?</button>
+                        <button class="icon-btn" title="Clear chat" aria-label="Clear chat history" tabindex="7">🗑️</button>
+                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app" tabindex="8">?</button>
                     </div>
                 </div>
                 
@@ -78,9 +78,9 @@
                 
                 <div class="chat-input-container" role="region" aria-label="Message input area">
                     <div class="start-button-container" role="group" aria-label="Voice input control">
-                        <button id="start-btn" class="start-btn" aria-label="Start voice input. Press to begin speaking" tabindex="8">Start</button>
-                        <button id="cc-btn" class="cc-btn" style="display: none;" aria-label="Toggle closed captions to show conversation text" title="Toggle conversation text display" tabindex="9">[cc]</button>
-                        <button id="cancel-btn" class="cancel-btn" style="display: none;" aria-label="Cancel current speech interaction" tabindex="10">✕</button>
+                        <button id="start-btn" class="start-btn" aria-label="Start voice input. Press to begin speaking" tabindex="9">Start</button>
+                        <button id="cc-btn" class="cc-btn" style="display: none;" aria-label="Toggle closed captions to show conversation text" title="Toggle conversation text display" tabindex="10">[cc]</button>
+                        <button id="cancel-btn" class="cancel-btn" style="display: none;" aria-label="Cancel current speech interaction" tabindex="11">✕</button>
                     </div>
                     <div class="input-info">
                         <p class="ai-disclaimer">AI-generated content may be incorrect</p>
@@ -105,14 +105,20 @@
                     
                     <p>This app is designed as a learning aid for anyone seeking to become familiar with the speech capabilities of generative AI apps and agents. It's based on the user interface in Microsoft Foundry portal, but does not use any Azure cloud services.</p>
                     
-                    <p>The language model used by the app is the <strong>Microsoft Phi 3</strong> mini SLM, hosted in the WebLLM module. WebLLM requires a modern browser that supports the WebGPU API, and an integrated or dedicated GPU on the computer. If WebLLM fails to load, the app is designed to fallback to a simpler mode in which it used Wikipedia as a knowledge source instead of a generative AI model. In this mode, responses may be less relevant and some functionality may not be available.</p>
+                    <p>The app uses two language models:</p>
+                    <ul>
+                        <li><strong>Microsoft Phi-3 mini (GPU mode)</strong> - The primary model, hosted in the WebLLM module. This requires a modern browser that supports the WebGPU API and an integrated or dedicated GPU.</li>
+                        <li><strong>SmolLM2-360M (CPU mode)</strong> - A fallback model that runs on CPU using WebAssembly. This loads automatically if WebGPU is not available, though responses may be slower than GPU mode.</li>
+                    </ul>
+                    
+                    <p>You can manually switch between models using the model selector in the configuration panel.</p>
                     
                     <h3>Known issues</h3>
                     <ul>
-                        <li>The initial download of the Microsoft Phi model may take a few minutes - particularly on low-bandwidth connections. Subsequent downloads should be quicker.</li>
-                        <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished!</li>
+                        <li>The initial download of either model may take a few minutes - particularly on low-bandwidth connections. Subsequent loads should be quicker as models are cached.</li>
+                        <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished! The SmolLM2 (CPU) model will work as a fallback on these systems.</li>
                         <li>Microsoft Edge on ARM-based computers does not support Web Speech for speech recognition (speech to text), and returns a network error when attempting to capture input from the mic. Speech synthesis (text to speech) should still work.</li>
-                        <li>Older computers with slower processors and low amounts of memory may struggle to use WebLLM. You can switch the model to "None" to use the Wikipedia-based fallback option.</li>
+                        <li>SmolLM2 (CPU mode) responses may be noticeably slower than Phi-3 (GPU mode), especially on older computers with slower processors. This is normal for CPU-based inference.</li>
                     </ul>
                 </div>
             </div>
@@ -132,7 +138,7 @@
             <div class="modal-body">
                 <p>Speech recognition is not available. This can happen when using Microsoft Edge on ARM-based devices or when the speech service cannot be reached.</p>
                 <p>You can type your question instead:</p>
-                <textarea id="manual-input" placeholder="Type your question here..." rows="4" aria-label="Text input for manual question entry" style="width: 100%; padding: 8px; border: 1px solid #d1d1d1; border-radius: 4px; font-family: inherit;"></textarea>
+                <textarea id="manual-input" placeholder="Type your question here..." rows="4" maxlength="1000" aria-label="Text input for manual question entry. Maximum 1000 characters." style="width: 100%; padding: 8px; border: 1px solid #d1d1d1; border-radius: 4px; font-family: inherit;"></textarea>
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closeSpeechErrorModal()" aria-label="Close without sending">Cancel</button>

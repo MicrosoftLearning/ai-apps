@@ -1,4 +1,5 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -11,6 +12,9 @@ class ChatPlayground {
     constructor() {
         // Core state
         this.engine = null;
+        this.wllama = null; // wllama engine for CPU mode
+        this.usingWllama = false; // Track which engine is active
+        this.wllamaLoaded = false; // Track if wllama is initialized
         this.isModelLoaded = false;
         this.webllmAvailable = false;
         this.conversationHistory = [];
@@ -19,7 +23,7 @@ class ChatPlayground {
         this.isListening = false;
         this.currentSystemMessage = "You are a helpful AI assistant that answers spoken questions with vocalized responses. IMPORTANT: Make your responses brief and to the point.";
         this.currentModelId = null;
-        this.wikipediaRequestCount = 0;
+        this.currentAbortController = null; // Track abort controller for wllama
         
         // Track pending messages to display after speaking
         this.pendingUserMessage = null;
@@ -73,17 +77,17 @@ class ChatPlayground {
         },
         TOAST: {
             CHAT_CLEARED: 'Chat cleared',
-            MODEL_CHANGED: 'Model changed to Wikipedia fallback',
+            MODEL_CHANGED: 'Model changed to SmolLM2 (CPU) fallback',
             VOICE_APPLIED: 'Voice setting applied',
             INSTRUCTIONS_UPDATED: 'Instructions updated',
             SETTINGS_RESET: 'Settings reset to defaults',
             SPEECH_UNAVAILABLE: 'Speech recognition not available.',
             VOICE_INPUT_FAILED: 'Could not start voice input.',
             RESPONSE_ERROR: 'Error generating response. Please try again.',
-            MODEL_LOAD_ERROR: 'Error loading models. Using Wikipedia mode.',
+            MODEL_LOAD_ERROR: 'Error loading models. Using SmolLM2 (CPU) mode.',
             LOADING_MODEL: (modelId) => `Loading ${modelId}...`,
             MODEL_LOADED: 'Model loaded successfully!',
-            MODEL_LOAD_FALLBACK: 'Failed to load model. Using Wikipedia fallback.'
+            MODEL_LOAD_FALLBACK: 'Failed to load model. Using SmolLM2 (CPU) fallback.'
         }
     };
 
@@ -134,7 +138,13 @@ class ChatPlayground {
         // Handle system message changes (both change and input events)
         if (this.systemMessage) {
             const updateSystemMessage = (e) => {
-                this.pendingSystemMessage = e.target.value;
+                let value = e.target.value;
+                // Enforce character limit
+                if (value.length > 2000) {
+                    value = value.substring(0, 2000);
+                    e.target.value = value;
+                }
+                this.pendingSystemMessage = value;
                 if (this.pendingSystemMessage !== this.appliedSystemMessage) {
                     this.hasUnappliedChanges = true;
                     this.updateApplyButtonState();
@@ -220,17 +230,68 @@ class ChatPlayground {
         }
     }
 
-    applySettings() {
+    async applySettings() {
         // Apply model change if pending
         if (this.pendingModelId !== null && this.pendingModelId !== this.appliedModelId) {
-            if (this.pendingModelId === 'none') {
-                this.webllmAvailable = false;
-                this.engine = null;
-                this.appliedModelId = 'none';
-                this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_CHANGED);
+            if (this.pendingModelId === 'smollm2-cpu') {
+                // Clear chat when switching models
+                this.clearChat();
+                
+                // If wllama not loaded yet, load it
+                if (!this.wllamaLoaded) {
+                    console.log('Loading wllama for the first time...');
+                    
+                    // Disable UI during model loading
+                    this.disallowInteraction();
+                    
+                    // Show progress
+                    this.showElement('progressContainer');
+                    
+                    try {
+                        await this.initializeWllama((loaded, total) => {
+                            const percentage = Math.round((loaded / total) * 100);
+                            this.updateProgress(
+                                'progressContainer',
+                                'progressFill',
+                                'progressText',
+                                percentage,
+                                `Loading SmolLM2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`,
+                                true
+                            );
+                        });
+                        
+                        this.usingWllama = true;
+                        this.wllamaLoaded = true;
+                        this.webllmAvailable = false;
+                        this.engine = null;
+                        this.appliedModelId = 'smollm2-cpu';
+                        
+                        this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_CHANGED);
+                    } catch (error) {
+                        console.error('Failed to load wllama:', error);
+                        // Reset to previous selection
+                        if (this.elements.modelSelect) {
+                            this.elements.modelSelect.value = this.appliedModelId;
+                        }
+                        this.pendingModelId = this.appliedModelId;
+                        alert('Failed to load SmolLM2 (CPU). Please try again.');
+                    } finally {
+                        // Re-enable UI
+                        this.allowInteraction();
+                    }
+                } else {
+                    // Wllama already loaded, just switch to it
+                    this.usingWllama = true;
+                    this.webllmAvailable = false;
+                    this.engine = null;
+                    this.appliedModelId = 'smollm2-cpu';
+                    this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_CHANGED);
+                }
             } else {
+                // Switching to WebLLM model
+                this.clearChat();
                 this.appliedModelId = this.pendingModelId;
-                this.loadModel(this.pendingModelId);
+                await this.loadModel(this.pendingModelId);
             }
         }
 
@@ -243,14 +304,37 @@ class ChatPlayground {
 
         // Apply system message change if pending
         if (this.pendingSystemMessage !== null && this.pendingSystemMessage !== this.appliedSystemMessage) {
-            this.appliedSystemMessage = this.pendingSystemMessage;
-            this.currentSystemMessage = this.pendingSystemMessage + ' IMPORTANT: Make your responses brief and to the point.';
+            // Validate system message length
+            let sanitizedMessage = this.pendingSystemMessage;
+            if (sanitizedMessage.length > 2000) {
+                sanitizedMessage = sanitizedMessage.substring(0, 2000);
+                this.systemMessage.value = sanitizedMessage;
+            }
+            
+            // Remove control characters except newlines
+            sanitizedMessage = sanitizedMessage.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+            
+            this.appliedSystemMessage = sanitizedMessage;
+            this.currentSystemMessage = sanitizedMessage + ' IMPORTANT: Make your responses brief and to the point.';
             this.showToast(ChatPlayground.MESSAGES.TOAST.INSTRUCTIONS_UPDATED);
         }
 
         // Clear unapplied changes flag and disable Apply button
         this.hasUnappliedChanges = false;
         this.updateApplyButtonState();
+    }
+
+    clearChat() {
+        this.conversationHistory = [];
+        if (this.chatMessages) {
+            this.chatMessages.innerHTML = `
+                <div class="welcome-message">
+                    <div class="chat-icon" aria-hidden="true"></div>
+                    <h3>Let's talk</h3>
+                    <p>Talk like you would to a person. The agent listens and responds.</p>
+                </div>
+            `;
+        }
     }
 
     updateApplyButtonState() {
@@ -337,10 +421,22 @@ class ChatPlayground {
         }
     }
 
-    updateProgress(containerId, fillId, textId, percentage, text) {
+    updateProgress(containerId, fillId, textId, percentage, text, useHTML = false) {
         this.showElement(containerId);
         this.setElementStyle(fillId, 'width', `${percentage}%`);
-        this.setElementText(textId, text);
+        const element = this.getElement(textId);
+        if (element) {
+            if (useHTML) {
+                element.innerHTML = text;
+            } else {
+                element.textContent = text;
+            }
+        }
+        // Update ARIA attribute for accessibility
+        const container = this.getElement(containerId);
+        if (container) {
+            container.setAttribute('aria-valuenow', Math.round(percentage));
+        }
     }
 
     populateVoices() {
@@ -540,6 +636,29 @@ class ChatPlayground {
     }
 
     handleSpokenInput(transcript) {
+        // Validate and sanitize transcript
+        if (!transcript || typeof transcript !== 'string') {
+            console.error('Invalid transcript received');
+            this.resetToWelcomeState();
+            return;
+        }
+        
+        // Trim and enforce maximum length
+        let sanitizedTranscript = transcript.trim();
+        if (sanitizedTranscript.length > 1000) {
+            sanitizedTranscript = sanitizedTranscript.substring(0, 1000);
+        }
+        
+        // Remove control characters except newlines
+        sanitizedTranscript = sanitizedTranscript.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+        
+        // Check if there's still valid content
+        if (sanitizedTranscript.length === 0) {
+            console.error('Transcript empty after sanitization');
+            this.resetToWelcomeState();
+            return;
+        }
+        
         // Update UI - show processing state
         const startBtn = document.getElementById('start-btn');
         const cancelBtn = document.getElementById('cancel-btn');
@@ -552,11 +671,11 @@ class ChatPlayground {
         this.updateWelcomeState('Processing...', 'This can take some time...');
 
         // Add user message to chat immediately (respecting current CC visibility)
-        this.addMessageToChat(transcript, 'user');
-        this.pendingUserMessage = transcript;
+        this.addMessageToChat(sanitizedTranscript, 'user');
+        this.pendingUserMessage = sanitizedTranscript;
 
         // Send to model
-        this.generateResponse(transcript);
+        this.generateResponse(sanitizedTranscript);
     }
 
     async generateResponse(userMessage) {
@@ -588,9 +707,12 @@ class ChatPlayground {
                         responseText += content;
                     }
                 }
+            } else if (this.usingWllama && this.wllama) {
+                // Use wllama fallback
+                responseText = await this.generateWllamaResponse(userMessage);
             } else {
-                // Use Wikipedia fallback
-                responseText = await this.queryWikipedia(userMessage);
+                // No model available
+                responseText = "No AI model is currently available. Please wait for the model to load or refresh the page.";
             }
 
             // Add assistant message to chat immediately (respecting current CC visibility)
@@ -628,6 +750,135 @@ class ChatPlayground {
         return messages;
     }
 
+    // Helper function to build ChatML formatted prompt for SmolLM2
+    buildChatMLPrompt(userMessage) {
+        let prompt = '';
+        
+        // Get the last turn of conversation history (if exists)
+        let previousUserMessage = '';
+        let previousAssistantResponse = '';
+        
+        if (this.conversationHistory.length >= 2) {
+            // Get the last pair (user message and assistant response)
+            previousAssistantResponse = this.conversationHistory[this.conversationHistory.length - 1].content;
+            previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
+        }
+        
+        // Default format for speech-based interaction
+        prompt = '<|im_start|>system\n';
+        prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
+        prompt += 'Instructions:\n';
+        prompt += this.currentSystemMessage + '\n\n';
+        prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
+        prompt += '<|im_end|>\n\n';
+        
+        // Add previous turn if exists
+        if (previousUserMessage) {
+            prompt += '<|im_start|>user\n' + previousUserMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>assistant\n' + previousAssistantResponse + '\n<|im_end|>\n\n';
+        }
+        
+        // Add current user message
+        prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+        prompt += '<|im_start|>assistant\n';
+        
+        return prompt;
+    }
+
+    async generateWllamaResponse(userMessage) {
+        // Ensure wllama is loaded
+        if (!this.wllama) {
+            return 'SmolLM2 is not initialized. Please wait for CPU mode to finish loading.';
+        }
+        
+        try {
+            // Build the ChatML prompt
+            const chatMLPrompt = this.buildChatMLPrompt(userMessage);
+            
+            console.log('=== CHATML PROMPT FOR SMOLLM2 ===');
+            console.log('Conversation history length:', this.conversationHistory.length);
+            console.log('ChatML prompt:');
+            console.log(chatMLPrompt);
+            console.log('=== END CHATML PROMPT ===');
+            
+            // Use wllama for generation
+            let fullResponse = '';
+            
+            // Use conservative parameters for wllama
+            const wllamaTemp = 0.3;
+            const wllamaTopP = 0.7;
+            const wllamaPenalty = 1.1;
+            
+            // Log sampling parameters for debugging
+            console.log('SmolLM2 sampling parameters:', {
+                temp: wllamaTemp,
+                top_k: 40,
+                top_p: wllamaTopP,
+                penalty_repeat: wllamaPenalty
+            });
+            
+            // Create AbortController for this generation
+            const controller = new AbortController();
+            this.currentAbortController = controller;
+            
+            // Clear KV cache before generation to ensure clean state
+            try {
+                await this.wllama.kvClear();
+                console.log('KV cache cleared before generation');
+            } catch (error) {
+                console.log('KV cache clear failed:', error.message);
+            }
+            
+            // Generate response (non-streaming for speech)
+            fullResponse = await this.wllama.createCompletion(chatMLPrompt, {
+                nPredict: 200,  // Keep responses brief for speech
+                seed: -1,  // Random seed for variation
+                sampling: {
+                    temp: wllamaTemp,
+                    top_k: 40,
+                    top_p: wllamaTopP,
+                    penalty_repeat: wllamaPenalty,
+                    mirostat: 0  // Disable mirostat to ensure temperature is used
+                },
+                stopTokens: ['<|im_end|>', '<|im_start|>'],
+                abortSignal: controller.signal
+            });
+            
+            console.log('Wllama response received:', fullResponse);
+            
+            // Clear abort controller on successful completion
+            this.currentAbortController = null;
+            
+            // Clear KV cache after successful generation
+            console.log('Clearing KV cache after generation');
+            await this.wllama.kvClear();
+            console.log('KV cache cleared successfully');
+            
+            return fullResponse.trim() || 'Sorry, I couldn\'t generate a response.';
+            
+        } catch (error) {
+            // Check if this was an abort (expected when user clicks cancel)
+            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+                console.log('Generation aborted by user');
+                // Clear the partial/corrupted state
+                await this.wllama.kvClear();
+                console.log('KV cache cleared after abort');
+                return 'Response cancelled.';
+            } else {
+                console.error('Error in wllama generation:', error);
+                // Clear cache on error too
+                try {
+                    await this.wllama.kvClear();
+                } catch (e) {
+                    console.log('Failed to clear cache after error:', e.message);
+                }
+                return 'Sorry, I encountered an error while generating a response. Please try again.';
+            }
+        } finally {
+            this.currentAbortController = null;
+        }
+    }
+
     addMessageToChat(text, role) {
         if (!this.chatMessages) return;
 
@@ -649,190 +900,6 @@ class ChatPlayground {
 
         // Scroll to bottom
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-    }
-
-    async extractKeywords(text) {
-        console.log('Original prompt:', text);
-        
-        // Remove punctuation from the text
-        const textWithoutPunctuation = text.replace(/[.,!?;:'"()[\]{}]/g, ' ');
-        console.log('Text without punctuation:', textWithoutPunctuation);
-        
-        // Tokenize and extract important words
-        const tokens = textWithoutPunctuation.toLowerCase().split(/\s+/);
-        console.log('Tokens:', tokens);
-        
-        // Remove common stop words only
-        const stopWords = new Set(["a", "about", "above", "after", "again", "against", "all", "am",
-        "an", "and", "any", "are", "aren't", "as", "at",
-        "be", "because", "been", "before", "being", "below", "between", "both",
-        "but", "by",
-        "can't", "cannot", "could", "couldn't",
-        "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down", "during",
-        "each",
-        "few", "for", "from", "further",
-        "had", "hadn't", "has", "hasn't", "have", "haven't", "having",
-        "he", "he'd", "he'll", "he's",
-        "her", "here", "here's", "hers", "herself",
-        "him", "himself", "his",
-        "how", "how's",
-        "i", "i'd", "i'll", "i'm", "i've",
-        "if", "in", "into", "is", "isn't", "it", "it's", "its", "itself",
-        "let's",
-        "me", "more", "most", "mustn't", "my", "myself",
-        "no", "nor", "not",
-        "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours",
-        "ourselves", "out", "over", "own",
-        "same", "shan't", "she", "she'd", "she'll", "she's",
-        "should", "shouldn't",
-        "so", "some", "such",
-        "than", "that", "that's", "the", "their", "theirs", "them", "themselves",
-        "then", "there", "there's", "these", "they", "they'd", "they'll", "they're",
-        "they've", "this", "those", "through", "too",
-        "under", "until", "up",
-        "very",
-        "was", "wasn't", "we", "we'd", "we'll", "we're", "we've",
-        "were", "weren't", "what", "what's", "when", "when's", "where", "where's",
-        "which", "while", "who", "who's", "whom", "why", "why's",
-        "with", "won't", "would", "wouldn't",
-        "you", "you'd", "you'll", "you're", "you've", "your", "yours",
-        "yourself", "yourselves"
-        ]);
-
-
-        // Keep all words that aren't stop words and are longer than 1 character
-        const keywords = tokens.filter(word => 
-            word.length > 1 && !stopWords.has(word)
-        );
-        
-        console.log('Filtered keywords array:', keywords);
-
-        // Return all keywords joined together
-        const keywordString = keywords.join(' ') || text;
-        console.log('Final keyword string for search:', keywordString);
-        
-        return keywordString;
-    }
-
-    async searchWikipedia(keywords) {
-        try {
-            // Search Wikipedia API
-            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*`;
-            const searchResponse = await fetch(searchUrl);
-            const searchData = await searchResponse.json();
-
-            if (!searchData.query || !searchData.query.search || searchData.query.search.length === 0) {
-                return "I couldn't find any relevant information on Wikipedia for your query.";
-            }
-
-            // Get the first result's page ID
-            const firstResult = searchData.query.search[0];
-            const pageId = firstResult.pageid;
-
-            // Fetch the full article content
-            const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=extracts&exintro=true&explaintext=true&format=json&origin=*`;
-            const contentResponse = await fetch(contentUrl);
-            const contentData = await contentResponse.json();
-
-            const pageContent = contentData.query.pages[pageId].extract;
-
-            console.log('Wikipedia page content received:', pageContent.substring(0, 500));
-            console.log('Total content length:', pageContent.length);
-
-            // Get intro section including any lists
-            // Split by double newlines but keep content until we hit a new section
-            const paragraphs = pageContent.split('\n');
-            let introContent = '';
-            let lineCount = 0;
-            const maxLines = 15; // Get more lines to capture lists
-            
-            for (let i = 0; i < paragraphs.length && lineCount < maxLines; i++) {
-                const line = paragraphs[i].trim();
-                if (line.length > 0) {
-                    introContent += (introContent ? '\n' : '') + line;
-                    lineCount++;
-                }
-                // Stop if we hit a section header (usually === or ==)
-                if (line.includes('==') && i > 0) {
-                    break;
-                }
-            }
-            
-            console.log('Intro content extracted:', introContent.substring(0, 500));
-            
-            return introContent;
-
-        } catch (error) {
-            console.error('Wikipedia search error:', error);
-            return "I encountered an error while searching Wikipedia. Please try again.";
-        }
-    }
-
-    async queryWikipedia(userMessage) {
-        try {
-
-            let summary = '';
-
-            if (this.wikipediaRequestCount >= 20) {
-                summary = "You've reached your quota limit for requests.";
-            }
-            else {
-                this.wikipediaRequestCount++;
-                
-                // Extract keywords from user input
-                let keywords = await this.extractKeywords(userMessage);
-                console.log('Extracted keywords from message:', keywords);
-
-                // Search Wikipedia with keywords
-                console.log('Searching Wikipedia with:', keywords);
-                const articleText = await this.searchWikipedia(keywords);
-                
-                // Summarize the text to keep it concise
-                summary = await this.summarizeText(articleText);
-            }
-            return summary;
-
-        } catch (error) {
-            console.error('Wikipedia fallback error:', error);
-            return 'Sorry, I encountered an error while processing your request. Please try again.';
-        }
-    }
-
-    async summarizeText(text) {
-        console.log('Summarizing text, length:', text.length);
-        console.log('Text to summarize:', text.substring(0, 300));
-        
-        // Since we're already limiting content in searchWikipedia,
-        // just return the text
-        if (text.length < 800) {
-            return text;
-        }
-
-        // For longer content, check if it has list-like structure
-        const lines = text.split('\n');
-        const hasShortLines = lines.filter(l => l.length > 0 && l.length < 100).length > 3;
-        
-        if (hasShortLines) {
-            // Looks like a list - return first ~600 chars
-            let summary = '';
-            for (const line of lines) {
-                if (summary.length + line.length < 600) {
-                    summary += (summary ? '\n' : '') + line;
-                } else {
-                    break;
-                }
-            }
-            return summary;
-        }
-
-        // For regular narrative text, return first 2-3 sentences
-        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-        if (sentences.length <= 2) {
-            return text;
-        }
-
-        const summaryLength = Math.min(3, sentences.length);
-        return sentences.slice(0, summaryLength).join(' ').trim();
     }
 
     speakResponse(text) {
@@ -1033,38 +1100,6 @@ class ChatPlayground {
         try {
             console.log('initializeModel called');
             
-            // Check if WebLLM is available
-            if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
-                console.error('WebLLM not properly loaded');
-                throw new Error('WebLLM not properly loaded');
-            }
-
-            // Update model select with specific models
-            const modelSelect = this.elements.modelSelect;
-            
-            if (modelSelect) {
-                modelSelect.innerHTML = '';
-                
-                // Add "None" option for Wikipedia fallback
-                const noneOption = document.createElement('option');
-                noneOption.value = 'none';
-                noneOption.textContent = 'None (Wikipedia)';
-                modelSelect.appendChild(noneOption);
-
-                // Add only the Phi-3 mini model
-                const phiOption = document.createElement('option');
-                phiOption.value = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-                phiOption.textContent = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-                modelSelect.appendChild(phiOption);
-            }
-
-            // Load default model (Phi-3-mini-4k-instruct)
-            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-            if (modelSelect) {
-                modelSelect.value = targetModelId;
-            }
-            this.pendingModelId = targetModelId;
-            
             // Initialize system message settings
             const initialSystemMessage = 'You are a helpful AI assistant that answers spoken questions with vocalized responses.';
             if (this.systemMessage) {
@@ -1074,21 +1109,170 @@ class ChatPlayground {
             this.pendingSystemMessage = initialSystemMessage;
             this.currentSystemMessage = initialSystemMessage + ' IMPORTANT: Make your responses brief and to the point.';
             
-            await this.loadModel(targetModelId);
+            // Try to initialize WebLLM first, then fall back to wllama
+            await this.initializeEngine();
             
         } catch (error) {
             console.error('Error initializing models:', error);
             this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_LOAD_ERROR);
-            this.webllmAvailable = false;
         }
     }
 
+    async initializeEngine() {
+        try {
+            console.log('Attempting to initialize WebLLM first...');
+            await this.initializeWebLLM();
+            console.log('WebLLM initialized successfully');
+            this.webllmAvailable = true;
+            this.usingWllama = false;
+        } catch (error) {
+            console.error('WebLLM initialization failed, loading wllama fallback:', error);
+            this.webllmAvailable = false;
+            
+            try {
+                await this.initializeWllama();
+                console.log('Wllama initialized successfully as fallback');
+                this.usingWllama = true;
+                this.wllamaLoaded = true;
+            } catch (wllamaError) {
+                console.error('Both WebLLM and wllama initialization failed:', wllamaError);
+                this.updateProgress(
+                    'progressContainer',
+                    'progressFill',
+                    'progressText',
+                    0,
+                    'AI models unavailable. Please check your internet connection and refresh the page.'
+                );
+                setTimeout(() => {
+                    this.allowInteraction();
+                }, 2000);
+            }
+        }
+    }
+
+    async initializeWebLLM() {
+        console.log('initializeWebLLM called - starting model initialization');
+        
+        // Check if WebLLM is available
+        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+            console.error('WebLLM not properly loaded');
+            throw new Error('WebLLM not properly loaded');
+        }
+
+        // Update model select with specific models
+        const modelSelect = this.elements.modelSelect;
+        
+        if (modelSelect) {
+            modelSelect.innerHTML = '';
+
+            // Add only the Phi-3 mini model
+            const phiOption = document.createElement('option');
+            phiOption.value = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+            phiOption.textContent = 'Phi-3-mini (GPU)';
+            modelSelect.appendChild(phiOption);
+            
+            // Add SmolLM2 CPU option
+            const cpuOption = document.createElement('option');
+            cpuOption.value = 'smollm2-cpu';
+            cpuOption.textContent = 'SmolLM2 (CPU)';
+            modelSelect.appendChild(cpuOption);
+        }
+
+        // Load default model (Phi-3-mini-4k-instruct)
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+        if (modelSelect) {
+            modelSelect.value = targetModelId;
+        }
+        this.pendingModelId = targetModelId;
+        
+        await this.loadModel(targetModelId);
+    }
+
+    async initializeWllama(progressCallback) {
+        console.log('Initializing wllama...');
+        
+        const updateProgress = progressCallback || ((loaded, total) => {
+            const percentage = Math.round((loaded / total) * 100);
+            this.updateProgress(
+                'progressContainer',
+                'progressFill',
+                'progressText',
+                percentage,
+                `Loading SmolLM2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`,
+                true
+            );
+        });
+        
+        this.showElement('progressContainer');
+        updateProgress(0, 100);
+        
+        // Configure WASM paths for CDN
+        const CONFIG_PATHS = {
+            'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
+            'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+        };
+        
+        // Initialize wllama with CDN-hosted WASM files
+        this.wllama = new Wllama(CONFIG_PATHS);
+        
+        // Load SmolLM2 model from HuggingFace
+        await this.wllama.loadModelFromHF(
+            'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+            'smollm2-360m-instruct-q8_0.gguf',
+            {
+                n_ctx: 1024,
+                n_threads: navigator.hardwareConcurrency || 4,
+                progressCallback: ({ loaded, total }) => {
+                    updateProgress(loaded, total);
+                }
+            }
+        );
+        
+        console.log('Wllama initialized successfully');
+        this.wllamaLoaded = true;
+        
+        // Update model select if not already populated
+        const modelSelect = this.elements.modelSelect;
+        if (modelSelect && modelSelect.options.length === 0) {
+            modelSelect.innerHTML = '';
+            
+            // Add Phi-3 option (but disabled if WebLLM failed)
+            const phiOption = document.createElement('option');
+            phiOption.value = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+            phiOption.textContent = 'Phi-3-mini (GPU)';
+            phiOption.disabled = !this.webllmAvailable;
+            modelSelect.appendChild(phiOption);
+            
+            // Add SmolLM2 CPU option (selected by default)
+            const cpuOption = document.createElement('option');
+            cpuOption.value = 'smollm2-cpu';
+            cpuOption.textContent = 'SmolLM2 (CPU)';
+            cpuOption.selected = true;
+            modelSelect.appendChild(cpuOption);
+            
+            this.pendingModelId = 'smollm2-cpu';
+            this.appliedModelId = 'smollm2-cpu';
+        }
+        
+        this.updateProgress(
+            'progressContainer',
+            'progressFill',
+            'progressText',
+            100,
+            'SmolLM2 (CPU) ready!'
+        );
+        setTimeout(() => {
+            this.hideElement('progressContainer');
+            this.allowInteraction();
+        }, 1000);
+    }
+
     async loadModel(modelId) {
-        if (!modelId || modelId === 'none') return;
+        if (!modelId || modelId === 'smollm2-cpu') return;
 
         try {
             console.log(`Trying to load model: ${modelId}`);
-this.showToast(ChatPlayground.MESSAGES.TOAST.LOADING_MODEL(modelId));
+            this.showToast(ChatPlayground.MESSAGES.TOAST.LOADING_MODEL(modelId));
 
             this.engine = await webllm.CreateMLCEngine(
                 modelId,
@@ -1111,6 +1295,7 @@ this.showToast(ChatPlayground.MESSAGES.TOAST.LOADING_MODEL(modelId));
             this.currentModelId = modelId;
             this.appliedModelId = modelId;
             this.webllmAvailable = true;
+            this.usingWllama = false;
             this.hideElement('progressContainer');
             this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_LOADED);
             this.allowInteraction();
@@ -1121,14 +1306,33 @@ this.showToast(ChatPlayground.MESSAGES.TOAST.LOADING_MODEL(modelId));
             this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_LOAD_FALLBACK);
             // Hide progress indicator
             this.hideElement('progressContainer');
-            // Change dropdown to "None (Wikipedia)"
-            const modelSelect = this.elements.modelSelect;
-            if (modelSelect) {
-                modelSelect.value = 'none';
+            // Try loading wllama fallback
+            try {
+                await this.initializeWllama();
+                this.usingWllama = true;
+                this.wllamaLoaded = true;
+                
+                // Update dropdown - disable Phi-3 option and select SmolLM2
+                const modelSelect = this.elements.modelSelect;
+                if (modelSelect) {
+                    // Find and disable the Phi-3 option
+                    for (let option of modelSelect.options) {
+                        if (option.value === 'Phi-3-mini-4k-instruct-q4f16_1-MLC') {
+                            option.disabled = true;
+                            break;
+                        }
+                    }
+                    // Select SmolLM2
+                    modelSelect.value = 'smollm2-cpu';
+                }
+                
+                this.appliedModelId = 'smollm2-cpu';
+                this.allowInteraction();
+            } catch (wllamaError) {
+                console.error('Failed to load wllama fallback:', wllamaError);
+                // Allow interaction even if both fail
+                this.allowInteraction();
             }
-            // Allow interaction with fallback mode
-            this.appliedModelId = 'none';
-            this.allowInteraction();
         }
     }
 
@@ -1194,10 +1398,22 @@ window.closeSpeechErrorModal = function() {
 window.sendManualInput = function() {
     const input = document.getElementById('manual-input');
     if (input && input.value.trim()) {
-        const text = input.value.trim();
-        window.chatPlaygroundApp.handleSpokenInput(text);
-        input.value = '';
-        window.closeSpeechErrorModal();
+        // Validate and sanitize input
+        let text = input.value.trim();
+        
+        // Enforce maximum length
+        if (text.length > 1000) {
+            text = text.substring(0, 1000);
+        }
+        
+        // Basic sanitization - remove control characters except newlines and tabs
+        text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+        
+        if (text.length > 0) {
+            window.chatPlaygroundApp.handleSpokenInput(text);
+            input.value = '';
+            window.closeSpeechErrorModal();
+        }
     }
 };
 

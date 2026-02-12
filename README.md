@@ -52,7 +52,7 @@ IMPORTANT: Follow these guidelines when responding:
 
 The following apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). No additional training or fine-tuning has been performed on the model. You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
 
-In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [SmolLM2](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct) model running in the [wllama](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
+In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [SmolLM2](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
 
 > **IMPORTANT**: Generative AI functionality in these apps is designed exclusively for *educational* use. Do <u>not</u> rely on the output from these apps for any real-world application, decision, or action.
 
@@ -113,7 +113,7 @@ Chat Playground provides the option to use the Microsoft Phi 3 mini model on GPU
 
 #### Speech Playground
 
-Speech Playground provides the option to use generative AI or a fallback mode that does not use a generative AI model (which you can explicitly enable by selecting "None" in the model list). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended.
+Speech Playground provides the option to use WebLLM (Microsoft Phi 3 Mini on GPU) or WLLAMA (SmolLM2 on CPU). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended.
 
 #### Information Extractor
 
@@ -147,7 +147,6 @@ The app uses the following prompts:
 In addition to WebLLM and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground to predict image classifications.
-- [Wikipedia API](https://en.wikipedia.org/w/api.php) used by Chat Playground and Speech Playground to retrieve relevant information from Wikipedia.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Andrew and Speech Playground for speech recognition and synthesis.
 - [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Text Analyzer to support named entity recognition.
