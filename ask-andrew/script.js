@@ -1,15 +1,18 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
 class AskAndrew {
     constructor() {
-        this.engine = null;
+        this.engine = null;      // WebLLM engine
+        this.wllama = null;      // Wllama engine (fallback)
         this.conversationHistory = [];
         this.isGenerating = false;
-        this.indexData = null; // Contains the category structure from index.json
+        this.indexData = null;
         this.stopRequested = false;
         this.currentStream = null;
+        this.currentAbortController = null;
         this.webGPUAvailable = false;
-        this.simpleMode = false;
+        this.usingWllama = false;
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
@@ -27,6 +30,7 @@ class AskAndrew {
             restartBtn: document.getElementById('restart-btn'),
             searchStatus: document.getElementById('search-status'),
             modeToggle: document.getElementById('mode-toggle'),
+            modeToggleText: document.getElementById('mode-toggle-text'),
             aboutBtn: document.getElementById('about-btn'),
             aboutModal: document.getElementById('about-modal'),
             aboutModalClose: document.getElementById('about-modal-close'),
@@ -58,8 +62,8 @@ IMPORTANT: Follow these guidelines when responding:
             // Load the index
             await this.loadIndex();
             
-            // Initialize WebLLM
-            await this.initializeWebLLM();
+            // Try to initialize WebLLM first, fall back to wllama if needed
+            await this.initializeEngine();
             
             // Setup event listeners
             this.setupEventListeners();
@@ -101,9 +105,19 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    async initializeEngine() {
+        // Try WebLLM first (faster with GPU)
+        try {
+            await this.initializeWebLLM();
+        } catch (error) {
+            console.log('WebLLM not available, falling back to wllama');
+            await this.initializeWllama();
+        }
+    }
+
     async initializeWebLLM() {
         try {
-            this.updateProgress(15, 'Loading AI model...');
+            this.updateProgress(15, 'Loading AI model (WebGPU)...');
             
             const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
             
@@ -123,6 +137,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.updateProgress(100, 'Ready to chat!');
             console.log('WebLLM engine initialized successfully');
             this.webGPUAvailable = true;
+            this.usingWllama = false;
             
             setTimeout(() => {
                 this.showChatInterface();
@@ -130,14 +145,80 @@ IMPORTANT: Follow these guidelines when responding:
             
         } catch (error) {
             console.error('Failed to initialize WebLLM:', error);
-            console.log('Falling back to simple mode');
-            this.webGPUAvailable = false;
-            this.simpleMode = true;
-            this.updateProgress(100, 'Ready to chat! (Simple mode)');
+            throw error; // Re-throw to trigger fallback
+        }
+    }
+
+    async initializeWllama(progressCallback = null) {
+        try {
+            // Check if already initialized
+            if (this.wllama) {
+                console.log('Wllama already initialized');
+                return;
+            }
             
-            setTimeout(() => {
-                this.showChatInterface();
-            }, 500);
+            const isLazyLoad = this.webGPUAvailable; // If WebGPU is available, this is a lazy load
+            
+            if (!isLazyLoad) {
+                this.updateProgress(15, 'Loading AI model (CPU mode)...');
+            }
+            
+            // Configure WASM paths for CDN
+            const CONFIG_PATHS = {
+                'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
+                'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+            };
+            
+            // Initialize wllama with CDN-hosted WASM files
+            this.wllama = new Wllama(CONFIG_PATHS);
+            
+            // Load model from HuggingFace with optimized settings
+            await this.wllama.loadModelFromHF(
+                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                'smollm2-360m-instruct-q8_0.gguf',
+                {
+                    n_ctx: 512,      // Smaller context for faster processing
+                    n_threads: 1,     // Single thread can be more stable
+                    progressCallback: ({ loaded, total }) => {
+                        const percentage = Math.max(15, Math.round((loaded / total) * 85) + 15);
+                        const progress = loaded / total;
+                        
+                        if (!isLazyLoad) {
+                            this.updateProgress(
+                                percentage,
+                                `Loading model: ${Math.round((loaded / total) * 100)}%`
+                            );
+                        } else {
+                            console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
+                            // Call the progress callback for lazy loading
+                            if (progressCallback) {
+                                progressCallback(progress);
+                            }
+                        }
+                    }
+                }
+            );
+            
+            if (!isLazyLoad) {
+                this.updateProgress(100, 'Ready to chat! (CPU mode)');
+            }
+            console.log('Wllama initialized successfully with SmolLM2-360M-Instruct');
+            
+            if (!isLazyLoad) {
+                this.webGPUAvailable = false;
+                this.usingWllama = true;
+                
+                setTimeout(() => {
+                    this.showChatInterface();
+                }, 500);
+            }
+            
+        } catch (error) {
+            console.error('Failed to initialize wllama:', error);
+            if (!this.webGPUAvailable) {
+                this.showError('Failed to load AI model. Please refresh the page.');
+            }
+            throw error;
         }
     }
 
@@ -228,7 +309,7 @@ IMPORTANT: Follow these guidelines when responding:
         });
         
         // Mode toggle button
-        this.elements.modeToggle.addEventListener('click', () => {
+        this.elements.modeToggle.addEventListener('change', () => {
             this.toggleMode();
         });
         
@@ -464,7 +545,21 @@ IMPORTANT: Follow these guidelines when responding:
     async sendMessage() {
         const userMessage = this.elements.userInput.value.trim();
         
+        // Validate input
         if (!userMessage || this.isGenerating) return;
+        
+        // Limit message length to prevent abuse
+        const MAX_MESSAGE_LENGTH = 1000;
+        if (userMessage.length > MAX_MESSAGE_LENGTH) {
+            this.addSystemMessage(`Message too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`);
+            return;
+        }
+        
+        // Check if wllama is still loading when in CPU mode
+        if (this.usingWllama && !this.wllama) {
+            this.addSystemMessage('CPU mode is still loading. Please wait...');
+            return;
+        }
         
         // Store voice input flag before clearing
         const usedVoice = this.usedVoiceInput;
@@ -510,48 +605,114 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     stopGeneration() {
+        this.isGenerating = false;
         this.stopRequested = true;
+        this.currentStream = null;
+        
+        // Abort the generation properly using AbortController
+        if (this.currentAbortController) {
+            console.log('Aborting generation via AbortController');
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
+        }
+        
+        this.updateSendButton(false);
         console.log('Stop requested');
     }
 
     toggleMode() {
         if (!this.webGPUAvailable) {
-            alert('WebGPU mode is not available in this browser. Simple mode is the only option.');
+            this.lastFocusedElement = document.activeElement;
+            this.showAiModeModal();
             return;
         }
         
-        this.simpleMode = !this.simpleMode;
+        this.usingWllama = !this.usingWllama;
         this.updateModeToggle();
         
-        const mode = this.simpleMode ? 'Simple' : 'AI';
-        console.log(`Switched to ${mode} mode`);
-        
-        // Add a system message to indicate mode change
-        this.addSystemMessage(`Switched to ${mode} mode`);
+        // If switching to wllama and it's not loaded yet, show loading message
+        if (this.usingWllama && !this.wllama) {
+            const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0%');
+            const loadingMsgElement = loadingMsg.querySelector('p');
+            
+            // Lazy load wllama
+            this.initializeWllama((progress) => {
+                // Update the loading message with progress
+                if (loadingMsgElement) {
+                    const percentage = Math.round(progress * 100);
+                    loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}%`;
+                }
+            }).then(() => {
+                const mode = this.usingWllama ? 'CPU' : 'GPU';
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = `Switched to ${mode} mode`;
+                }
+            }).catch(error => {
+                console.error('Failed to load wllama:', error);
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = 'Failed to load CPU mode. Reverting to GPU mode.';
+                }
+                this.usingWllama = false;
+                this.updateModeToggle();
+            });
+        } else {
+            const mode = this.usingWllama ? 'CPU' : 'GPU';
+            console.log(`Switched to ${mode} mode`);
+            this.addSystemMessage(`Switched to ${mode} mode`);
+        }
     }
 
     updateModeToggle() {
-        // Show current mode state, not the mode to switch to
-        const modeText = this.simpleMode ? '📝 Simple Mode: ON' : '🤖 AI Mode: ON';
-        const modeTitle = this.simpleMode ? 
-            'Currently in Simple mode (search only). Click to switch to AI mode.' : 
-            'Currently in AI mode (uses WebGPU). Click to switch to Simple mode.';
-        const ariaLabel = this.simpleMode ?
-            'Toggle chat mode. Currently in Simple mode. Click to switch to AI mode.' :
-            'Toggle chat mode. Currently in AI mode. Click to switch to Simple mode.';
+        const isGpuMode = !this.usingWllama;
         
-        this.elements.modeToggle.textContent = modeText;
-        this.elements.modeToggle.title = modeTitle;
+        // Update checkbox state
+        this.elements.modeToggle.checked = this.usingWllama;
+        this.elements.modeToggle.setAttribute('aria-checked', this.usingWllama ? 'true' : 'false');
+        
+        // Update text label
+        this.elements.modeToggleText.textContent = isGpuMode ? 'GPU' : 'CPU';
+        
+        // Update title and aria-label
+        const modeTitle = isGpuMode ? 
+            'Currently using GPU (WebLLM). Toggle to switch to CPU mode.' : 
+            'Currently using CPU (wllama). Toggle to switch to GPU mode.';
+        const ariaLabel = isGpuMode ?
+            'Toggle engine mode. Currently in GPU mode. Toggle to switch to CPU mode.' :
+            'Toggle engine mode. Currently in CPU mode. Toggle to switch to GPU mode.';
+        
+        this.elements.modeToggle.parentElement.parentElement.title = modeTitle;
         this.elements.modeToggle.setAttribute('aria-label', ariaLabel);
-        this.elements.modeToggle.setAttribute('aria-pressed', 'true');
         
         // Disable toggle if WebGPU not available
         if (!this.webGPUAvailable) {
-            this.elements.modeToggle.textContent = '📝 Simple Mode: ON';
             this.elements.modeToggle.disabled = true;
-            this.elements.modeToggle.title = 'WebGPU not available - Simple mode only';
-            this.elements.modeToggle.setAttribute('aria-label', 'Chat mode set to Simple mode only. WebGPU not available.');
-            this.elements.modeToggle.setAttribute('aria-disabled', 'true');
+            this.elements.modeToggle.checked = true; // CPU mode
+            this.elements.modeToggle.setAttribute('aria-checked', 'true');
+            this.elements.modeToggleText.textContent = 'CPU';
+            this.elements.modeToggle.parentElement.parentElement.title = 'WebGPU not available - CPU mode only. Click for more info.';
+            this.elements.modeToggle.setAttribute('aria-label', 'Engine mode set to CPU only. WebGPU not available. Press for more information.');
+            
+            // Make the label clickable to show info modal
+            const label = this.elements.modeToggle.parentElement;
+            label.style.cursor = 'pointer';
+            label.tabIndex = 0; // Make focusable for keyboard navigation
+            
+            label.onclick = (e) => {
+                if (this.elements.modeToggle.disabled) {
+                    e.preventDefault();
+                    this.lastFocusedElement = document.activeElement;
+                    this.showAiModeModal();
+                }
+            };
+            
+            // Add keyboard support for info modal when disabled
+            label.onkeydown = (e) => {
+                if (this.elements.modeToggle.disabled && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    this.lastFocusedElement = document.activeElement;
+                    this.showAiModeModal();
+                }
+            };
         }
     }
 
@@ -560,9 +721,13 @@ IMPORTANT: Follow these guidelines when responding:
         messageDiv.className = 'system-message';
         messageDiv.setAttribute('role', 'status');
         messageDiv.setAttribute('aria-live', 'polite');
-        messageDiv.innerHTML = `<p>${message}</p>`;
+        // Sanitize message to prevent XSS
+        const p = document.createElement('p');
+        p.textContent = message;
+        messageDiv.appendChild(p);
         this.elements.chatMessages.appendChild(messageDiv);
         this.scrollToBottom();
+        return messageDiv;
     }
 
     addMessage(role, content, isTyping = false) {
@@ -602,17 +767,6 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
-        // Use simple mode if explicitly enabled or if WebGPU not available
-        if (this.simpleMode || !this.webGPUAvailable) {
-            this.generateSimpleResponse(userMessage, searchResult, usedVoiceInput);
-            return;
-        }
-        
-        // Play random audio if voice input was used
-        if (usedVoiceInput) {
-            this.playRandomResponseAudio();
-        }
-        
         const { context, categories, links } = searchResult;
         
         this.isGenerating = true;
@@ -622,54 +776,22 @@ IMPORTANT: Follow these guidelines when responding:
         // Add empty message that we'll stream into
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        
+        // Show thinking indicator with CPU mode notice if applicable
+        if (this.usingWllama) {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
         
         try {
-            // Build a concise prompt with context
-            let userPrompt = userMessage;
-            if (context) {
-                userPrompt = `${context}\n\nQ: ${userMessage}`;
-            }
-            
-            // Keep only last 3 conversation turns to stay within context limits
-            const recentHistory = this.conversationHistory.slice(-6); // 3 turns = 6 messages
-            
-            // Add to conversation history
-            recentHistory.push({
-                role: 'user',
-                content: userPrompt
-            });
-            
-            // Generate response with streaming
-            const messages = [
-                { role: 'system', content: this.systemPrompt },
-                ...recentHistory
-            ];
-            
-            const completion = await this.engine.chat.completions.create({
-                messages: messages,
-                temperature: 0.7,
-                max_tokens: 500,
-                stream: true // Enable streaming
-            });
-            
-            this.currentStream = completion;
+            // Route to the appropriate engine
             let assistantMessage = '';
             
-            // Stream the response
-            for await (const chunk of completion) {
-                if (this.stopRequested) {
-                    console.log('Generation stopped by user');
-                    break;
-                }
-                
-                const delta = chunk.choices[0]?.delta?.content;
-                if (delta) {
-                    assistantMessage += delta;
-                    // Update the message as we receive chunks
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
-                }
+            if (this.usingWllama) {
+                assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
+            } else {
+                assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
             
             // Add learn more links
@@ -696,20 +818,24 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage = originalMessage;
             }
             
-            // Add to full conversation history (keep complete history)
-            this.conversationHistory.push({
-                role: 'user',
-                content: userMessage // Store original question, not the one with context
-            });
-            this.conversationHistory.push({
-                role: 'assistant',
-                content: assistantMessage
-            });
+            // Only add to conversation history if not stopped (to prevent corruption)
+            if (!this.stopRequested && assistantMessage.trim()) {
+                this.conversationHistory.push({
+                    role: 'user',
+                    content: userMessage // Store original question, not the one with context
+                });
+                this.conversationHistory.push({
+                    role: 'assistant',
+                    content: assistantMessage
+                });
+            } else if (this.stopRequested) {
+                console.log('Stopped response not added to conversation history to prevent corruption');
+            }
             
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
-            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again or switch to Simple mode.');
+            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -721,6 +847,173 @@ IMPORTANT: Follow these guidelines when responding:
                 this.elements.searchStatus.textContent = '';
             }, 2000);
         }
+    }
+
+    async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+        let userPrompt = userMessage;
+        if (context) {
+            userPrompt = `${context}\n\nQ: ${userMessage}`;
+        }
+        
+        const recentHistory = this.conversationHistory.slice(-6);
+        recentHistory.push({
+            role: 'user',
+            content: userPrompt
+        });
+        
+        const messages = [
+            { role: 'system', content: this.systemPrompt },
+            ...recentHistory
+        ];
+        
+        const completion = await this.engine.chat.completions.create({
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 500,
+            stream: true
+        });
+        
+        this.currentStream = completion;
+        let assistantMessage = '';
+        let audioPlayed = false;
+        
+        for await (const chunk of completion) {
+            if (this.stopRequested) {
+                console.log('Generation stopped by user');
+                break;
+            }
+            
+            const delta = chunk.choices[0]?.delta?.content;
+            if (delta) {
+                // Play audio on first chunk if voice input was used
+                if (!audioPlayed && usedVoiceInput) {
+                    this.playRandomResponseAudio();
+                    audioPlayed = true;
+                }
+                
+                assistantMessage += delta;
+                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                this.scrollToBottom();
+            }
+        }
+        
+        return assistantMessage;
+    }
+
+    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+        // Ensure wllama is loaded
+        if (!this.wllama) {
+            throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
+        }
+        
+        // Build ChatML formatted prompt
+        let chatMLPrompt = '<|im_start|>system\n';
+        chatMLPrompt += 'You are Andrew, an AI learning assistant. Answer questions using ONLY the information below.\n\n';
+        chatMLPrompt += 'Rules:\n';
+        chatMLPrompt += '- AI and computing topics only\n';
+        chatMLPrompt += '- One clear paragraph, simple language\n';
+        chatMLPrompt += '- No development steps or instructions\n\n';
+        chatMLPrompt += 'Information:\n';
+        
+        // Add context from index.json if available (truncate to prevent context overflow)
+        if (context) {
+            const maxContextLength = 400;
+            const truncatedContext = context.length > maxContextLength 
+                ? context.substring(0, maxContextLength) + '...' 
+                : context;
+            chatMLPrompt += truncatedContext + '\n';
+        } else {
+            chatMLPrompt += 'No specific information available.\n';
+        }
+        
+        chatMLPrompt += '<|im_end|>\n\n';
+        
+        // Don't include previous conversation history to keep prompt minimal and fast
+        
+        // Add current user message
+        chatMLPrompt += '<|im_start|>user\n';
+        chatMLPrompt += userMessage + '\n';
+        chatMLPrompt += '<|im_end|>\n\n';
+        chatMLPrompt += '<|im_start|>assistant\n';
+        
+        console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
+        
+        let assistantMessage = '';
+        let audioPlayed = false;
+        
+        // Create AbortController for this generation
+        const controller = new AbortController();
+        this.currentAbortController = controller;
+        
+        // Clear KV cache before generation to ensure clean state
+        try {
+            await this.wllama.kvClear();
+            console.log('KV cache cleared before generation');
+        } catch (error) {
+            console.log('KV cache clear failed:', error.message);
+        }
+        
+        // Use streaming with proper abort support
+        try {
+            const completion = await this.wllama.createCompletion(chatMLPrompt, {
+                nPredict: 150,
+                sampling: {
+                    temp: 0.7,
+                    top_k: 40,
+                    top_p: 0.9,
+                    penalty_repeat: 1.1
+                },
+                stopTokens: ['<|im_end|>', '<|im_start|>'],
+                abortSignal: controller.signal,
+                stream: true
+            });
+            
+            this.currentStream = completion;
+            
+            for await (const chunk of completion) {
+                if (chunk.currentText) {
+                    // Play audio on first chunk if voice input was used
+                    if (!audioPlayed && usedVoiceInput) {
+                        this.playRandomResponseAudio();
+                        audioPlayed = true;
+                    }
+                    
+                    assistantMessage = chunk.currentText;
+                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                    this.scrollToBottom();
+                }
+            }
+            
+            // Clear abort controller on successful completion
+            this.currentAbortController = null;
+            
+            // Clear KV cache after successful generation
+            console.log('Clearing KV cache after generation');
+            await this.wllama.kvClear();
+            console.log('KV cache cleared successfully');
+            
+        } catch (error) {
+            // Check if this was an abort (expected when user clicks stop)
+            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+                console.log('Generation aborted by user');
+                // Clear the partial/corrupted state
+                await this.wllama.kvClear();
+                console.log('KV cache cleared after abort');
+            } else {
+                console.log('Wllama generation error:', error.message || 'unknown error');
+                // Clear cache on error too
+                try {
+                    await this.wllama.kvClear();
+                } catch (e) {
+                    console.log('Failed to clear cache after error:', e.message);
+                }
+            }
+            this.currentAbortController = null;
+        }
+        
+        console.log('Wllama response complete, length:', assistantMessage.length);
+        
+        return assistantMessage;
     }
 
     formatResponse(text) {
@@ -804,88 +1097,6 @@ IMPORTANT: Follow these guidelines when responding:
         // Ensure final content is complete
         element.innerHTML = htmlContent;
         this.scrollToBottom();
-    }
-
-    async generateSimpleResponse(userMessage, searchResult, usedVoiceInput = false) {
-        const { context, categories, links, documents } = searchResult || { context: null, categories: [], links: [], documents: [] };
-        
-        // Play random audio if voice input was used
-        if (usedVoiceInput) {
-            this.playRandomResponseAudio();
-        }
-        
-        // If no matches, use the fallback from searchContext (AI Concepts category)
-        if (!documents || documents.length === 0) {
-            let fallbackResponse = "I don't have specific information about that in my knowledge base. Could you try rephrasing your question or asking about a different AI topic?";
-            
-            // If we have fallback content from AI Concepts, use it
-            if (context) {
-                fallbackResponse = context;
-            }
-            
-            // Build HTML response directly
-            let formattedResponse = `<p>${this.escapeHtml(fallbackResponse).replace(/\n/g, '<br>')}</p>`;
-            
-            // Add learn more link if available
-            if (links && links.length > 0 && categories && categories.length > 0) {
-                const linkHtml = links.map((link, index) => {
-                    const categoryName = categories[Math.min(index, categories.length - 1)];
-                    return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
-                }).join(' • ');
-                formattedResponse += `<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;"><p><strong>Learn more:</strong> ${linkHtml}</p>`;
-            }
-            
-            // Add AI mode note
-            formattedResponse += `<p style="font-style: italic; color: #666; font-size: 0.9em; margin-top: 10px;">Note: You're using Simple mode. Switch to <a href="#" class="ai-mode-link" onclick="window.askAndrew.lastFocusedElement = document.activeElement; window.askAndrew.showAiModeModal(); return false;" role="button" tabindex="0">AI mode</a> for more detailed explanations.</p>`;
-            
-            // Add message with typing animation
-            const messageDiv = this.addMessage('assistant', '', true);
-            const messageText = messageDiv.querySelector('.message-text');
-            await this.animateTyping(messageText, formattedResponse);
-            return;
-        }
-        
-        console.log('Simple mode - returning full content for', documents.length, 'documents');
-        
-        // Build response from full document content (no summarization)
-        let response = "";
-        
-        documents.forEach((doc, index) => {
-            response += doc.content;
-            
-            // Add spacing between multiple documents
-            if (index < documents.length - 1) {
-                response += "\n\n";
-            }
-        });
-        
-        // Build the formatted response HTML directly (don't use formatResponse which escapes HTML)
-        let formattedResponse = `<p>${this.escapeHtml(response).replace(/\n/g, '<br>')}</p>`;
-        
-        // Add learn more links
-        if (links && links.length > 0 && categories && categories.length > 0) {
-            const linkHtml = links.map((link, index) => {
-                const categoryName = categories[Math.min(index, categories.length - 1)];
-                return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
-            }).join(' • ');
-            formattedResponse += `<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;"><p><strong>Learn more:</strong> ${linkHtml}</p>`;
-        }
-        
-        // Add note about AI mode
-        formattedResponse += `<p style="font-style: italic; color: #666; font-size: 0.9em; margin-top: 10px;">Note: You're using Simple mode. Switch to <a href="#" class="ai-mode-link" onclick="window.askAndrew.lastFocusedElement = document.activeElement; window.askAndrew.showAiModeModal(); return false;" role="button" tabindex="0">AI mode</a> for more detailed explanations.</p>`;
-        
-        // Add message with typing animation
-        const messageDiv = this.addMessage('assistant', '', true);
-        const messageText = messageDiv.querySelector('.message-text');
-        await this.animateTyping(messageText, formattedResponse);
-        
-        // Update search status
-        if (categories.length > 0) {
-            this.elements.searchStatus.textContent = `🔍 Found in: ${categories.join(', ')}`;
-            setTimeout(() => {
-                this.elements.searchStatus.textContent = '';
-            }, 3000);
-        }
     }
 
     scrollToBottom() {
@@ -975,9 +1186,7 @@ IMPORTANT: Follow these guidelines when responding:
     showAiModeModal() {
         this.elements.aiModeModal.style.display = 'flex';
         this.currentModal = this.elements.aiModeModal;
-        // Announce modal to screen readers
         this.elements.aiModeModal.setAttribute('aria-hidden', 'false');
-        // Set focus to close button
         setTimeout(() => {
             this.elements.modalClose.focus();
             this.setupModalFocusTrap(this.elements.aiModeModal);
@@ -989,7 +1198,6 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.aiModeModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
-        // Restore focus to the element that opened the modal
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();
         } else {

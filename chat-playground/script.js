@@ -21,6 +21,7 @@ class ChatPlayground {
         this.isGenerating = false;
         this.stopRequested = false;
         this.currentStream = null; // Track current streaming completion
+        this.currentAbortController = null; // Track abort controller for wllama
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
@@ -1548,6 +1549,18 @@ class ChatPlayground {
             penalty_repeat: wllamaPenalty
         });
         
+        // Create AbortController for this generation
+        const controller = new AbortController();
+        this.currentAbortController = controller;
+        
+        // Clear KV cache before generation to ensure clean state
+        try {
+            await this.wllama.kvClear();
+            console.log('KV cache cleared before generation');
+        } catch (error) {
+            console.log('KV cache clear failed:', error.message);
+        }
+        
         try {
             const completion = await this.wllama.createCompletion(chatMLPrompt, {
                 nPredict: 300,  // SmolLM2 has 2048 context window
@@ -1559,17 +1572,14 @@ class ChatPlayground {
                     penalty_repeat: wllamaPenalty,
                     mirostat: 0  // Disable mirostat to ensure temperature is used
                 },
+                stopTokens: ['<|im_end|>', '<|im_start|>'],
+                abortSignal: controller.signal,
                 stream: true
             });
             
             this.currentStream = completion;
             
             for await (const chunk of completion) {
-                if (!this.isGenerating || this.stopRequested) {
-                    console.log('Generation stopped by user');
-                    break;
-                }
-                
                 if (chunk.currentText) {
                     fullResponse = chunk.currentText;
                     contentEl.textContent = fullResponse;
@@ -1577,11 +1587,13 @@ class ChatPlayground {
                 }
             }
             
-            // If generation was stopped, clear KV cache to remove partial generation state
-            if (this.stopRequested) {
-                console.log('Clearing KV cache after stopped generation');
-                await this.wllama.kvClear();
-            }
+            // Clear abort controller on successful completion
+            this.currentAbortController = null;
+            
+            // Clear KV cache after successful generation
+            console.log('Clearing KV cache after generation');
+            await this.wllama.kvClear();
+            console.log('KV cache cleared successfully');
             
             // Always add to conversation history to maintain context
             // BUT: Do NOT add stopped responses to history (they're incomplete/corrupted)
@@ -1618,8 +1630,34 @@ class ChatPlayground {
             }
             
         } catch (error) {
-            console.error('Error in wllama generation:', error);
-            contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+            // Check if this was an abort (expected when user clicks stop)
+            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+                console.log('Generation aborted by user');
+                // Clear the partial/corrupted state
+                await this.wllama.kvClear();
+                console.log('KV cache cleared after abort');
+                
+                // Display stopped response but don't add to history
+                if (fullResponse.trim()) {
+                    let displayResponse = fullResponse;
+                    if (this.config.fileUpload.fileName) {
+                        displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                    }
+                    displayResponse += '\n\n[Response stopped by user - not saved to history]';
+                    contentEl.textContent = displayResponse;
+                    console.log('Stopped response not added to conversation history to prevent corruption');
+                }
+            } else {
+                console.error('Error in wllama generation:', error);
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                // Clear cache on error too
+                try {
+                    await this.wllama.kvClear();
+                } catch (e) {
+                    console.log('Failed to clear cache after error:', e.message);
+                }
+            }
+            this.currentAbortController = null;
         }
     }
 
@@ -1812,6 +1850,13 @@ class ChatPlayground {
         // Stop typing animation
         if (this.typingState) {
             this.typingState.isTyping = false;
+        }
+        
+        // Abort wllama generation properly using AbortController
+        if (this.currentAbortController) {
+            console.log('Aborting wllama generation via AbortController');
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
         }
         
         // Clear current stream reference

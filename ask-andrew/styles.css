@@ -179,9 +179,10 @@ header h1 {
 .header-buttons {
     display: flex;
     gap: 10px;
+    align-items: center;
 }
 
-.restart-btn, .mode-toggle-btn, .about-btn {
+.restart-btn, .about-btn {
     background: rgba(255,255,255,0.2);
     color: white;
     border: 1px solid rgba(255,255,255,0.3);
@@ -193,25 +194,94 @@ header h1 {
     font-weight: 500;
 }
 
-.restart-btn:hover, .mode-toggle-btn:hover, .about-btn:hover {
+.restart-btn:hover, .about-btn:hover {
     background: rgba(255,255,255,0.3);
     transform: translateY(-1px);
 }
 
-.restart-btn:focus, .mode-toggle-btn:focus, .about-btn:focus {
+.restart-btn:focus, .about-btn:focus {
     outline: 3px solid #fff;
     outline-offset: 2px;
     background: rgba(255,255,255,0.3);
 }
 
-.mode-toggle-btn:disabled {
+/* Mode Toggle Switch */
+.mode-toggle-container {
+    display: flex;
+    align-items: center;
+}
+
+.mode-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.toggle-icon {
+    font-size: 1.2em;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+}
+
+.mode-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.mode-toggle-slider {
+    position: relative;
+    width: 50px;
+    height: 26px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 13px;
+    border: 2px solid rgba(255,255,255,0.5);
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.mode-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: linear-gradient(145deg, #4CAF50, #45a049);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.mode-toggle-input:checked + .mode-toggle-slider {
+    background: rgba(255,255,255,0.4);
+}
+
+.mode-toggle-input:checked + .mode-toggle-slider::before {
+    transform: translateX(24px);
+    background: linear-gradient(145deg, #FF9800, #F57C00);
+}
+
+.mode-toggle-input:focus + .mode-toggle-slider {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+}
+
+.mode-toggle-input:disabled + .mode-toggle-slider {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.mode-toggle-btn:disabled:hover {
-    transform: none;
-    background: rgba(255,255,255,0.2);
+.mode-toggle-text {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    min-width: 35px;
+    text-align: left;
 }
 
 .chat-description {
@@ -834,9 +904,13 @@ footer {
         gap: 6px;
     }
 
-    .restart-btn, .mode-toggle-btn, .about-btn {
+    .restart-btn, .about-btn {
         padding: 6px 12px;
         font-size: 0.85em;
+    }
+    
+    .mode-toggle-container {
+        order: -1; /* Show toggle first on mobile */
     }
 
     .avatar {
