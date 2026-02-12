@@ -31,7 +31,7 @@
                             <select id="model-select" disabled aria-describedby="model-select-desc">
                                 <option value="">Loading models...</option>
                             </select>
-                            <button class="parameters-btn" id="parameters-btn" title="Parameters" onclick="openParametersModal()" aria-label="Open parameters settings" tabindex="0">&#128880;</button>
+                            <button class="parameters-btn" id="parameters-btn" title="Parameters" aria-label="Open parameters settings" tabindex="0">&#128880;</button>
                         </div>
                         <div id="model-select-desc" class="sr-only">Select an AI model to chat with</div>
                         
@@ -107,7 +107,7 @@
                     <h3>Chat</h3>
                     <div class="chat-controls">
                         <button class="icon-btn" title="New chat" aria-label="Start new chat" tabindex="0">&#128172;</button>
-                        <button class="icon-btn help-btn" title="About this app" onclick="openAboutModal()" aria-label="About this app" tabindex="0">?</button>
+                        <button class="icon-btn help-btn" title="About this app" aria-label="About this app" tabindex="0">?</button>
                     </div>
                 </div>
                 
@@ -213,7 +213,7 @@
                     
                     <p>This app is designed as a learning aid for anyone seeking to become familiar with Generative AI apps and agents. It's based on the user interface in Microsoft Foundry portal, but does not use any Azure cloud services.</p>
                     
-                    <p>The language model used by the app is the <strong>Microsoft Phi 3</strong> mini SLM, hosted in the WebLLM module. WebLLM requires a modern browser that supports the WebGPU API, and an integrated or dedicated GPU on the computer. If WebLLM fails to load, the app is designed to fallback to a simpler mode in which it used Wikipedia as a knowledge source instead of a generative AI model. In this mode, responses may be less relevant and some functionality may not be available.</p>
+                    <p>The app uses AI language models for both GPU and CPU modes. For GPU mode, it uses Microsoft's <strong>Phi-3-mini</strong> via WebLLM (requires WebGPU API and GPU). For CPU mode, it uses <strong>SmolLM2</strong> via wllama/WebAssembly (works on any device). If WebLLM fails to load, the app automatically falls back to CPU mode. You can switch between modes using the Model dropdown.</p>
                     
                     <p>The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement image classification.</p>
                     
@@ -221,7 +221,7 @@
                     <ul>
                         <li>The initial download of the Microsoft Phi model may take a few minutes - particularly on low-bandwidth connections. Subsequent downloads should be quicker.</li>
                         <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished!</li>
-                        <li>Older computers with slower processors and low amounts of memory may struggle to use WebLLM. You can switch the model to "None" to use the Wikipedia-based fallback option.</li>
+                        <li>CPU mode (SmolLM2) response times are slower than GPU mode (Phi-3-mini). SmolLM2 is a smaller 360M parameter model optimized for browser performance. Use the Model dropdown to select your preferred mode.</li>
                     </ul>
                 </div>
             </div>
@@ -231,6 +231,6 @@
         </div>
     </div>
     
-    <script type="module" src="script.js"></script>
+    <script type="module" src="script.js?v=47"></script>
 </body>
 </html>

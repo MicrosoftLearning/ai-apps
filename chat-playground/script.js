@@ -1,4 +1,5 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -11,15 +12,18 @@ class ChatPlayground {
     constructor() {
         // Core state
         this.engine = null;
+        this.wllama = null; // wllama engine for CPU mode
+        this.usingWllama = false; // Track which engine is active
+        this.wllamaLoaded = false; // Track if wllama is initialized
         this.isModelLoaded = false;
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
         this.isGenerating = false;
         this.stopRequested = false;
+        this.currentStream = null; // Track current streaming completion
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
-        this.wikipediaRequestCount = 0; // Track Wikipedia requests in fallback mode
 
         // Configuration objects
         this.config = {
@@ -159,6 +163,59 @@ class ChatPlayground {
 
     set modelParameters(value) {
         this.config.modelParameters = value;
+    }
+    
+    // Get model-specific default parameters
+    getModelDefaults() {
+        if (this.usingWllama) {
+            // SmolLM2 (CPU mode) - Lower temperature for consistency
+            return {
+                temperature: 0.3,
+                top_p: 0.7,
+                max_tokens: 1000,
+                repetition_penalty: 1.1
+            };
+        } else {
+            // Phi-3 (GPU mode) - Standard defaults
+            return {
+                temperature: 0.7,
+                top_p: 0.9,
+                max_tokens: 1000,
+                repetition_penalty: 1.1
+            };
+        }
+    }
+    
+    // Update UI sliders to reflect current parameter values
+    updateParameterUI() {
+        const params = this.config.modelParameters;
+        const updates = [
+            { slider: 'temperature-slider', value: 'temperature-value', param: 'temperature' },
+            { slider: 'top-p-slider', value: 'top-p-value', param: 'top_p' },
+            { slider: 'max-tokens-slider', value: 'max-tokens-value', param: 'max_tokens' },
+            { slider: 'repetition-penalty-slider', value: 'repetition-penalty-value', param: 'repetition_penalty' }
+        ];
+        
+        updates.forEach(({ slider, value, param }) => {
+            const sliderEl = document.getElementById(slider);
+            const valueEl = document.getElementById(value);
+            if (sliderEl && valueEl) {
+                sliderEl.value = params[param];
+                valueEl.textContent = params[param];
+                sliderEl.setAttribute('aria-valuetext', params[param].toString());
+            }
+            
+            // Also update modal sliders if they exist
+            const modalSlider = 'modal-' + slider;
+            const modalValue = 'modal-' + value;
+            const modalSliderEl = document.getElementById(modalSlider);
+            const modalValueEl = document.getElementById(modalValue);
+            if (modalSliderEl && modalValueEl) {
+                modalSliderEl.value = params[param];
+                modalValueEl.textContent = params[param];
+                modalSliderEl.setAttribute('aria-valuetext', params[param].toString());
+            }
+        });
     }
 
     // Utility functions to reduce code duplication
@@ -383,18 +440,9 @@ class ChatPlayground {
     }
     
     getEffectiveSystemMessage() {
-        let systemMessage = this.currentSystemMessage;
-        
-        // Remove any existing file upload content to avoid duplication
-        const fileDataPattern = /\n\n---\nUse this data to answer questions:\n.*?(?=$)/s;
-        systemMessage = systemMessage.replace(fileDataPattern, '');
-        
-        // Append uploaded file content if available
-        if (this.config.fileUpload.content) {
-            systemMessage += '\n\n---\nUse this data to answer questions:\n' + this.config.fileUpload.content;
-        }
-        
-        return systemMessage;
+        // Return system message without file upload content
+        // File content will be appended to user messages instead
+        return this.currentSystemMessage;
     }
 
     updateConversationHistoryWithCurrentSystemMessage() {
@@ -693,6 +741,17 @@ class ChatPlayground {
             });
         });
         
+        // Add keyboard support for icon buttons
+        const iconButtons = document.querySelectorAll('.icon-btn');
+        iconButtons.forEach(button => {
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    button.click();
+                }
+            });
+        });
+        
         // Dynamic system message update
         this.systemMessage.addEventListener('input', () => {
             this.currentSystemMessage = this.systemMessage.value;
@@ -709,102 +768,193 @@ class ChatPlayground {
             this.userInput.style.height = Math.min(this.userInput.scrollHeight, 120) + 'px';
         });
         
-        // Clear chat button
-        document.querySelector('.chat-controls .icon-btn').addEventListener('click', () => {
-            this.clearChat();
-        });
+        // Clear chat button (New Chat icon in header)
+        const newChatBtn = document.querySelector('.chat-controls .icon-btn:not(.help-btn)');
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', async () => {
+                await this.clearChat();
+            });
+        }
+        
+        // Help/About button
+        const helpBtn = document.querySelector('.chat-controls .help-btn');
+        if (helpBtn) {
+            helpBtn.addEventListener('click', () => {
+                window.openAboutModal();
+            });
+        }
+        
+        // Parameters button
+        const parametersBtn = document.getElementById('parameters-btn');
+        if (parametersBtn) {
+            parametersBtn.addEventListener('click', () => {
+                window.openParametersModal();
+            });
+        }
+        
+        // Model selection change
+        this.modelSelect.addEventListener('change', () => this.handleModelChange());
     }
     
     async initializeModel() {
         try {
-            console.log('initializeModel called - starting model initialization');
-            this.updateProgress(0, 'Discovering available models...');
-            console.log('Starting WebLLM initialization...');
-            console.log('WebLLM object:', webllm);
-            console.log('WebLLM.CreateMLCEngine:', typeof webllm?.CreateMLCEngine);
-            console.log('WebLLM.prebuiltAppConfig:', typeof webllm?.prebuiltAppConfig);
+            await this.initializeEngine();
+        } catch (error) {
+            console.error('Failed to initialize AI engine:', error);
+        }
+    }
+    
+    async initializeEngine() {
+        try {
+            console.log('Attempting to initialize WebLLM first...');
+            await this.initializeWebLLM();
+            console.log('WebLLM initialized successfully');
+            this.webllmAvailable = true;
+            this.usingWllama = false;
             
-            // Check if WebLLM is available
-            if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
-                console.error('WebLLM check failed:', {
-                    webllm: !!webllm,
-                    CreateMLCEngine: !!webllm?.CreateMLCEngine,
-                    prebuiltAppConfig: !!webllm?.prebuiltAppConfig
-                });
-                throw new Error('WebLLM not properly loaded');
+            // Set Phi-3 default parameters
+            this.config.modelParameters = this.getModelDefaults();
+            this.updateParameterUI();
+        } catch (error) {
+            console.error('WebLLM initialization failed, loading wllama fallback:', error);
+            this.webllmAvailable = false;
+            
+            try {
+                await this.initializeWllama();
+                console.log('Wllama initialized successfully as fallback');
+                this.usingWllama = true;
+                this.wllamaLoaded = true;
+                
+                // Set SmolLM2 default parameters
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+            } catch (wllamaError) {
+                console.error('Both WebLLM and wllama initialization failed:', wllamaError);
+                this.updateProgress(0, 'AI models unavailable. Please check your internet connection and refresh the page.', true);
+                setTimeout(() => {
+                    this.enableUI();
+                }, 2000);
             }
-            
-            // Get available models from WebLLM
-            const models = webllm.prebuiltAppConfig.model_list;
-            console.log('All available models:', models.map(m => m.model_id));
-            
-            // Filter for the specific Phi-3 model only
-            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-            let availableModels = models.filter(model => 
-                model.model_id === targetModelId
-            );
-            
-            if (availableModels.length === 0) {
-                throw new Error('Phi-3-mini-4k-instruct model not found');
-            }
-            
-            console.log('Available models for loading:', availableModels.map(m => m.model_id));
-            
-            this.updateProgress(10, 'Loading model...');
-            
-            // Try to load the first available model
-            let engineCreated = false;
-            
-            for (const model of availableModels) {
-                try {
-                    console.log(`Trying to load model: ${model.model_id}`);
-                    this.updateProgress(15, `Loading ${model.model_id}...`);
-                    
-                    this.engine = await webllm.CreateMLCEngine(
-                        model.model_id,
-                        {
-                            initProgressCallback: (progress) => {
-                                console.log('Progress:', progress);
-                                const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-                                this.updateProgress(percentage, `Loading ${model.model_id}: ${Math.round(progress.progress * 100)}%`);
-                            }
+        }
+    }
+    
+    async initializeWebLLM() {
+        console.log('initializeWebLLM called - starting model initialization');
+        this.updateProgress(0, 'Discovering available models...');
+        console.log('Starting WebLLM initialization...');
+        console.log('WebLLM object:', webllm);
+        console.log('WebLLM.CreateMLCEngine:', typeof webllm?.CreateMLCEngine);
+        console.log('WebLLM.prebuiltAppConfig:', typeof webllm?.prebuiltAppConfig);
+        
+        // Check if WebLLM is available
+        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+            console.error('WebLLM check failed:', {
+                webllm: !!webllm,
+                CreateMLCEngine: !!webllm?.CreateMLCEngine,
+                prebuiltAppConfig: !!webllm?.prebuiltAppConfig
+            });
+            throw new Error('WebLLM not properly loaded');
+        }
+        
+        // Get available models from WebLLM
+        const models = webllm.prebuiltAppConfig.model_list;
+        console.log('All available models:', models.map(m => m.model_id));
+        
+        // Filter for the specific Phi-3 model only
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+        let availableModels = models.filter(model => 
+            model.model_id === targetModelId
+        );
+        
+        if (availableModels.length === 0) {
+            throw new Error('Phi-3-mini-4k-instruct model not found');
+        }
+        
+        console.log('Available models for loading:', availableModels.map(m => m.model_id));
+        
+        this.updateProgress(10, 'Loading WebLLM model (GPU mode)...');
+        
+        // Try to load the first available model
+        let engineCreated = false;
+        
+        for (const model of availableModels) {
+            try {
+                console.log(`Trying to load model: ${model.model_id}`);
+                this.updateProgress(15, `Loading ${model.model_id}...`);
+                
+                this.engine = await webllm.CreateMLCEngine(
+                    model.model_id,
+                    {
+                        initProgressCallback: (progress) => {
+                            console.log('Progress:', progress);
+                            const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
+                            this.updateProgress(percentage, `Loading ${model.model_id}: ${Math.round(progress.progress * 100)}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
                         }
-                    );
-                    
-                    console.log(`Successfully loaded model: ${model.model_id}`);
-                    this.currentModelId = model.model_id;
-                    engineCreated = true;
-                    break;
-                    
-                } catch (modelError) {
-                    console.error(`Failed to load ${model.model_id}:`, modelError);
-                    continue;
+                    }
+                );
+                
+                console.log(`Successfully loaded model: ${model.model_id}`);
+                this.currentModelId = model.model_id;
+                engineCreated = true;
+                break;
+                
+            } catch (modelError) {
+                console.error(`Failed to load ${model.model_id}:`, modelError);
+                continue;
+            }
+        }
+        
+        if (!engineCreated) {
+            throw new Error('Failed to load any available models. Please check your internet connection and try again.');
+        }
+        
+        console.log('WebLLM engine created successfully');
+        this.updateProgress(100, 'Model ready! (GPU mode)');
+        setTimeout(() => {
+            this.progressContainer.style.display = 'none';
+            this.enableUI();
+        }, 1000);
+    }
+    
+    async initializeWllama(progressCallback) {
+        console.log('Initializing wllama...');
+        
+        const updateProgress = progressCallback || ((loaded, total) => {
+            const percentage = Math.round((loaded / total) * 100);
+            this.updateProgress(percentage, `Loading wllama model (CPU mode): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+        });
+        
+        updateProgress(0, 100);
+        
+        // Configure WASM paths for CDN
+        const CONFIG_PATHS = {
+            'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
+            'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+        };
+        
+        // Initialize wllama with CDN-hosted WASM files
+        this.wllama = new Wllama(CONFIG_PATHS);
+        
+        // Load SmolLM2 model from HuggingFace
+        await this.wllama.loadModelFromHF(
+            'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+            'smollm2-360m-instruct-q8_0.gguf',
+            {
+                n_ctx: 2048,
+                n_threads: navigator.hardwareConcurrency || 4,
+                progressCallback: ({ loaded, total }) => {
+                    updateProgress(loaded, total);
                 }
             }
-            
-            if (!engineCreated) {
-                throw new Error('Failed to load any available models. Please check your internet connection and try again.');
-            }
-            
-            console.log('WebLLM engine created successfully');
-            this.webllmAvailable = true; // Mark WebLLM as successfully loaded
-            this.updateProgress(100, 'Model ready!');
-            setTimeout(() => {
-                this.progressContainer.style.display = 'none';
-                this.enableUI();
-            }, 1000);
-            
-        } catch (error) {
-            console.error('Failed to initialize WebLLM:', error);
-            this.webllmAvailable = false; // Mark WebLLM as unavailable
-            this.updateProgress(0, `Error: ${error.message}`);
-            
-            // Enable UI for Wikipedia fallback mode
-            setTimeout(() => {
-                this.updateProgress(0, 'AI model unavailable. Using Wikipedia search fallback mode - <a href="#" onclick="openAboutModal(); return false;" style="color: #0078d4; text-decoration: underline; cursor: pointer;">More info...</a>', true);
-                this.enableUI();
-            }, 2000);
-        }
+        );
+        
+        console.log('Wllama initialized successfully');
+        this.wllamaLoaded = true;
+        this.updateProgress(100, 'CPU model ready!');
+        setTimeout(() => {
+            this.progressContainer.style.display = 'none';
+            this.enableUI();
+        }, 1000);
     }
     
     updateProgress(percentage, text, useHTML = false) {
@@ -822,79 +972,140 @@ class ChatPlayground {
         this.systemMessage.disabled = false;
         this.userInput.disabled = false;
         this.sendBtn.disabled = false;
+        this.updateAttachButtonState(); // Update attach button based on vision settings
         this.userInput.focus();
         
         // Populate model dropdown with available models
         this.populateModelDropdown();
         
         // Set parameter controls based on whether WebLLM is available
-        this.setParameterControlsEnabled(this.webllmAvailable);
+        this.setParameterControlsEnabled(this.webllmAvailable || this.wllamaLoaded);
+    }
+    
+    disableUI() {
+        this.isModelLoaded = false;
+        this.systemMessage.disabled = true;
+        this.userInput.disabled = true;
+        this.sendBtn.disabled = true;
+        this.attachBtn.disabled = true;
+    }
+    
+    async handleModelChange() {
+        const selectedValue = this.modelSelect.value;
+        
+        if (this.isGenerating) {
+            console.log('Cannot switch models while generating');
+            // Reset to current model
+            this.populateModelDropdown();
+            return;
+        }
+        
+        // Determine if we're actually switching models
+        const previousMode = this.usingWllama;
+        const newModeIsWllama = selectedValue === 'phi3-cpu';
+        
+        if (selectedValue === 'phi3-gpu') {
+            if (!this.webllmAvailable) {
+                alert('Phi-3 (GPU) is not available. WebGPU is not supported on this device.');
+                this.populateModelDropdown(); // Reset selection
+                return;
+            }
+            
+            // Clear wllama KV cache if switching from CPU mode
+            if (previousMode && this.wllama) {
+                await this.wllama.kvClear();
+                console.log('Cleared wllama KV cache when switching to GPU mode');
+            }
+            
+            this.usingWllama = false;
+            
+            // Apply Phi-3 default parameters
+            this.config.modelParameters = this.getModelDefaults();
+            this.updateParameterUI();
+            
+            // Clear chat and restart conversation
+            if (previousMode !== this.usingWllama) {
+                await this.clearChat();
+                this.showToast('Switched to Phi-3 (GPU) - Conversation restarted');
+            }
+            
+            console.log('Switched to Phi-3 (GPU) mode');
+        } else if (selectedValue === 'phi3-cpu') {
+            // Keep WebLLM engine loaded (it uses GPU memory, wllama uses system RAM)
+            // If wllama not loaded yet, load it
+            if (!this.wllamaLoaded) {
+                console.log('Loading wllama for the first time...');
+                
+                // Disable UI during model loading
+                this.disableUI();
+                
+                // Show progress
+                this.progressContainer.style.display = 'block';
+                
+                try {
+                    await this.initializeWllama((loaded, total) => {
+                        const percentage = Math.round((loaded / total) * 100);
+                        this.updateProgress(percentage, `Loading SmolLM2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+                    });
+                    
+                    this.usingWllama = true;
+                    
+                    // Apply SmolLM2 default parameters
+                    this.config.modelParameters = this.getModelDefaults();
+                    this.updateParameterUI();
+                    
+                    // Clear chat and restart conversation
+                    await this.clearChat();
+                    this.showToast('Switched to SmolLM2 (CPU) - Conversation restarted');
+                    
+                    console.log('Switched to SmolLM2 (CPU) mode');
+                } catch (error) {
+                    console.error('Failed to load wllama:', error);
+                    this.populateModelDropdown(); // Reset to previous selection
+                    alert('Failed to load SmolLM2 (CPU). Please try again.');
+                    // Re-enable UI even on error
+                    this.enableUI();
+                }
+            } else {
+                this.usingWllama = true;
+                
+                // Apply SmolLM2 default parameters
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+                
+                // Clear chat and restart conversation
+                if (previousMode !== this.usingWllama) {
+                    await this.clearChat();
+                    this.showToast('Switched to SmolLM2 (CPU) - Conversation restarted');
+                }
+                
+                console.log('Switched to SmolLM2 (CPU) mode');
+            }
+        }
     }
     
     populateModelDropdown() {
         // Clear existing options
         this.modelSelect.innerHTML = '';
         
-        // Add "None" option for fallback mode
-        const noneOption = document.createElement('option');
-        noneOption.value = 'none';
-        noneOption.textContent = 'None';
-        if (!this.webllmAvailable || !this.currentModelId) {
-            noneOption.selected = true;
+        // Add Phi-3 (GPU) option
+        const phiOption = document.createElement('option');
+        phiOption.value = 'phi3-gpu';
+        phiOption.textContent = 'Phi-3-mini (GPU)';
+        phiOption.disabled = !this.webllmAvailable;
+        if (this.webllmAvailable && !this.usingWllama) {
+            phiOption.selected = true;
         }
-        this.modelSelect.appendChild(noneOption);
+        this.modelSelect.appendChild(phiOption);
         
-        if (!webllm || !webllm.prebuiltAppConfig) {
-            return;
+        // Add SmolLM2 (CPU) option
+        const cpuOption = document.createElement('option');
+        cpuOption.value = 'phi3-cpu';
+        cpuOption.textContent = 'SmolLM2 (CPU)';
+        if (this.usingWllama || !this.webllmAvailable) {
+            cpuOption.selected = true;
         }
-        
-        // Get all available models
-        const allModels = webllm.prebuiltAppConfig.model_list;
-        
-        // Filter for the specific Phi-3 model only
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-        const phiModel = allModels.find(model => model.model_id === targetModelId);
-        
-        if (phiModel) {
-            const option = document.createElement('option');
-            option.value = phiModel.model_id;
-            option.textContent = 'Microsoft Phi-3-mini-4k-instruct';
-            
-            // Mark current model as selected
-            if (phiModel.model_id === this.currentModelId) {
-                option.selected = true;
-                //option.textContent += ' (Current)';
-            }
-            
-            this.modelSelect.appendChild(option);
-        }
-        
-        // Setup event listener only once (on first call)
-        if (!this.modelSelectListenerAttached) {
-            this.modelSelect.addEventListener('change', (e) => {
-                if (e.target.value === 'none') {
-                    // Switch to fallback mode
-                    this.webllmAvailable = false;
-                    this.currentModelId = null;
-                    this.clearChat();
-                    this.setParameterControlsEnabled(false);
-                    this.showToast('Switched to fallback mode - Conversation restarted');
-                } else if (e.target.value && e.target.value !== this.currentModelId) {
-                    this.switchModel(e.target.value);
-                }
-            });
-            this.modelSelectListenerAttached = true;
-        }
-    }
-    
-    formatModelName(modelId) {
-        // Simple formatter for our single Phi-3 model
-        if (modelId === 'Phi-3-mini-4k-instruct-q4f16_1-MLC') {
-            return 'Microsoft Phi-3-mini-4k-instruct';
-        }
-        
-        // Fallback for any unexpected model ID
-        return modelId;
+        this.modelSelect.appendChild(cpuOption);
     }
 
     setParameterControlsEnabled(enabled) {
@@ -919,73 +1130,51 @@ class ChatPlayground {
 
 
     
-    async switchModel(newModelId) {
-        if (this.isGenerating) {
-            alert('Please wait for the current response to complete before switching models.');
-            this.modelSelect.value = this.currentModelId;
-            return;
-        }
+    // Extract keywords from text (excluding common stopwords)
+    extractKeywords(text) {
+        const stopwords = new Set([
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+            'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
+            'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'how',
+            'do', 'does', 'did', 'can', 'could', 'would', 'should', 'may', 'might',
+            'this', 'these', 'those', 'i', 'you', 'we', 'they', 'my', 'your',
+            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their'
+        ]);
         
-        try {
-            // Show progress
-            this.progressContainer.style.display = 'block';
-            this.updateProgress(0, `Switching to ${this.formatModelName(newModelId)}...`);
-            
-            // Disable UI
-            this.modelSelect.disabled = true;
-            this.userInput.disabled = true;
-            this.sendBtn.disabled = true;
-            
-            console.log(`Switching to model: ${newModelId}`);
-            
-            // Create new engine with selected model
-            this.engine = await webllm.CreateMLCEngine(
-                newModelId,
-                {
-                    initProgressCallback: (progress) => {
-                        console.log('Switch progress:', progress);
-                        const percentage = Math.round(progress.progress * 100);
-                        this.updateProgress(percentage, `Loading ${this.formatModelName(newModelId)}: ${percentage}%`);
-                    }
-                }
-            );
-            
-            this.currentModelId = newModelId;
-            this.webllmAvailable = true; // Mark WebLLM as available when switching to a real model
-            console.log(`Successfully switched to model: ${newModelId}`);
-            
-            // Clear conversation history when switching models
-            this.clearChat();
-            
-            // Re-enable parameter controls when switching to a real model
-            this.setParameterControlsEnabled(true);
-            
-            this.updateProgress(100, 'Model switched successfully!');
-            setTimeout(() => {
-                this.progressContainer.style.display = 'none';
-                this.enableUI();
-                this.showToast(`Switched to ${this.formatModelName(newModelId)} - Conversation restarted`);
-            }, 1000);
-            
-        } catch (error) {
-            console.error(`Failed to switch to model ${newModelId}:`, error);
-            this.updateProgress(0, `Failed to switch model: ${error.message}`);
-            
-            // Revert dropdown selection
-            this.modelSelect.value = this.currentModelId;
-            
-            setTimeout(() => {
-                this.progressContainer.style.display = 'none';
-                this.enableUI();
-                alert(`Failed to switch to ${this.formatModelName(newModelId)}. Please try a different model.`);
-            }, 3000);
-        }
+        // Extract words, convert to lowercase, filter stopwords and short words
+        const words = text.toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter(word => word.length > 2 && !stopwords.has(word));
+        
+        // Return unique keywords
+        return [...new Set(words)];
     }
     
+    // Extract relevant lines from file content based on keywords
+    extractRelevantLines(fileContent, keywords) {
+        if (!fileContent || !keywords || keywords.length === 0) {
+            return '';
+        }
+        
+        const lines = fileContent.split('\n');
+        const matchingLines = [];
+        
+        for (const line of lines) {
+            const lineLower = line.toLowerCase();
+            // Check if line contains any keyword
+            if (keywords.some(keyword => lineLower.includes(keyword))) {
+                matchingLines.push(line.trim());
+            }
+        }
+        
+        return matchingLines.length > 0 ? matchingLines.join('\n') : '';
+    }
+
     async handleSendMessage() {
         // If already generating, stop instead of sending
         if (this.isGenerating) {
-            this.stopGeneration();
+            await this.stopGeneration();
             return;
         }
         
@@ -1001,21 +1190,12 @@ class ChatPlayground {
         // Process pending image if exists
         let imageAnalysis = '';
         let imageElement = null;
-        let imagePredictionForWiki = null; // Store for Wikipedia fallback
         
         if (this.pendingImage) {
             try {
                 // Get image analysis (requires MobileNet to be pre-loaded)
                 const predictions = await this.classifyImage(this.pendingImage.img);
                 imageAnalysis = predictions[0].className.replace(/_/g, ' ')
-                //const formattedPredictions = this.formatPredictions(predictions);
-                //imageAnalysis = `\n---\nAnswer concisely and base your response on the most likely object in this image analysis ${imagePrediction}\nDo not include probability percentages or mention low probability options from the analysis in the response, just indicate what you think the image is based on your interpretation of the analysis and the user's message (${userMessage}) as if you've actually seen the image.`;
-                
-                // Store the top prediction for Wikipedia fallback
-                if (predictions && predictions.length > 0) {
-                    imagePredictionForWiki = predictions[0].className;
-                    console.log('Stored image prediction for Wikipedia fallback:', imagePredictionForWiki);
-                }
                 
                 // Create image element for message bubble
                 imageElement = document.createElement('img');
@@ -1055,58 +1235,6 @@ class ChatPlayground {
         const typingIndicator = this.addTypingIndicator();
         
         try {
-            // Check if WebLLM is available, otherwise use Wikipedia fallback
-            if (!this.webllmAvailable) {
-                // Wikipedia fallback mode
-                console.log('Using Wikipedia fallback mode');
-                
-                // Check Wikipedia request quota
-                if (this.wikipediaRequestCount >= 20) {
-                    // Remove typing indicator
-                    typingIndicator.remove();
-                    
-                    // Add quota exceeded message
-                    const assistantMessageEl = this.addMessage('assistant', 'Quota exceeded. Only 15 requests are permitted.');
-                    
-                    // Add to conversation history
-                    this.conversationHistory.push({ role: "user", content: userMessage });
-                    this.conversationHistory.push({ role: "assistant", content: 'Quota exceeded. Only 15 requests are permitted.' });
-                    
-                    return;
-                }
-                
-                // Increment Wikipedia request counter
-                this.wikipediaRequestCount++;
-                console.log(`Wikipedia request count: ${this.wikipediaRequestCount}/20`);
-                
-                // Remove typing indicator
-                typingIndicator.remove();
-                
-                // Add thinking indicator
-                const thinkingIndicator = this.addThinkingIndicator();
-                
-                // Use the image prediction we stored earlier
-                console.log('Image prediction available for Wikipedia:', imagePredictionForWiki);
-                
-                // Get Wikipedia response with optional image prediction
-                const wikiResponse = await this.handleWikipediaFallback(userMessage, imagePredictionForWiki);
-                
-                // Remove thinking indicator
-                thinkingIndicator.remove();
-                
-                // Create message container and type response
-                const assistantMessageEl = this.addMessage('assistant', '');
-                const contentEl = assistantMessageEl.querySelector('.message-content');
-                await this.typeResponse(contentEl, wikiResponse);
-                
-                // Add to conversation history
-                this.conversationHistory.push({ role: "user", content: userMessage });
-                this.conversationHistory.push({ role: "assistant", content: wikiResponse });
-                
-                return;
-            }
-            
-            // WebLLM mode (original functionality)
             // Update conversation history to reflect current system message
             this.updateConversationHistoryWithCurrentSystemMessage();
             
@@ -1116,15 +1244,31 @@ class ChatPlayground {
             ];
             
             // Add last 10 conversation pairs
-            const recentHistory = this.conversationHistory.slice(-20); // 10 pairs = 20 messages
+            // Remove any previous image classifications from history to avoid confusion
+            const recentHistory = this.conversationHistory.slice(-20).map(msg => {
+                if (msg.role === 'user') {
+                    return {
+                        ...msg,
+                        content: msg.content.replace(/\n\n\[Current image shows:.*?\]$/s, '')
+                    };
+                }
+                return msg;
+            });
             messages.push(...recentHistory);
             
-            // Add reinforcing instruction right before user message to make system message more prominent
-            // This helps override any anchoring from conversation history
-            const reinforcingInstruction = `**IMPORTANT - Follow these instructions strictly: ${this.currentSystemMessage}**\n\nUser message:`;
+            // Add user message with image analysis and file context if available
+            let finalUserMessage = userMessage;
+            if (imageAnalysis) {
+                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
+            }
             
-            // Add user message with image analysis if available
-            const finalUserMessage = reinforcingInstruction + '\n' + userMessage + imageAnalysis;
+            // If file is uploaded, prepend file content to user message
+            if (this.config.fileUpload.content) {
+                // For Phi-3 (WebLLM/GPU mode), use entire file content for best accuracy
+                console.log('Using entire file content for Phi-3 (WebLLM mode) - ' + this.config.fileUpload.content.split('\n').length + ' lines');
+                finalUserMessage = 'Use the following information to answer the question:\n\n' + this.config.fileUpload.content + '\n\nQuestion: ' + userMessage;
+            }
+            
             messages.push({ role: "user", content: finalUserMessage });
             
             // Log the complete prompt being sent to the model
@@ -1146,8 +1290,12 @@ class ChatPlayground {
             // Add thinking indicator with animated dots
             const thinkingIndicator = this.addThinkingIndicator();
             
-            // Always use streaming mode (no TTS)
-            await this.handleStreamingMode(messages, thinkingIndicator, userMessage);
+            // Route to the appropriate engine
+            if (this.usingWllama) {
+                await this.handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis);
+            } else {
+                await this.handleStreamingMode(messages, thinkingIndicator, userMessage);
+            }
             
         } catch (error) {
             console.error('Error generating response:', error);
@@ -1253,6 +1401,226 @@ class ChatPlayground {
         // Add to conversation history (without file attribution, to prevent cumulative citations)
         this.conversationHistory.push({ role: "user", content: userMessage });
         this.conversationHistory.push({ role: "assistant", content: fullResponse });
+    }
+    
+    // Helper function to build ChatML formatted prompt for SmolLM2
+    buildChatMLPrompt(userMessage, imageAnalysis = '', fileContent = '') {
+        let prompt = '';
+        
+        // Get the last turn of conversation history (if exists)
+        let previousUserMessage = '';
+        let previousAssistantResponse = '';
+        
+        if (this.conversationHistory.length >= 2) {
+            // Get the last pair (user message and assistant response)
+            previousAssistantResponse = this.conversationHistory[this.conversationHistory.length - 1].content;
+            previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
+            // Clean any image classification from previous user message
+            previousUserMessage = previousUserMessage.replace(/\n\n\[Current image shows:.*?\]$/s, '');
+        }
+        
+        // Determine which format to use
+        if (imageAnalysis) {
+            // Format for image analysis
+            prompt = '<|im_start|>system\n';
+            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written and answer questions based on the information below.\n\n';
+            prompt += 'Instructions:\n';
+            prompt += this.currentSystemMessage + '\n\n';
+            prompt += 'Information:\n';
+            prompt += 'The user has uploaded an image containing a ' + imageAnalysis + '. Their question relates to this image.\n\n';
+            prompt += 'Acknowledge these rules by answering the user\'s question correctly based on the information above.\n';
+            prompt += '<|im_end|>\n\n';
+            
+            // Add previous user message only (not response) if exists
+            if (previousUserMessage) {
+                prompt += '<|im_start|>user\n' + previousUserMessage + '\n<|im_end|>\n\n';
+            }
+            
+            // Add current user message
+            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>assistant\n';
+            
+        } else if (fileContent) {
+            // Format for file grounding
+            prompt = '<|im_start|>system\n';
+            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written, and answer questions based only on the information provided.\n\n';
+            prompt += 'Instructions:\n';
+            prompt += this.currentSystemMessage + '\n\n';
+            prompt += 'IMPORTANT: You must answer the user\'s specific question concisely, based only on the following information.\n\n';
+            prompt += 'Information:\n';
+            prompt += fileContent + '\n\n';
+            prompt += 'Base your answer on the information above ONLY. Do NOT include any details that are not present in the information above.\n\n';
+            prompt += '<|im_end|>\n\n';
+            
+            // Add current user message
+            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>assistant\n';
+            
+        } else {
+            // Default format (no file grounding, no image)
+            prompt = '<|im_start|>system\n';
+            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
+            prompt += 'Instructions:\n';
+            prompt += this.currentSystemMessage + '\n\n';
+            prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
+            prompt += '<|im_end|>\n\n';
+            
+            // Add previous turn if exists
+            if (previousUserMessage) {
+                prompt += '<|im_start|>user\n' + previousUserMessage + '\n<|im_end|>\n\n';
+                prompt += '<|im_start|>assistant\n' + previousAssistantResponse + '\n<|im_end|>\n\n';
+            }
+            
+            // Add current user message
+            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>assistant\n';
+        }
+        
+        return prompt;
+    }
+    
+    async handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis = '') {
+        // Ensure wllama is loaded
+        if (!this.wllama) {
+            throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
+        }
+        
+        // Keep original userMessage for conversation history (without image classification)
+        const originalUserMessage = userMessage;
+        
+        // Remove thinking indicator before starting to stream
+        thinkingIndicator.remove();
+        
+        // Create message container
+        const assistantMessageEl = this.addMessage('assistant', '');
+        const contentEl = assistantMessageEl.querySelector('.message-content');
+        
+        // Show thinking indicator with CPU mode notice
+        contentEl.innerHTML = '<span class="typing-indicator">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        
+        // Build ChatML formatted prompt
+        let fileContentForPrompt = '';
+        
+        // If file is uploaded, extract relevant lines
+        if (this.config.fileUpload.content) {
+            const keywords = this.extractKeywords(userMessage);
+            console.log('Extracted keywords from user prompt (wllama):', keywords);
+            
+            const relevantLines = this.extractRelevantLines(this.config.fileUpload.content, keywords);
+            
+            if (relevantLines) {
+                console.log('Found relevant lines from file (' + relevantLines.split('\n').length + ' lines)');
+                fileContentForPrompt = relevantLines;
+            } else {
+                console.log('No relevant lines found in file for the given keywords');
+                fileContentForPrompt = this.config.fileUpload.content;
+            }
+        }
+        
+        // Build the ChatML prompt
+        const chatMLPrompt = this.buildChatMLPrompt(userMessage, imageAnalysis, fileContentForPrompt);
+        
+        console.log('=== CHATML PROMPT FOR SMOLLM2 ===');
+        console.log('Conversation history length:', this.conversationHistory.length);
+        console.log('File content included:', !!fileContentForPrompt);
+        console.log('Image analysis included:', !!imageAnalysis);
+        console.log('ChatML prompt:');
+        console.log(chatMLPrompt);
+        console.log('=== END CHATML PROMPT ===');
+        
+        // Use wllama for generation with streaming
+        let fullResponse = '';
+        
+        // Log current model parameters from config
+        console.log('Current model parameters from config:', this.config.modelParameters);
+        
+        // Use parameters from config (set when model is selected)
+        // Clamp temperature for wllama (supports range 0-2, but works best between 0.1-1.5)
+        const wllamaTemp = Math.max(0.1, Math.min(1.5, this.config.modelParameters.temperature));
+        const wllamaTopP = Math.max(0.1, Math.min(1.0, this.config.modelParameters.top_p));
+        const wllamaPenalty = Math.max(1.0, Math.min(2.0, this.config.modelParameters.repetition_penalty));
+        
+        // Log sampling parameters for debugging
+        console.log('SmolLM2 sampling parameters:', {
+            temp: wllamaTemp,
+            top_k: 40,
+            top_p: wllamaTopP,
+            penalty_repeat: wllamaPenalty
+        });
+        
+        try {
+            const completion = await this.wllama.createCompletion(chatMLPrompt, {
+                nPredict: 300,  // SmolLM2 has 2048 context window
+                seed: -1,  // Random seed for variation
+                sampling: {
+                    temp: wllamaTemp,
+                    top_k: 40,
+                    top_p: wllamaTopP,
+                    penalty_repeat: wllamaPenalty,
+                    mirostat: 0  // Disable mirostat to ensure temperature is used
+                },
+                stream: true
+            });
+            
+            this.currentStream = completion;
+            
+            for await (const chunk of completion) {
+                if (!this.isGenerating || this.stopRequested) {
+                    console.log('Generation stopped by user');
+                    break;
+                }
+                
+                if (chunk.currentText) {
+                    fullResponse = chunk.currentText;
+                    contentEl.textContent = fullResponse;
+                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                }
+            }
+            
+            // If generation was stopped, clear KV cache to remove partial generation state
+            if (this.stopRequested) {
+                console.log('Clearing KV cache after stopped generation');
+                await this.wllama.kvClear();
+            }
+            
+            // Always add to conversation history to maintain context
+            // BUT: Do NOT add stopped responses to history (they're incomplete/corrupted)
+            if (fullResponse.trim() && !this.stopRequested) {
+                // Append file attribution if a file is uploaded
+                let displayResponse = fullResponse;
+                if (this.config.fileUpload.fileName) {
+                    displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                }
+                
+                // Add indicator if stopped
+                if (this.stopRequested) {
+                    displayResponse += '\n\n[Response stopped by user]';
+                }
+                
+                contentEl.textContent = displayResponse;
+                
+                // Add to conversation history (without file attribution or stop indicator)
+                // Use original message without image classification to avoid persisting it
+                this.conversationHistory.push({ role: "user", content: originalUserMessage });
+                this.conversationHistory.push({ role: "assistant", content: fullResponse });
+            } else if (this.stopRequested && fullResponse.trim()) {
+                // Response was stopped - display it but don't add to history
+                let displayResponse = fullResponse;
+                if (this.config.fileUpload.fileName) {
+                    displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                }
+                displayResponse += '\n\n[Response stopped by user - not saved to history]';
+                contentEl.textContent = displayResponse;
+                
+                console.log('Stopped response not added to conversation history to prevent corruption');
+            } else {
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+            }
+            
+        } catch (error) {
+            console.error('Error in wllama generation:', error);
+            contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+        }
     }
 
     addThinkingIndicator() {
@@ -1437,7 +1805,7 @@ class ChatPlayground {
         }
     }
     
-    stopGeneration() {
+    async stopGeneration() {
         this.isGenerating = false;
         this.stopRequested = true;
         
@@ -1446,12 +1814,15 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
         
+        // Clear current stream reference
+        this.currentStream = null;
+        
         this.updateUIForGeneration(false);
     }
 
-    restartConversation(reason = 'user-action') {
+    async restartConversation(reason = 'user-action') {
         // Clear the conversation history and reset the chat UI
-        this.clearChat();
+        await this.clearChat();
         
         // Show a message to the user about the restart
         const restartMessage = 'Conversation restarted.';
@@ -1459,7 +1830,7 @@ class ChatPlayground {
         systemMessageEl.classList.add('system-restart-message');
     }
 
-    clearChat() {
+    async clearChat() {
         this.conversationHistory = [];
         this.chatMessages.innerHTML = `
             <div class="welcome-message">
@@ -1467,6 +1838,17 @@ class ChatPlayground {
                 <h3>What do you want to chat about?</h3>
             </div>
         `;
+        
+        // Clear wllama KV cache when resetting chat to start fresh
+        if (this.usingWllama && this.wllama) {
+            try {
+                console.log('Chat reset: Clearing wllama KV cache...');
+                await this.wllama.kvClear();
+                console.log('Chat reset: KV cache cleared - ready for fresh start');
+            } catch (error) {
+                console.error('Error clearing wllama KV cache:', error);
+            }
+        }
     }
     
     // Removed updateTokenCount function - disclaimer is now static
@@ -1498,255 +1880,6 @@ class ChatPlayground {
             setTimeout(() => toast.remove(), 300);
         }, 2000);
     }
-
-    // Wikipedia fallback methods (used when WebLLM is unavailable)
-    async extractKeywords(text) {
-        console.log('Original prompt:', text);
-        
-        // Remove punctuation from the text
-        const textWithoutPunctuation = text.replace(/[.,!?;:'"()[\]{}]/g, ' ');
-        console.log('Text without punctuation:', textWithoutPunctuation);
-        
-        // Tokenize and extract important words
-        const tokens = textWithoutPunctuation.toLowerCase().split(/\s+/);
-        console.log('Tokens:', tokens);
-        
-        // Remove common stop words only
-        const stopWords = new Set([
-            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-            'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-            'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'why',
-            'how', 'can', 'could', 'should', 'would', 'i', 'you', 'me', 'my', 'make',
-            'your', 'about', 'tell', 'give', 'show', 'find', 'get', 'do', 'does'
-        ]);
-
-        // Keep all words that aren't stop words and are longer than 1 character
-        const keywords = tokens.filter(word => 
-            word.length > 1 && !stopWords.has(word)
-        );
-        
-        console.log('Filtered keywords array:', keywords);
-
-        // Return all keywords joined together
-        const keywordString = keywords.join(' ') || text;
-        console.log('Final keyword string for search:', keywordString);
-        
-        return keywordString;
-    }
-
-    async searchWikipedia(keywords) {
-        try {
-            // Search Wikipedia API
-            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*`;
-            const searchResponse = await fetch(searchUrl);
-            const searchData = await searchResponse.json();
-
-            if (!searchData.query || !searchData.query.search || searchData.query.search.length === 0) {
-                return "I couldn't find any relevant information on Wikipedia for your query.";
-            }
-
-            // Get the first result's page ID
-            const firstResult = searchData.query.search[0];
-            const pageId = firstResult.pageid;
-
-            // Fetch the full article content
-            const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=extracts&exintro=true&explaintext=true&format=json&origin=*`;
-            const contentResponse = await fetch(contentUrl);
-            const contentData = await contentResponse.json();
-
-            const pageContent = contentData.query.pages[pageId].extract;
-
-            console.log('Wikipedia page content received:', pageContent.substring(0, 500));
-            console.log('Total content length:', pageContent.length);
-
-            // Get intro section including any lists
-            // Split by double newlines but keep content until we hit a new section
-            const paragraphs = pageContent.split('\n');
-            let introContent = '';
-            let lineCount = 0;
-            const maxLines = 15; // Get more lines to capture lists
-            
-            for (let i = 0; i < paragraphs.length && lineCount < maxLines; i++) {
-                const line = paragraphs[i].trim();
-                if (line.length > 0) {
-                    introContent += (introContent ? '\n' : '') + line;
-                    lineCount++;
-                }
-                // Stop if we hit a section header (usually === or ==)
-                if (line.includes('==') && i > 0) {
-                    break;
-                }
-            }
-            
-            console.log('Intro content extracted:', introContent.substring(0, 500));
-            
-            return introContent;
-
-        } catch (error) {
-            console.error('Wikipedia search error:', error);
-            return "I encountered an error while searching Wikipedia. Please try again.";
-        }
-    }
-
-    async summarizeText(text) {
-        console.log('Summarizing text, length:', text.length);
-        console.log('Text to summarize:', text.substring(0, 300));
-        
-        // Check if system message includes "short" or "concise"
-        const systemMessageLower = this.currentSystemMessage.toLowerCase();
-        if (systemMessageLower.includes('short') || systemMessageLower.includes('concise') || systemMessageLower.includes('summary') || systemMessageLower.includes('summarize')) {
-            // Return only the first sentence
-            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-            return sentences[0].trim() + '\n(Ref: Wikipedia)';
-        }
-        
-        // Since we're already limiting content in searchWikipedia,
-        // just add the reference and return
-        if (text.length < 800) {
-            return text + '\n(Ref: Wikipedia)';
-        }
-
-        // For longer content, check if it has list-like structure
-        const lines = text.split('\n');
-        const hasShortLines = lines.filter(l => l.length > 0 && l.length < 100).length > 3;
-        
-        if (hasShortLines) {
-            // Looks like a list - return first ~600 chars
-            let summary = '';
-            for (const line of lines) {
-                if (summary.length + line.length < 600) {
-                    summary += (summary ? '\n' : '') + line;
-                } else {
-                    break;
-                }
-            }
-            return summary + '\n(Ref: Wikipedia)';
-        }
-
-        // For regular narrative text, return first 2-3 sentences
-        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-        if (sentences.length <= 2) {
-            return text + '\n(Ref: Wikipedia)';
-        }
-
-        const summaryLength = Math.min(3, sentences.length);
-        return sentences.slice(0, summaryLength).join(' ').trim() + '\n(Ref: Wikipedia)';
-    }
-
-    async searchUploadedFile(keywords) {
-        // Search for keywords in uploaded file content
-        if (!this.config.fileUpload.content) {
-            return null;
-        }
-
-        try {
-            // Split keywords into individual words
-            const keywordArray = keywords.toLowerCase().split(/\s+/);
-            console.log('Searching file for keywords:', keywordArray);
-
-            // Split file content into sentences
-            const sentences = this.config.fileUpload.content.match(/[^.!?]+[.!?]+/g) || [];
-            console.log(`Found ${sentences.length} sentences in file`);
-
-            // Find sentences that contain any of the keywords
-            const matchingSentences = sentences.filter(sentence => {
-                const lowerSentence = sentence.toLowerCase();
-                return keywordArray.some(keyword => lowerSentence.includes(keyword));
-            });
-
-            console.log(`Found ${matchingSentences.length} matching sentences`);
-
-            if (matchingSentences.length > 0) {
-                // Return matching sentences with filename attribution
-                const result = matchingSentences.join(' ').trim();
-                return result + `\n(Ref: ${this.config.fileUpload.fileName})`;
-            }
-
-            return null;
-
-        } catch (error) {
-            console.error('Error searching uploaded file:', error);
-            return null;
-        }
-    }
-
-    async handleWikipediaFallback(userMessage, imagePrediction = null) {
-        // This method handles the complete Wikipedia fallback flow
-        try {
-            console.log('=== Wikipedia Fallback Debug ===');
-            console.log('User message:', userMessage);
-            console.log('Image prediction received:', imagePrediction);
-            
-            // Extract keywords from user input
-            let keywords = await this.extractKeywords(userMessage);
-            console.log('Extracted keywords from message:', keywords);
-
-            // Append image prediction to search keywords if available
-            if (imagePrediction) {
-                // Clean up the class name (remove underscores, etc)
-                const cleanedPrediction = imagePrediction.replace(/_/g, ' ');
-                keywords = keywords + ' ' + cleanedPrediction;
-                console.log('Image prediction cleaned:', cleanedPrediction);
-                console.log('Final keywords with image prediction:', keywords);
-            } else {
-                console.log('No image prediction to append');
-            }
-
-            // First, try searching the uploaded file if available
-            if (this.config.fileUpload.content) {
-                console.log('Uploaded file available, searching file first...');
-                const fileResult = await this.searchUploadedFile(keywords);
-                if (fileResult) {
-                    console.log('Found matching content in uploaded file');
-                    return fileResult;
-                }
-                console.log('No matches in uploaded file, falling back to Wikipedia');
-            }
-
-            // Search Wikipedia with keywords
-            console.log('Searching Wikipedia with:', keywords);
-            const articleText = await this.searchWikipedia(keywords);
-
-            // Summarize the article
-            let summary = await this.summarizeText(articleText);
-
-            // Apply temperature-based randomization if temperature is 2
-            if (this.config.modelParameters.temperature === 2) {
-                summary = this.applyTemperatureRandomization(summary);
-            }
-
-            return summary;
-
-        } catch (error) {
-            console.error('Error in Wikipedia fallback:', error);
-            return 'Sorry, I encountered an error while processing your request. Please try again.';
-        }
-    }
-
-    applyTemperatureRandomization(text) {
-        const randomWords = ['helicopter', 'squirrel', 'wibble', 'flub', 'dingbat', 'bagel'];
-        
-        // Split text into words while preserving structure
-        const words = text.split(/(\s+)/);
-        
-        // Randomly replace some words (approximately 20% of non-whitespace words)
-        const result = words.map(word => {
-            // Skip whitespace and punctuation-only content
-            if (/^\s+$/.test(word) || /^[^a-zA-Z0-9]+$/.test(word)) {
-                return word;
-            }
-            
-            // 20% chance to replace a word
-            if (Math.random() < 0.2) {
-                const randomWord = randomWords[Math.floor(Math.random() * randomWords.length)];
-                return randomWord;
-            }
-            
-            return word;
-        });
-        
-        return result.join('');
-    }
 }
 
 // Global functions for UI interactions
@@ -1770,13 +1903,8 @@ window.toggleSection = function(sectionId) {
 window.resetParameters = function() {
     // Get the app instance (we'll need to store it globally)
     if (window.chatPlaygroundApp) {
-        // Reset to default values
-        const defaults = {
-            temperature: 0.7,
-            top_p: 0.9,
-            max_tokens: 1000,
-            repetition_penalty: 1.1
-        };
+        // Get model-specific defaults
+        const defaults = window.chatPlaygroundApp.getModelDefaults();
         
         // Update app parameters
         window.chatPlaygroundApp.modelParameters = { ...defaults };
@@ -1991,7 +2119,8 @@ function handleModalParameterChange(e) {
 }
 
 window.resetParametersFromModal = function() {
-    const defaults = {
+    // Get model-specific defaults
+    const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.7,
         top_p: 0.9,
         max_tokens: 1000,
