@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Computing History Apps</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 32px;
+        }
+        .apps {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .app-card {
+            display: block;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .app-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        .app-card h2 {
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .app-card p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .azure {
+            background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
+        }
+        .local {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ Computing History Apps</h1>
+        <div class="apps">
+            <a href="computing-azure/" class="app-card azure">
+                <h2>☁️ Azure Chat</h2>
+                <p>Cloud-powered AI assistant built with Microsoft Foundry in Azure</p>
+            </a>
+            <a href="computing-local/" class="app-card local">
+                <h2>💻 Browser Chat</h2>
+                <p>Fully local AI with TensorFlow.js image classification and SmolLM2 text generation</p>
+            </a>
+        </div>
+    </div>
+</body>
+</html>
