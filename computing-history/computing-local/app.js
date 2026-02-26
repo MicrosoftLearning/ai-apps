@@ -360,7 +360,7 @@ async function handleSend() {
         // Check for inappropriate content
         const inappropriateWords = [
             "steal", "hurt", "kill", "harm", "theft", "heist", 
-            "illegal", "crime", "stab", "shoot", "murder", 
+            "illegal", "crime", "shoot", "murder", 
             "suicide", "rape", "genocide"
         ];
         const lowerText = text.toLowerCase();
