@@ -357,6 +357,22 @@ async function handleSend() {
     if (text) {
         addMessage(text, "user");
 
+        // Check for inappropriate content
+        const inappropriateWords = [
+            "steal", "hurt", "kill", "harm", "theft", "heist", 
+            "illegal", "crime", "stab", "shoot", "murder", 
+            "suicide", "rape", "genocide"
+        ];
+        const lowerText = text.toLowerCase();
+        const containsInappropriate = inappropriateWords.some(word => 
+            lowerText.includes(word)
+        );
+        
+        if (containsInappropriate) {
+            addMessage("I'm sorry, I can't help with that. I can only help with information about the history of computing.", "bot");
+            return;
+        }
+
         // Check for Summarization Command
         const lines = text.split('\n');
         if (lines.length > 1 && lines[0].trim().toLowerCase().startsWith('summarize')) {
@@ -788,11 +804,12 @@ async function generateComputingInfo(query) {
     try {
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are a knowledgeable assistant about computing history. Provide factual, concise information.\n\n';
+        chatMLPrompt += 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\n';
         chatMLPrompt += 'Rules:\n';
-        chatMLPrompt += '- Computing and technology topics only\n';
-        chatMLPrompt += '- One or two clear sentences, simple language\n';
+        chatMLPrompt += '- You may discuss computing and technology topics only\n';
+        chatMLPrompt += '- Respond with one or two clear sentences, using simple language\n';
         chatMLPrompt += '- Focus on key facts and historical context\n';
+        chatMLPrompt += '- You must not provide assistance with activities that are illegal or may cause harm\n';
         chatMLPrompt += '<|im_end|>\n\n';
         
         // Include conversation history for context (last 2 exchanges)
@@ -1057,12 +1074,12 @@ function handleStopResponse() {
 /**
  * Restarts the conversation by clearing chat history and state
  */
-function restartConversation() {
+async function restartConversation() {
     if (confirm('Are you sure you want to clear the conversation history?')) {
         // Stop any ongoing response
         handleStopResponse();
         
-        // Clear the chat
+        // Clear the chat UI
         chatContainer.innerHTML = '<div class="welcome-message">Let\'s chat about computing history...</div>';
         
         // Remove any selected image
@@ -1071,8 +1088,19 @@ function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
         
-        // Clear conversation history
+        // Clear conversation history (browser-side cache)
         conversationHistory = [];
+        
+        // Clear model's KV cache to completely reset context
+        if (wllama && wllamaReady) {
+            try {
+                await wllama.kvClear();
+                console.log('Model KV cache cleared');
+            } catch (error) {
+                // Silently ignore - kvClear can throw harmless warnings
+                console.debug('KV cache clear warning (harmless):', error);
+            }
+        }
     }
 }
 
