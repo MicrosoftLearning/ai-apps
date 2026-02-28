@@ -359,9 +359,18 @@ async function handleSend() {
 
         // Check for inappropriate content
         const inappropriateWords = [
-            "steal", "hurt", "kill", "harm", "theft", "heist", 
-            "illegal", "crime", "shoot", "murder", 
-            "suicide", "rape", "genocide"
+            " steal ", " hurt ", " kill ", " harm ", " theft ", " heist ", 
+            " illegal ", " crime ", " shoot ", " murder ", 
+            " suicide ", " rape ", " genocide ", " sex ", " sexual ",
+            " steal.", " hurt.", " kill.", " harm.", " theft.", " heist.", 
+            " illegal.", " crime.", " shoot.", " murder.", 
+            " suicide.", " rape.", " genocide.", " sex.", " sexual.",
+            " steal?", " hurt?", " kill?", " harm?", " theft?", " heist?", 
+            " illegal?", " crime?", " shoot?", " murder?", 
+            " suicide?", " rape?", " genocide?", " sex?", " sexual?",
+            " steal!", " hurt!", " kill!", " harm!", " theft!", " heist!", 
+            " illegal!", " crime!", " shoot!", " murder!", 
+            " suicide!", " rape!", " genocide!", " sex!", " sexual!"
         ];
         const lowerText = text.toLowerCase();
         const containsInappropriate = inappropriateWords.some(word => 
