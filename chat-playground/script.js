@@ -25,6 +25,9 @@ class ChatPlayground {
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
+        this.voiceMode = false; // Track if voice mode is enabled
+        this.isSpeaking = false; // Track if TTS is speaking
+        this.isListening = false; // Track if speech recognition is active
 
         // Configuration objects
         this.config = {
@@ -53,6 +56,18 @@ class ChatPlayground {
             maxImageSize: 5 * 1024 * 1024, // 5MB
             allowedImageTypes: ['image/jpeg', 'image/jpg', 'image/png']
         };
+
+        // Initialize speech settings
+        this.speechSettings = {
+            voice: '',
+            textToSpeech: true
+        };
+
+        // Speech recognition state
+        this.recognition = null;
+        this.voicesAvailable = false;
+        this.voicesLoaded = false;
+        this.showCaptions = false; // Track whether to show conversation text
 
         // Initialize DOM element registry
         this.elements = {};
@@ -92,6 +107,8 @@ class ChatPlayground {
         this.initializeParameterControls();
         this.initializeFileUpload();
         this.setupImageAnalysisToggle();
+        this.populateVoices();
+        this.initializeSpeechRecognition();
         this.initializeModel();
     }
     
@@ -504,6 +521,110 @@ class ChatPlayground {
         }
     }
 
+    openConfigFlyout() {
+        const flyoutOverlay = document.getElementById('config-flyout-overlay');
+        const voiceSelect = document.getElementById('config-voice-select');
+        
+        if (flyoutOverlay) {
+            flyoutOverlay.style.display = 'block';
+        }
+        
+        // Restore voice selection if we have one
+        if (voiceSelect && this.speechSettings.voice) {
+            voiceSelect.value = this.speechSettings.voice;
+        }
+    }
+
+    closeConfigFlyout() {
+        const flyoutOverlay = document.getElementById('config-flyout-overlay');
+        if (flyoutOverlay) {
+            flyoutOverlay.style.display = 'none';
+        }
+    }
+
+    async toggleVoiceMode(isEnabled) {
+        this.voiceMode = isEnabled;
+        
+        const chatPanel = document.querySelector('.chat-panel');
+        const voiceControls = document.getElementById('voice-controls');
+        const textInputWrapper = document.getElementById('text-input-wrapper');
+        const textWelcome = document.getElementById('text-welcome');
+        const voiceWelcome = document.getElementById('voice-welcome');
+        const chatMessages = document.getElementById('chat-messages');
+        const voiceSelect = document.getElementById('config-voice-select');
+        const previewBtn = document.getElementById('preview-voice-btn');
+
+        if (isEnabled) {
+            // Clear conversation history
+            await this.clearChat();
+            
+            // Switch to voice mode UI - hide text input
+            if (chatPanel) {
+                chatPanel.classList.add('voice-mode');
+            }
+            if (voiceControls) {
+                voiceControls.style.display = 'flex';
+            }
+            if (textInputWrapper) {
+                textInputWrapper.style.display = 'none';
+            }
+            if (textWelcome) {
+                textWelcome.style.display = 'none';
+            }
+            if (voiceWelcome) {
+                voiceWelcome.style.display = 'flex';
+            }
+            
+            // Enable voice controls
+            if (voiceSelect && this.voicesAvailable) {
+                voiceSelect.disabled = false;
+            }
+            if (previewBtn && this.voicesAvailable) {
+                previewBtn.disabled = false;
+            }
+            
+            console.log('Voice mode enabled');
+        } else {
+            // Switch back to text mode UI
+            if (chatPanel) {
+                chatPanel.classList.remove('voice-mode');
+            }
+            if (voiceControls) {
+                voiceControls.style.display = 'none';
+            }
+            if (textInputWrapper) {
+                textInputWrapper.style.display = 'block';
+            }
+            if (textWelcome) {
+                textWelcome.style.display = 'flex';
+            }
+            if (voiceWelcome) {
+                voiceWelcome.style.display = 'none';
+            }
+            
+            // Disable voice controls
+            if (voiceSelect) {
+                voiceSelect.disabled = true;
+            }
+            if (previewBtn) {
+                previewBtn.disabled = true;
+            }
+            
+            // Clear any messages that might have been added
+            if (chatMessages) {
+                const messages = chatMessages.querySelectorAll('.message');
+                messages.forEach(msg => msg.remove());
+            }
+            
+            // Stop any ongoing speech
+            if (speechSynthesis) {
+                speechSynthesis.cancel();
+            }
+            
+            console.log('Voice mode disabled');
+        }
+    }
+
     async downloadMobileNetModel() {
         if (this.mobileNetModel || this.isModelDownloading) {
             return;
@@ -770,7 +891,7 @@ class ChatPlayground {
         });
         
         // Clear chat button (New Chat icon in header)
-        const newChatBtn = document.querySelector('.chat-controls .icon-btn:not(.help-btn)');
+        const newChatBtn = document.querySelector('.chat-controls .icon-btn:not(.help-btn):not(.config-btn)');
         if (newChatBtn) {
             newChatBtn.addEventListener('click', async () => {
                 await this.clearChat();
@@ -790,6 +911,86 @@ class ChatPlayground {
         if (parametersBtn) {
             parametersBtn.addEventListener('click', () => {
                 window.openParametersModal();
+            });
+        }
+        
+        // Configuration button
+        const configBtn = document.querySelector('.config-btn');
+        if (configBtn) {
+            configBtn.addEventListener('click', () => {
+                this.openConfigFlyout();
+            });
+        }
+        
+        // Voice mode toggle
+        const voiceModeToggle = document.getElementById('voice-mode-toggle');
+        if (voiceModeToggle) {
+            voiceModeToggle.addEventListener('change', async (e) => {
+                const isEnabled = e.target.checked;
+                await this.toggleVoiceMode(isEnabled);
+                if (isEnabled) {
+                    this.openConfigFlyout();
+                }
+            });
+        }
+        
+        // Voice Start button
+        const voiceStartBtn = document.getElementById('voice-start-btn');
+        if (voiceStartBtn) {
+            voiceStartBtn.addEventListener('click', () => {
+                this.startVoiceInput();
+            });
+        }
+        
+        // Voice CC (closed captions) button
+        const voiceCcBtn = document.getElementById('voice-cc-btn');
+        if (voiceCcBtn) {
+            voiceCcBtn.addEventListener('click', () => {
+                this.toggleCaptions();
+            });
+        }
+        
+        // Voice Cancel button
+        const voiceCancelBtn = document.getElementById('voice-cancel-btn');
+        if (voiceCancelBtn) {
+            voiceCancelBtn.addEventListener('click', () => {
+                this.cancelVoiceInteraction();
+            });
+        }
+        
+        // Voice select dropdown
+        const voiceSelect = document.getElementById('config-voice-select');
+        if (voiceSelect) {
+            voiceSelect.addEventListener('change', (e) => {
+                this.speechSettings.voice = e.target.value;
+                console.log('Voice selected:', e.target.value);
+            });
+        }
+        
+        // Preview voice button
+        const previewVoiceBtn = document.getElementById('preview-voice-btn');
+        if (previewVoiceBtn) {
+            previewVoiceBtn.addEventListener('click', () => {
+                this.previewVoice();
+            });
+        }
+        
+        // Configuration flyout close button
+        const closeFlyoutBtn = document.getElementById('close-config-flyout');
+        if (closeFlyoutBtn) {
+            closeFlyoutBtn.addEventListener('click', () => {
+                this.closeConfigFlyout();
+            });
+        }
+        
+        // Configuration flyout overlay click to close
+        const flyoutOverlay = document.getElementById('config-flyout-overlay');
+        if (flyoutOverlay) {
+            flyoutOverlay.addEventListener('click', (e) => {
+                // Only close if clicking the overlay itself, not the panel
+                if (e.target === flyoutOverlay) {
+                    this.closeConfigFlyout();
+                }
             });
         }
         
@@ -974,6 +1175,13 @@ class ChatPlayground {
         this.userInput.disabled = false;
         this.sendBtn.disabled = false;
         this.updateAttachButtonState(); // Update attach button based on vision settings
+        
+        // Enable voice mode start button
+        const voiceStartBtn = document.getElementById('voice-start-btn');
+        if (voiceStartBtn) {
+            voiceStartBtn.disabled = false;
+        }
+        
         this.userInput.focus();
         
         // Populate model dropdown with available models
@@ -989,6 +1197,12 @@ class ChatPlayground {
         this.userInput.disabled = true;
         this.sendBtn.disabled = true;
         this.attachBtn.disabled = true;
+        
+        // Disable voice mode start button
+        const voiceStartBtn = document.getElementById('voice-start-btn');
+        if (voiceStartBtn) {
+            voiceStartBtn.disabled = true;
+        }
     }
     
     async handleModelChange() {
@@ -1184,6 +1398,24 @@ class ChatPlayground {
         let userMessage = this.userInput.value.trim();
         if (!userMessage && !this.pendingImage) return;
         if (!userMessage) userMessage = ""; // Allow empty message if there's an image
+        
+        // Check for prohibited content
+        if (userMessage && this.containsProhibitedContent(userMessage)) {
+            // Add user message to chat
+            this.addMessage('user', userMessage);
+            
+            // Clear input
+            this.userInput.value = '';
+            this.userInput.style.height = 'auto';
+            
+            // Add canned response
+            const cannedResponse = "I'm sorry. I can't help with that.";
+            const assistantMessageEl = this.addMessage('assistant', '');
+            const contentEl = assistantMessageEl.querySelector('.message-content');
+            await this.typeResponse(contentEl, cannedResponse);
+            
+            return;
+        }
         
         // Log the current system prompt to console
         console.log('Current system prompt:', this.currentSystemMessage);
@@ -1404,6 +1636,77 @@ class ChatPlayground {
         this.conversationHistory.push({ role: "assistant", content: fullResponse });
     }
     
+    // Helper function to check for prohibited content
+    containsProhibitedContent(text) {
+        if (!text || typeof text !== 'string') return false;
+        
+        // Convert to lowercase for case-insensitive matching
+        const lowerText = ' ' + text.toLowerCase() + ' ';
+        
+        // List of prohibited terms (with spaces to ensure whole-word matching)
+        const prohibitedTerms = [
+            ' kill ', ' hurt ', ' harm ', ' steal ', ' crime ', 
+            ' theft ', ' heist ', ' sex ', ' sexual ', ' rape ', 
+            ' murder ', ' shoot ', ' stab ', ' maim ', ' suicide '
+        ];
+        
+        // Check if any prohibited term exists in the text
+        return prohibitedTerms.some(term => lowerText.includes(term));
+    }
+
+    // Helper function to extract first sentence from text
+    getFirstSentence(text) {
+        if (!text) return '';
+        
+        // Find first sentence-ending punctuation: . ! : ?
+        const match = text.match(/^[^.!:?]+[.!:?]/);
+        if (match) {
+            return match[0];
+        }
+        
+        // No sentence-ending punctuation found, take first 60 characters
+        return text.substring(0, 60);
+    }
+
+    // Helper function to build simple ChatML prompt for voice mode with SmolLM2
+    buildPrompt(userMessage, systemMessage) {
+        let prompt = '';
+        
+        // Get the last turn of conversation history (if exists)
+        let previousUserMessage = '';
+        let previousAssistantResponse = '';
+        
+        if (this.conversationHistory.length >= 2) {
+            // Get the last pair (user message and assistant response)
+            previousAssistantResponse = this.conversationHistory[this.conversationHistory.length - 1].content;
+            previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
+            
+            // Truncate to first sentence only for SmolLM2 context management
+            previousUserMessage = this.getFirstSentence(previousUserMessage);
+            previousAssistantResponse = this.getFirstSentence(previousAssistantResponse);
+        }
+        
+        // Build prompt for voice-based interaction
+        prompt = '<|im_start|>system\n';
+        prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
+        prompt += 'Instructions:\n';
+        prompt += systemMessage + '\n\n';
+        prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
+        prompt += '<|im_end|>\n\n';
+        
+        // Add previous turn if exists
+        if (previousUserMessage) {
+            prompt += '<|im_start|>user\n' + previousUserMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>assistant\n' + previousAssistantResponse + '\n<|im_end|>\n\n';
+        }
+        
+        // Add current user message
+        prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+        prompt += '<|im_start|>assistant\n';
+        
+        return prompt;
+    }
+
     // Helper function to build ChatML formatted prompt for SmolLM2
     buildChatMLPrompt(userMessage, imageAnalysis = '', fileContent = '') {
         let prompt = '';
@@ -1418,6 +1721,10 @@ class ChatPlayground {
             previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
             // Clean any image classification from previous user message
             previousUserMessage = previousUserMessage.replace(/\n\n\[Current image shows:.*?\]$/s, '');
+            
+            // Truncate to first sentence only for SmolLM2 context management
+            previousUserMessage = this.getFirstSentence(previousUserMessage);
+            previousAssistantResponse = this.getFirstSentence(previousAssistantResponse);
         }
         
         // Determine which format to use
@@ -1770,9 +2077,9 @@ class ChatPlayground {
     }
     
     addMessage(role, content, imageElement = null) {
-        // Hide welcome message if it exists
+        // Hide welcome message only if NOT in voice mode
         const welcomeMessage = this.chatMessages.querySelector('.welcome-message');
-        if (welcomeMessage) {
+        if (welcomeMessage && !this.voiceMode) {
             welcomeMessage.style.display = 'none';
         }
         
@@ -1877,12 +2184,24 @@ class ChatPlayground {
 
     async clearChat() {
         this.conversationHistory = [];
-        this.chatMessages.innerHTML = `
-            <div class="welcome-message">
-                <div class="chat-icon">💬</div>
-                <h3>What do you want to chat about?</h3>
-            </div>
-        `;
+        
+        // Show appropriate welcome message based on mode
+        if (this.voiceMode) {
+            this.chatMessages.innerHTML = `
+                <div class="welcome-message" id="voice-welcome" style="display: flex;">
+                    <div class="voice-chat-icon" aria-hidden="true"></div>
+                    <h3>Let's talk</h3>
+                    <p>Click Start to begin speaking with the AI assistant.</p>
+                </div>
+            `;
+        } else {
+            this.chatMessages.innerHTML = `
+                <div class="welcome-message" id="text-welcome">
+                    <div class="chat-icon">💬</div>
+                    <h3>What do you want to chat about?</h3>
+                </div>
+            `;
+        }
         
         // Clear wllama KV cache when resetting chat to start fresh
         if (this.usingWllama && this.wllama) {
@@ -1897,6 +2216,555 @@ class ChatPlayground {
     }
     
     // Removed updateTokenCount function - disclaimer is now static
+    
+    // ========== Speech and Voice Functions ==========
+    
+    populateVoices() {
+        const voiceSelect = document.getElementById('config-voice-select');
+        if (!voiceSelect) return;
+
+        const loadVoices = () => {
+            const voices = speechSynthesis.getVoices();
+            // Get all English voices
+            const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
+
+            // Preserve currently selected voice
+            const currentlySelectedVoice = this.speechSettings.voice || voiceSelect.value;
+
+            voiceSelect.innerHTML = '';
+
+            if (englishVoices.length > 0) {
+                this.voicesAvailable = true;
+                englishVoices.forEach((voice) => {
+                    if (!voice || !voice.name) return;
+                    const option = document.createElement('option');
+                    option.value = voice.name;
+                    const localLabel = voice.localService ? ' (Local)' : '';
+                    option.textContent = `${voice.name} (${voice.lang})${localLabel}`;
+                    voiceSelect.appendChild(option);
+                });
+                
+                // Restore previously selected voice or select the first one
+                if (currentlySelectedVoice && englishVoices.find(v => v.name === currentlySelectedVoice)) {
+                    voiceSelect.value = currentlySelectedVoice;
+                    this.speechSettings.voice = currentlySelectedVoice;
+                } else if (englishVoices.length > 0) {
+                    voiceSelect.value = englishVoices[0].name;
+                    this.speechSettings.voice = englishVoices[0].name;
+                }
+                
+                // Enable voice select when voice mode is on
+                if (this.voiceMode) {
+                    voiceSelect.disabled = false;
+                }
+            } else {
+                this.voicesAvailable = false;
+                const option = document.createElement('option');
+                option.value = 'none';
+                option.textContent = 'No voices available';
+                voiceSelect.appendChild(option);
+                voiceSelect.disabled = true;
+                this.speechSettings.voice = null;
+            }
+            
+            this.voicesLoaded = true;
+        };
+
+        if (speechSynthesis.getVoices().length > 0) {
+            loadVoices();
+        } else {
+            speechSynthesis.addEventListener('voiceschanged', loadVoices);
+            setTimeout(loadVoices, 100);
+        }
+    }
+
+    initializeSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            console.warn('Speech recognition not supported');
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.recognition = new SpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = false;
+        this.recognition.lang = 'en-US';
+        this.recognition.maxAlternatives = 1;
+
+        this.recognition.onstart = () => {
+            this.isListening = true;
+        };
+
+        this.recognition.onresult = (event) => {
+            const result = event.results[0];
+            if (result.isFinal) {
+                const transcript = result[0].transcript.trim();
+                if (transcript) {
+                    this.handleSpokenInput(transcript);
+                }
+            }
+        };
+
+        this.recognition.onend = () => {
+            this.isListening = false;
+        };
+
+        this.recognition.onerror = (event) => {
+            this.isListening = false;
+            console.error('Speech recognition error:', event.error);
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+            this.resetVoiceUI();
+        };
+    }
+
+    startVoiceInput() {
+        if (!this.recognition) {
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_NOT_AVAILABLE);
+            return;
+        }
+
+        if (this.isListening) {
+            try {
+                this.recognition.stop();
+            } catch (error) {
+                console.error('Error stopping speech recognition:', error);
+            }
+            return;
+        }
+
+        // Update UI
+        const startBtn = document.getElementById('voice-start-btn');
+        const cancelBtn = document.getElementById('voice-cancel-btn');
+        const ccBtn = document.getElementById('voice-cc-btn');
+        const chatIcon = document.querySelector('.voice-chat-icon');
+        
+        if (startBtn) {
+            startBtn.style.display = 'none';
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = 'inline-block';
+        }
+        if (ccBtn) {
+            ccBtn.style.display = 'none'; // Hide during listening
+        }
+        if (chatIcon) {
+            chatIcon.style.animation = 'pulse 1s infinite'; // Pulse while listening
+        }
+        
+        // Reset captions to hidden at start of new conversation
+        this.showCaptions = false;
+        this.updateCCButton();
+        this.updateMessageVisibility();
+        
+        // Update welcome message
+        const voiceWelcome = document.getElementById('voice-welcome');
+        if (voiceWelcome) {
+            voiceWelcome.querySelector('h3').textContent = 'Listening...';
+            voiceWelcome.querySelector('p').textContent = 'Speak now...';
+        }
+
+        try {
+            try {
+                this.recognition.abort();
+            } catch (e) {
+                // Ignore
+            }
+
+            setTimeout(() => {
+                this.recognition.start();
+            }, 100);
+        } catch (error) {
+            console.error('Error starting speech recognition:', error);
+            this.isListening = false;
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+            this.resetVoiceUI();
+        }
+    }
+
+    handleSpokenInput(transcript) {
+        // Validate and sanitize transcript
+        if (!transcript || typeof transcript !== 'string') {
+            console.error('Invalid transcript received');
+            this.resetVoiceUI();
+            return;
+        }
+        
+        let sanitizedTranscript = transcript.trim();
+        if (sanitizedTranscript.length > 1000) {
+            sanitizedTranscript = sanitizedTranscript.substring(0, 1000);
+        }
+        
+        if (sanitizedTranscript.length === 0) {
+            console.error('Transcript empty after sanitization');
+            this.resetVoiceUI();
+            return;
+        }
+        
+        // Check for prohibited content
+        if (this.containsProhibitedContent(sanitizedTranscript)) {
+            // Add user message to chat (respecting current CC visibility)
+            const userMessage = this.addMessage('user', sanitizedTranscript);
+            if (userMessage && !this.showCaptions) {
+                userMessage.classList.add('hidden');
+            }
+            
+            // Add canned response
+            const cannedResponse = "I'm sorry. I can't help with that.";
+            const assistantMessage = this.addMessage('assistant', cannedResponse);
+            if (assistantMessage && !this.showCaptions) {
+                assistantMessage.classList.add('hidden');
+            }
+            
+            // Update UI for speaking
+            const voiceWelcome = document.getElementById('voice-welcome');
+            const chatIcon = document.querySelector('.voice-chat-icon');
+            const cancelBtn = document.getElementById('voice-cancel-btn');
+            const ccBtn = document.getElementById('voice-cc-btn');
+            
+            if (cancelBtn) {
+                cancelBtn.style.display = 'inline-block';
+            }
+            if (ccBtn) {
+                ccBtn.style.display = 'inline-block';
+            }
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+            }
+            if (chatIcon) {
+                chatIcon.style.animation = 'pulse 1s infinite';
+            }
+            
+            // Speak the canned response
+            this.speakResponse(cannedResponse);
+            
+            return;
+        }
+        
+        // Update UI - show processing state
+        const startBtn = document.getElementById('voice-start-btn');
+        const cancelBtn = document.getElementById('voice-cancel-btn');
+        const ccBtn = document.getElementById('voice-cc-btn');
+        const voiceWelcome = document.getElementById('voice-welcome');
+        
+        if (startBtn) {
+            startBtn.style.display = 'none';
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = 'inline-block';
+        }
+        if (ccBtn) {
+            ccBtn.style.display = 'inline-block'; // Show CC button now
+        }
+        // Keep pulse animation running during processing - don't stop it
+        if (voiceWelcome) {
+            voiceWelcome.querySelector('h3').textContent = 'Processing...';
+            voiceWelcome.querySelector('p').textContent = 'This can take some time...';
+        }
+
+        // Add user message to chat (respecting current CC visibility)
+        const userMessage = this.addMessage('user', sanitizedTranscript);
+        if (userMessage && !this.showCaptions) {
+            userMessage.classList.add('hidden');
+        }
+
+        // Generate response
+        this.generateVoiceResponse(sanitizedTranscript);
+    }
+
+    async generateVoiceResponse(userMessage) {
+        this.isGenerating = true;
+
+        try {
+            let responseText = '';
+
+            if (this.webllmAvailable && this.engine) {
+                // Use WebLLM
+                const messages = [
+                    { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
+                    ...this.conversationHistory,
+                    { role: 'user', content: userMessage }
+                ];
+                
+                const completion = await this.engine.chat.completions.create({
+                    messages: messages,
+                    temperature: this.config.modelParameters.temperature,
+                    top_p: this.config.modelParameters.top_p,
+                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 500), // Limit for voice responses
+                    repetition_penalty: this.config.modelParameters.repetition_penalty,
+                    stream: true
+                });
+                
+                for await (const chunk of completion) {
+                    if (!this.isGenerating) break;
+                    
+                    const content = chunk.choices[0]?.delta?.content || '';
+                    if (content) {
+                        responseText += content;
+                    }
+                }
+            } else if (this.usingWllama && this.wllama) {
+                // Use wllama fallback
+                const prompt = this.buildPrompt(userMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
+                
+                this.currentAbortController = new AbortController();
+                
+                const result = await this.wllama.createCompletion(prompt, {
+                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
+                    sampling: {
+                        temp: this.config.modelParameters.temperature,
+                        top_p: this.config.modelParameters.top_p,
+                        penalty_repeat: this.config.modelParameters.repetition_penalty
+                    },
+                    signal: this.currentAbortController.signal
+                });
+
+                responseText = result.trim();
+            } else {
+                responseText = "No AI model is currently available. Please wait for the model to load.";
+            }
+
+            // Add assistant message to chat (respecting current CC visibility)
+            const assistantMessage = this.addMessage('assistant', responseText);
+            if (assistantMessage && !this.showCaptions) {
+                assistantMessage.classList.add('hidden');
+            }
+
+            // Update UI to "Speaking" state
+            const voiceWelcome = document.getElementById('voice-welcome');
+            const chatIcon = document.querySelector('.voice-chat-icon');
+            
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+            }
+            
+            // Start pulsing animation while speaking
+            if (chatIcon) {
+                chatIcon.style.animation = 'pulse 1s infinite';
+            }
+
+            // Speak the response
+            this.speakResponse(responseText);
+
+            // Add to conversation history
+            this.conversationHistory.push(
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: responseText }
+            );
+        } catch (error) {
+            console.error('Error generating response:', error);
+            this.showToast('Error generating response. Please try again.');
+            this.resetVoiceUI();
+        } finally {
+            this.isGenerating = false;
+        }
+    }
+
+    speakResponse(text) {
+        if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
+            this.onSpeechComplete();
+            return;
+        }
+
+        if (!('speechSynthesis' in window)) {
+            this.onSpeechComplete();
+            return;
+        }
+
+        speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+            const voices = speechSynthesis.getVoices();
+            const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            }
+        }
+
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+
+        this.isSpeaking = true;
+
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            this.onSpeechComplete();
+        };
+
+        utterance.onerror = () => {
+            this.isSpeaking = false;
+            this.onSpeechComplete();
+        };
+
+        speechSynthesis.speak(utterance);
+    }
+
+    onSpeechComplete() {
+        this.resetVoiceUI();
+    }
+
+    resetVoiceUI() {
+        const chatIcon = document.querySelector('.voice-chat-icon');
+        const startBtn = document.getElementById('voice-start-btn');
+        const cancelBtn = document.getElementById('voice-cancel-btn');
+        const ccBtn = document.getElementById('voice-cc-btn');
+        const voiceWelcome = document.getElementById('voice-welcome');
+
+        if (chatIcon) {
+            chatIcon.style.animation = 'none';
+        }
+        if (startBtn) {
+            startBtn.style.display = 'inline-block';
+            startBtn.disabled = false;
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = 'none';
+        }
+        if (ccBtn) {
+            ccBtn.style.display = 'none';
+        }
+        
+        // Always show all messages when conversation ends
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const messages = chatMessages.querySelectorAll('.message');
+            messages.forEach(msg => {
+                msg.classList.remove('hidden');
+            });
+        }
+        
+        // Reset captions state to off for next conversation
+        this.showCaptions = false;
+        this.updateCCButton();
+        
+        if (voiceWelcome) {
+            voiceWelcome.querySelector('h3').textContent = "Let's talk";
+            voiceWelcome.querySelector('p').textContent = 'Talk like you would to a person. The agent listens and responds.';
+        }
+    }
+
+    toggleCaptions() {
+        this.showCaptions = !this.showCaptions;
+        this.updateCCButton();
+        this.updateMessageVisibility();
+    }
+
+    updateCCButton() {
+        const ccBtn = document.getElementById('voice-cc-btn');
+        if (!ccBtn) return;
+        
+        if (this.showCaptions) {
+            ccBtn.innerHTML = '[<s>cc</s>]';
+        } else {
+            ccBtn.innerHTML = '[cc]';
+        }
+    }
+
+    updateMessageVisibility() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        
+        const messages = chatMessages.querySelectorAll('.message');
+        messages.forEach(msg => {
+            if (this.showCaptions) {
+                msg.classList.remove('hidden');
+            } else {
+                msg.classList.add('hidden');
+            }
+        });
+    }
+
+    cancelVoiceInteraction() {
+        // Stop speech recognition
+        if (this.recognition && this.isListening) {
+            try {
+                this.recognition.stop();
+            } catch (error) {
+                console.error('Error stopping recognition:', error);
+            }
+        }
+        
+        // Stop speech synthesis
+        if (speechSynthesis) {
+            speechSynthesis.cancel();
+        }
+        
+        // Stop generation if in progress
+        if (this.isGenerating) {
+            this.stopRequested = true;
+            if (this.currentAbortController) {
+                this.currentAbortController.abort();
+            }
+        }
+        
+        // Reset UI
+        this.isListening = false;
+        this.isSpeaking = false;
+        this.isGenerating = false;
+        this.resetVoiceUI();
+    }
+
+    previewVoice() {
+        const voices = speechSynthesis.getVoices();
+        const voiceSelect = document.getElementById('config-voice-select');
+        const previewBtn = document.getElementById('preview-voice-btn');
+        const selectedVoiceName = voiceSelect ? voiceSelect.value : null;
+
+        if (!selectedVoiceName) {
+            this.showToast('Please select a voice first');
+            return;
+        }
+
+        const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+        if (!selectedVoice) {
+            this.showToast('Voice not found');
+            return;
+        }
+
+        // Cancel any ongoing speech
+        speechSynthesis.cancel();
+
+        // Show testing state on button
+        if (previewBtn) {
+            previewBtn.disabled = true;
+            previewBtn.textContent = '...';
+        }
+
+        const utterance = new SpeechSynthesisUtterance('This is my voice.');
+        utterance.voice = selectedVoice;
+        utterance.rate = 1;
+
+        const resetButton = () => {
+            if (previewBtn) {
+                previewBtn.disabled = false;
+                previewBtn.textContent = '▶';
+            }
+        };
+
+        utterance.onerror = (event) => {
+            console.error('Voice preview error:', event.error);
+            this.showToast('Voice preview failed. Please try another voice.');
+            resetButton();
+        };
+
+        utterance.onend = () => {
+            resetButton();
+        };
+
+        try {
+            speechSynthesis.speak(utterance);
+        } catch (error) {
+            console.error('Error speaking:', error);
+            this.showToast('Error playing voice preview');
+            resetButton();
+        }
+    }
+    
+    // ========== End Speech and Voice Functions ==========
     
     showToast(message) {
         // Announce to screen readers

@@ -43,6 +43,19 @@
                         </div>
                     </div>
                     
+                    <div class="voice-mode-section">
+                        <h4>Voice mode</h4>
+                        <p class="section-description">Enable voice input and output for conversations.</p>
+                        <div class="toggle-switch purple-toggle">
+                            <input type="checkbox" id="voice-mode-toggle" aria-describedby="voice-mode-desc">
+                            <label for="voice-mode-toggle" class="switch-label">
+                                <span class="switch-slider" aria-hidden="true"></span>
+                                <span class="switch-text">Voice mode</span>
+                            </label>
+                            <div id="voice-mode-desc" class="sr-only">Toggle to enable voice input and output</div>
+                        </div>
+                    </div>
+                    
                     <div class="instructions-section">
                         <label for="system-message">Instructions</label>
                         <textarea id="system-message" rows="3" disabled aria-describedby="system-message-desc">You are an AI assistant that helps people find information.</textarea>
@@ -106,35 +119,54 @@
                 <div class="chat-header">
                     <h3>Chat</h3>
                     <div class="chat-controls">
+                        <button class="icon-btn config-btn" title="Configuration" aria-label="Configuration" tabindex="0"><b style="color: gray;">&#9881;</b></button>
                         <button class="icon-btn" title="New chat" aria-label="Start new chat" tabindex="0">&#128172;</button>
                         <button class="icon-btn help-btn" title="About this app" aria-label="About this app" tabindex="0">?</button>
                     </div>
                 </div>
                 
                 <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Chat conversation">
-                    <div class="welcome-message">
+                    <!-- Text chat welcome -->
+                    <div class="welcome-message" id="text-welcome">
                         <div class="chat-icon" aria-hidden="true">💬</div>
                         <h3>What do you want to chat about?</h3>
+                    </div>
+                    
+                    <!-- Voice mode welcome -->
+                    <div class="welcome-message" id="voice-welcome" style="display: none;">
+                        <div class="voice-chat-icon" aria-hidden="true"></div>
+                        <h3>Let's talk</h3>
+                        <p>Talk like you would to a person. The agent listens and responds.</p>
                     </div>
                 </div>
                 
                 <div class="chat-input-container" role="region" aria-label="Message input area">
-                    <div class="input-wrapper">
-                        <div class="input-thumbnail-container" id="input-thumbnail-container" style="display: none;" role="status" aria-live="polite">
-                            <img id="input-thumbnail" alt="Selected image thumbnail for analysis">
-                            <button class="remove-thumbnail-btn" id="remove-thumbnail-btn" title="Remove image" aria-label="Remove selected image">🗑️</button>
+                    <!-- Voice mode Start button -->
+                    <div class="start-button-container" id="voice-controls" style="display: none;" role="group" aria-label="Voice input control">
+                        <button id="voice-start-btn" class="start-btn" aria-label="Start voice input. Press to begin speaking" disabled>Start session</button>
+                        <button id="voice-cc-btn" class="cc-btn" style="display: none;" aria-label="Toggle closed captions to show conversation text" title="Toggle conversation text display">[cc]</button>
+                        <button id="voice-cancel-btn" class="cancel-btn" style="display: none;" aria-label="Cancel current speech interaction">✕</button>
+                    </div>
+                    
+                    <!-- Text input (hidden in voice mode) -->
+                    <div id="text-input-wrapper">
+                        <div class="input-wrapper">
+                            <div class="input-thumbnail-container" id="input-thumbnail-container" style="display: none;" role="status" aria-live="polite">
+                                <img id="input-thumbnail" alt="Selected image thumbnail for analysis">
+                                <button class="remove-thumbnail-btn" id="remove-thumbnail-btn" title="Remove image" aria-label="Remove selected image">🗑️</button>
+                            </div>
+                            <textarea 
+                                id="user-input" 
+                                placeholder="Chat with the model..."
+                                rows="1"
+                                disabled
+                                aria-label="Type your message to the AI assistant"
+                                aria-describedby="input-help"
+                            ></textarea>
+                            <div id="input-help" class="sr-only">Use Shift+Enter for new lines. Press Enter or click send to submit your message.</div>
+                            <button class="attach-btn" title="Upload image" id="attach-btn" disabled aria-label="Upload image for analysis">📎</button>
+                            <button id="send-btn" disabled aria-label="Send message">➤</button>
                         </div>
-                        <textarea 
-                            id="user-input" 
-                            placeholder="Chat with the model..."
-                            rows="1"
-                            disabled
-                            aria-label="Type your message to the AI assistant"
-                            aria-describedby="input-help"
-                        ></textarea>
-                        <div id="input-help" class="sr-only">Use Shift+Enter for new lines. Press Enter or click send to submit your message.</div>
-                        <button class="attach-btn" title="Upload image" id="attach-btn" disabled aria-label="Upload image for analysis">📎</button>
-                        <button id="send-btn" disabled aria-label="Send message">➤</button>
                     </div>
                     <div class="input-info">
                         <span class="disclaimer" aria-label="Disclaimer: AI-generated content may be incorrect" role="status">AI-generated content may be incorrect</span>
@@ -222,11 +254,41 @@
                         <li>The initial download of the Microsoft Phi model may take a few minutes - particularly on low-bandwidth connections. Subsequent downloads should be quicker.</li>
                         <li>Some GPU-enabled computers (particularly those with ARM-based processors) do not support WebGPU without enabling the <strong>Unsafe WebGPU Support</strong> browser flag. If your browser fails to load the Microsoft Phi model, you can try enabling this flag at <a href="edge://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags" style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a> on Google Chrome. Disable it again when finished!</li>
                         <li>CPU mode (SmolLM2) response times are slower than GPU mode (Phi-3-mini). SmolLM2 is a smaller 360M parameter model optimized for browser performance. Use the Model dropdown to select your preferred mode.</li>
+                        <li>Image analysis is based on MobileNetV3, which is a general-purpose image classification model. It may not accurately identify all images or provide detailed descriptions.</li>
+                        <li>Voice mode depends on browser-support for speech recognition. Speech recognition fails with a network error in Microsoft Edge on ARM hardware.</li>
+                        <li>Voice mode performance may vary based on the device's microphone quality and ambient noise levels. For best results, use a good quality microphone in a quiet environment.</li>
                     </ul>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn-primary" onclick="closeAboutModal()" aria-label="Close about dialog">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Configuration Flyout Panel -->
+    <div class="flyout-overlay" id="config-flyout-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="config-flyout-title">
+        <div class="flyout-panel" id="config-flyout-panel">
+            <div class="flyout-header">
+                <h2 id="config-flyout-title">Configuration</h2>
+                <button class="flyout-close-btn" id="close-config-flyout" aria-label="Close configuration panel">✕</button>
+            </div>
+            <div class="flyout-body">
+                <div class="voice-config-section">
+                    <h3>Voice Settings</h3>
+                    <p class="section-description">Configure text-to-speech voice for responses.</p>
+                    
+                    <div class="voice-config">
+                        <label for="config-voice-select">Voice</label>
+                        <div class="voice-controls">
+                            <button id="preview-voice-btn" class="preview-btn" title="Preview selected voice" aria-label="Preview the selected voice with sample text" disabled tabindex="0">&#9657;</button>
+                            <select id="config-voice-select" class="form-select" disabled aria-describedby="voice-select-desc">
+                                <option value="">Loading voices...</option>
+                            </select>
+                        </div>
+                        <div id="voice-select-desc" class="sr-only">Choose the voice for text-to-speech output. This voice will be used to read responses aloud</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
