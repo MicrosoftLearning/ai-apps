@@ -28,6 +28,9 @@ class ChatPlayground {
         this.voiceMode = false; // Track if voice mode is enabled
         this.isSpeaking = false; // Track if TTS is speaking
         this.isListening = false; // Track if speech recognition is active
+        this.avatarEnabled = false; // Track if avatar is enabled
+        this.selectedAvatar = null; // Track selected avatar filename
+        this.availableAvatars = ['Boris.svg', 'Doris.svg']; // Available avatars
 
         // Configuration objects
         this.config = {
@@ -109,6 +112,7 @@ class ChatPlayground {
         this.setupImageAnalysisToggle();
         this.populateVoices();
         this.initializeSpeechRecognition();
+        this.initializeAvatars();
         this.initializeModel();
     }
     
@@ -972,6 +976,14 @@ class ChatPlayground {
         if (previewVoiceBtn) {
             previewVoiceBtn.addEventListener('click', () => {
                 this.previewVoice();
+            });
+        }
+        
+        // Avatar toggle
+        const avatarToggle = document.getElementById('avatar-toggle');
+        if (avatarToggle) {
+            avatarToggle.addEventListener('change', (e) => {
+                this.toggleAvatar(e.target.checked);
             });
         }
         
@@ -2189,11 +2201,15 @@ class ChatPlayground {
         if (this.voiceMode) {
             this.chatMessages.innerHTML = `
                 <div class="welcome-message" id="voice-welcome" style="display: flex;">
-                    <div class="voice-chat-icon" aria-hidden="true"></div>
+                    <div class="voice-chat-icon" aria-hidden="true">
+                        <img class="avatar-image" id="voice-avatar-image" style="display: none;" alt="Avatar">
+                    </div>
                     <h3>Let's talk</h3>
                     <p>Click Start to begin speaking with the AI assistant.</p>
                 </div>
             `;
+            // Update avatar display after creating the HTML
+            setTimeout(() => this.updateAvatarDisplay(), 0);
         } else {
             this.chatMessages.innerHTML = `
                 <div class="welcome-message" id="text-welcome">
@@ -2766,6 +2782,124 @@ class ChatPlayground {
     
     // ========== End Speech and Voice Functions ==========
     
+    // ========== Avatar Functions ==========
+    
+    initializeAvatars() {
+        const avatarGrid = document.getElementById('avatar-grid');
+        if (!avatarGrid) return;
+        
+        // Clear existing avatars
+        avatarGrid.innerHTML = '';
+        
+        // Load saved preferences
+        const savedAvatarEnabled = localStorage.getItem('avatarEnabled') === 'true';
+        const savedAvatar = localStorage.getItem('selectedAvatar') || this.availableAvatars[0];
+        
+        this.avatarEnabled = savedAvatarEnabled;
+        this.selectedAvatar = savedAvatar;
+        
+        // Set toggle state
+        const avatarToggle = document.getElementById('avatar-toggle');
+        if (avatarToggle) {
+            avatarToggle.checked = savedAvatarEnabled;
+        }
+        
+        // Show/hide avatar selection
+        const avatarSelection = document.getElementById('avatar-selection');
+        if (avatarSelection) {
+            avatarSelection.style.display = savedAvatarEnabled ? 'block' : 'none';
+        }
+        
+        // Create avatar items
+        this.availableAvatars.forEach((avatar) => {
+            const avatarItem = document.createElement('div');
+            avatarItem.className = 'avatar-item';
+            if (avatar === this.selectedAvatar) {
+                avatarItem.classList.add('selected');
+            }
+            
+            const img = document.createElement('img');
+            img.src = `avatars/${avatar}`;
+            img.alt = avatar.replace('.svg', '');
+            
+            const name = document.createElement('div');
+            name.className = 'avatar-name';
+            name.textContent = avatar.replace('.svg', '');
+            
+            avatarItem.appendChild(img);
+            avatarItem.appendChild(name);
+            
+            avatarItem.addEventListener('click', () => {
+                this.selectAvatar(avatar);
+            });
+            
+            avatarGrid.appendChild(avatarItem);
+        });
+        
+        // Update display if avatar is enabled
+        if (this.avatarEnabled) {
+            setTimeout(() => this.updateAvatarDisplay(), 0);
+        }
+    }
+    
+    toggleAvatar(enabled) {
+        this.avatarEnabled = enabled;
+        localStorage.setItem('avatarEnabled', enabled);
+        
+        const avatarSelection = document.getElementById('avatar-selection');
+        
+        if (enabled) {
+            if (avatarSelection) {
+                avatarSelection.style.display = 'block';
+            }
+            this.updateAvatarDisplay();
+        } else {
+            if (avatarSelection) {
+                avatarSelection.style.display = 'none';
+            }
+            // Hide avatar image, show purple circle
+            const avatarImage = document.getElementById('voice-avatar-image');
+            if (avatarImage) {
+                avatarImage.style.display = 'none';
+            }
+        }
+    }
+    
+    selectAvatar(avatarName) {
+        this.selectedAvatar = avatarName;
+        localStorage.setItem('selectedAvatar', avatarName);
+        
+        // Update selection UI
+        const avatarItems = document.querySelectorAll('.avatar-item');
+        avatarItems.forEach(item => {
+            const img = item.querySelector('img');
+            if (img && img.src.endsWith(avatarName)) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+        
+        // Update avatar display if enabled
+        if (this.avatarEnabled) {
+            this.updateAvatarDisplay();
+        }
+    }
+    
+    updateAvatarDisplay() {
+        const avatarImage = document.getElementById('voice-avatar-image');
+        if (!avatarImage || !this.selectedAvatar) return;
+        
+        if (this.avatarEnabled) {
+            avatarImage.src = `avatars/${this.selectedAvatar}`;
+            avatarImage.style.display = 'block';
+        } else {
+            avatarImage.style.display = 'none';
+        }
+    }
+    
+    // ========== End Avatar Functions ==========
+    
     showToast(message) {
         // Announce to screen readers
         this.announceToScreenReader(message);
@@ -3121,6 +3255,28 @@ window.removeFocusTrap = function() {
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.chatPlaygroundApp = new ChatPlayground();
+    
+    // Dark mode toggle handler
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        // Check for saved theme preference
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            themeToggle.checked = true;
+        }
+        
+        // Toggle dark mode
+        themeToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    }
     
     // Add parameters modal click-outside-to-close functionality
     const parametersModal = document.getElementById('parameters-modal');

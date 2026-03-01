@@ -18,7 +18,19 @@
         <a href="#chat-messages" class="skip-link">Skip to main chat content</a>
         
         <header>
-            <h1>Chat playground</h1>
+            <div class="header-content">
+                <h1>Chat playground</h1>
+                <div class="header-toggle">
+                    <span class="toggle-icon sun-icon">&#9788;</span>
+                    <div class="toggle-switch purple-toggle">
+                        <input type="checkbox" id="theme-toggle" aria-label="Theme">
+                        <label for="theme-toggle" class="switch-label" title="Theme">
+                            <span class="switch-slider" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <span class="toggle-icon moon-icon">&#9790;</span>
+                </div>
+            </div>
         </header>
         
         <div class="chat-container" role="main">
@@ -134,7 +146,9 @@
                     
                     <!-- Voice mode welcome -->
                     <div class="welcome-message" id="voice-welcome" style="display: none;">
-                        <div class="voice-chat-icon" aria-hidden="true"></div>
+                        <div class="voice-chat-icon" aria-hidden="true">
+                            <img class="avatar-image" id="voice-avatar-image" style="display: none;" alt="Avatar">
+                        </div>
                         <h3>Let's talk</h3>
                         <p>Talk like you would to a person. The agent listens and responds.</p>
                     </div>
@@ -287,6 +301,23 @@
                             </select>
                         </div>
                         <div id="voice-select-desc" class="sr-only">Choose the voice for text-to-speech output. This voice will be used to read responses aloud</div>
+                    </div>
+                    
+                    <div class="avatar-config">
+                        <label for="avatar-toggle">Avatar</label>
+                        <div class="toggle-switch purple-toggle">
+                            <input type="checkbox" id="avatar-toggle" aria-label="Show avatar in voice mode">
+                            <label for="avatar-toggle" class="switch-label" title="Show avatar in voice mode">
+                                <span class="switch-slider" aria-hidden="true"></span>
+                                <span class="switch-text">Show avatar</span>
+                            </label>
+                        </div>
+                        
+                        <div class="avatar-selection" id="avatar-selection" style="display: none;">
+                            <div class="avatar-grid" id="avatar-grid">
+                                <!-- Avatars will be loaded dynamically -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
