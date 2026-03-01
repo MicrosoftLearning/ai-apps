@@ -37,6 +37,7 @@ class ChatPlayground {
         this.pendingVoice = null;
         this.pendingSystemMessage = null;
         this.hasUnappliedChanges = false;
+        this.prohibitedTerms = [];
 
         // Configuration objects
         this.config = {
@@ -92,13 +93,61 @@ class ChatPlayground {
     };
 
     // Centralized initialization
-    initialize() {
-        this.initializeElements();
-        this.disallowInteraction();
-        this.attachEventListeners();
-        this.populateVoices();
-        this.initializeSpeechRecognition();
-        this.initializeModel();
+    async initialize() {
+        try {
+            await this.loadProhibitedTerms();
+            this.initializeElements();
+            this.disallowInteraction();
+            this.attachEventListeners();
+            this.populateVoices();
+            this.initializeSpeechRecognition();
+            await this.initializeModel();
+        } catch (error) {
+            console.error('Initialization error:', error);
+            this.showToast('Failed to initialize app. Please refresh the page.');
+        }
+    }
+
+    reverseWord(text) {
+        return text.split('').reverse().join('');
+    }
+
+    escapeRegex(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    async loadProhibitedTerms() {
+        try {
+            const response = await fetch('moderation/prohibited-words.txt');
+            if (!response.ok) throw new Error('Failed to load prohibited terms');
+
+            const reversedTermsText = await response.text();
+            this.prohibitedTerms = reversedTermsText
+                .split(/\r?\n/)
+                .map(term => term.trim())
+                .filter(term => term.length > 0)
+                .map(term => this.reverseWord(term.toLowerCase()));
+
+            console.log('Loaded prohibited terms:', this.prohibitedTerms.length);
+        } catch (error) {
+            console.error('Error loading prohibited terms:', error);
+            throw error;
+        }
+    }
+
+    containsProhibitedContent(text) {
+        if (!text || typeof text !== 'string') return false;
+
+        const lowerText = text.toLowerCase();
+
+        for (const term of this.prohibitedTerms) {
+            const regex = new RegExp(`\\b${this.escapeRegex(term)}\\b`, 'i');
+            if (regex.test(lowerText)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     initializeElements() {
@@ -656,6 +705,14 @@ class ChatPlayground {
         if (sanitizedTranscript.length === 0) {
             console.error('Transcript empty after sanitization');
             this.resetToWelcomeState();
+            return;
+        }
+
+        if (this.containsProhibitedContent(sanitizedTranscript)) {
+            this.addMessageToChat(sanitizedTranscript, 'user');
+            const moderationResponse = "I'm sorry. I can't help with that.";
+            this.addMessageToChat(moderationResponse, 'assistant');
+            this.speakResponse(moderationResponse);
             return;
         }
         

@@ -55,17 +55,16 @@ IMPORTANT: Follow these guidelines when responding:
 - Do NOT provide links for more information (these will be added automatically later).`;
 
         // Prohibited words for content moderation (whole words only)
-        this.prohibitedWords = [
-            'hurt', 'harm', 'kill', 'murder', 'weapon', 'gun', 'bomb', 'sword', 
-            'knife', 'attack', 'genocide', 'suicide', 'sex', 'sexual', 'steal', 
-            'theft', 'heist', 'crime', 'illegal', 'stab'
-        ];
+        this.prohibitedWords = [];
 
         this.initialize();
     }
 
     async initialize() {
         try {
+            // Load prohibited words used by content moderation
+            await this.loadProhibitedWords();
+
             // Load the index
             await this.loadIndex();
             
@@ -78,6 +77,29 @@ IMPORTANT: Follow these guidelines when responding:
         } catch (error) {
             console.error('Initialization error:', error);
             this.showError('Failed to initialize. Please refresh the page.');
+        }
+    }
+
+    reverseWord(text) {
+        return text.split('').reverse().join('');
+    }
+
+    async loadProhibitedWords() {
+        try {
+            const response = await fetch('moderation/prohibited-words.txt');
+            if (!response.ok) throw new Error('Failed to load prohibited words');
+
+            const reversedWordsText = await response.text();
+            this.prohibitedWords = reversedWordsText
+                .split(/\r?\n/)
+                .map(word => word.trim())
+                .filter(word => word.length > 0)
+                .map(word => this.reverseWord(word.toLowerCase()));
+
+            console.log('Loaded prohibited words:', this.prohibitedWords.length);
+        } catch (error) {
+            console.error('Error loading prohibited words:', error);
+            throw error;
         }
     }
 

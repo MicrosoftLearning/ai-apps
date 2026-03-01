@@ -71,6 +71,7 @@ class ChatPlayground {
         this.voicesAvailable = false;
         this.voicesLoaded = false;
         this.showCaptions = false; // Track whether to show conversation text
+        this.prohibitedTerms = []; // Content moderation terms loaded from file
 
         // Initialize DOM element registry
         this.elements = {};
@@ -104,7 +105,8 @@ class ChatPlayground {
     };
 
     // Centralized initialization
-    initialize() {
+    async initialize() {
+        await this.loadProhibitedTerms();
         this.initializeElements();
         this.attachEventListeners();
         this.initializeParameterControls();
@@ -114,6 +116,33 @@ class ChatPlayground {
         this.initializeSpeechRecognition();
         this.initializeAvatars();
         this.initializeModel();
+    }
+
+    reverseWord(text) {
+        return text.split('').reverse().join('');
+    }
+
+    escapeRegex(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    async loadProhibitedTerms() {
+        try {
+            const response = await fetch('moderation/prohibited-words.txt');
+            if (!response.ok) throw new Error('Failed to load prohibited terms');
+
+            const reversedTermsText = await response.text();
+            this.prohibitedTerms = reversedTermsText
+                .split(/\r?\n/)
+                .map(term => term.trim())
+                .filter(term => term.length > 0)
+                .map(term => this.reverseWord(term.toLowerCase()));
+
+            console.log('Loaded prohibited terms:', this.prohibitedTerms.length);
+        } catch (error) {
+            console.error('Error loading prohibited terms:', error);
+            throw error;
+        }
     }
     
     initializeElements() {
@@ -1653,17 +1682,16 @@ class ChatPlayground {
         if (!text || typeof text !== 'string') return false;
         
         // Convert to lowercase for case-insensitive matching
-        const lowerText = ' ' + text.toLowerCase() + ' ';
-        
-        // List of prohibited terms (with spaces to ensure whole-word matching)
-        const prohibitedTerms = [
-            ' kill ', ' hurt ', ' harm ', ' steal ', ' crime ', 
-            ' theft ', ' heist ', ' sex ', ' sexual ', ' rape ', 
-            ' murder ', ' shoot ', ' stab ', ' maim ', ' suicide '
-        ];
-        
-        // Check if any prohibited term exists in the text
-        return prohibitedTerms.some(term => lowerText.includes(term));
+        const lowerText = text.toLowerCase();
+
+        for (const term of this.prohibitedTerms) {
+            const regex = new RegExp(`\\b${this.escapeRegex(term)}\\b`, 'i');
+            if (regex.test(lowerText)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Helper function to extract first sentence from text

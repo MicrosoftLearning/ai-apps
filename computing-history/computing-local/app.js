@@ -18,6 +18,7 @@ let wllama = null; // Wllama instance for text generation
 let wllamaReady = false; // Track if wllama is initialized
 let mobilenetReady = false; // Track if MobileNet is initialized
 let conversationHistory = []; // Track conversation for context
+let inappropriateWords = []; // Loaded from moderation file
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
 const BASE_MODEL_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
 
@@ -43,9 +44,10 @@ async function init() {
     // Load both models in parallel
     const mobilenetPromise = loadModel();
     const wllamaPromise = initWllama();
+    const moderationPromise = loadInappropriateWords();
     
     try {
-        await Promise.all([mobilenetPromise, wllamaPromise]);
+        await Promise.all([mobilenetPromise, wllamaPromise, moderationPromise]);
         
         // Both models loaded successfully
         hideLoadingOverlay();
@@ -56,6 +58,33 @@ async function init() {
             hideLoadingOverlay();
             addMessage(`Error loading models: ${e.message}. Some features may be unavailable.`, "bot");
         }, 2000);
+    }
+}
+
+function reverseWord(text) {
+    return text.split('').reverse().join('');
+}
+
+function escapeRegex(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function loadInappropriateWords() {
+    try {
+        const response = await fetch('./moderation/prohibited-words.txt');
+        if (!response.ok) throw new Error('Failed to load inappropriate words');
+
+        const reversedWordsText = await response.text();
+        inappropriateWords = reversedWordsText
+            .split(/\r?\n/)
+            .map(word => word.trim())
+            .filter(word => word.length > 0)
+            .map(word => reverseWord(word.toLowerCase()));
+
+        console.log('Loaded inappropriate words:', inappropriateWords.length);
+    } catch (error) {
+        console.error('Error loading inappropriate words:', error);
+        throw error;
     }
 }
 
@@ -358,15 +387,11 @@ async function handleSend() {
         addMessage(text, "user");
 
         // Check for inappropriate content
-        const inappropriateWords = [
-            " steal", " hurt", " kill", " harm", " theft", " heist", " knife", "weapon", " sword",
-            " illegal", " crime", " shoot", " murder", " stab ", " gun", " bomb",
-            " suicide", " rape", " genocide", " sex", " sexual"
-        ];
         const lowerText = text.toLowerCase();
-        const containsInappropriate = inappropriateWords.some(word => 
-            lowerText.includes(word)
-        );
+        const containsInappropriate = inappropriateWords.some(word => {
+            const regex = new RegExp(`\\b${escapeRegex(word)}\\b`, 'i');
+            return regex.test(lowerText);
+        });
         
         if (containsInappropriate) {
             addMessage("I'm sorry, I can't help with that. I can only help with information about the history of computing.", "bot");
