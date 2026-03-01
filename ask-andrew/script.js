@@ -54,6 +54,13 @@ IMPORTANT: Follow these guidelines when responding:
 - Keep your responses concise and to the point.
 - Do NOT provide links for more information (these will be added automatically later).`;
 
+        // Prohibited words for content moderation (whole words only)
+        this.prohibitedWords = [
+            'hurt', 'harm', 'kill', 'murder', 'weapon', 'gun', 'bomb', 'sword', 
+            'knife', 'attack', 'genocide', 'suicide', 'sex', 'sexual', 'steal', 
+            'theft', 'heist', 'crime', 'illegal', 'stab'
+        ];
+
         this.initialize();
     }
 
@@ -388,6 +395,23 @@ IMPORTANT: Follow these guidelines when responding:
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
 
+    containsProhibitedWords(text) {
+        // Convert to lowercase for case-insensitive matching
+        const lowerText = text.toLowerCase();
+        
+        // Create word boundaries regex pattern for whole word matching
+        for (const word of this.prohibitedWords) {
+            // Use word boundary to match whole words only
+            const regex = new RegExp(`\\b${word}\\b`, 'i');
+            if (regex.test(lowerText)) {
+                console.log(`Content moderation: blocked word "${word}" detected`);
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
         
@@ -555,15 +579,34 @@ IMPORTANT: Follow these guidelines when responding:
             return;
         }
         
+        // Store voice input flag before any processing
+        const usedVoice = this.usedVoiceInput;
+        this.usedVoiceInput = false;
+        
+        // Content moderation: check for prohibited words (whole words only)
+        if (this.containsProhibitedWords(userMessage)) {
+            // Clear input and reset height
+            this.elements.userInput.value = '';
+            this.elements.userInput.style.height = 'auto';
+            
+            // Add user message to chat
+            this.addMessage('user', userMessage);
+            
+            // Play audio if voice input was used
+            if (usedVoice) {
+                this.playModerationAudio();
+            }
+            
+            // Add moderation response
+            this.addMessage('assistant', "I'm sorry. I can't help with that. Please ask me about AI-related topics.");
+            return;
+        }
+        
         // Check if wllama is still loading when in CPU mode
         if (this.usingWllama && !this.wllama) {
             this.addSystemMessage('CPU mode is still loading. Please wait...');
             return;
         }
-        
-        // Store voice input flag before clearing
-        const usedVoice = this.usedVoiceInput;
-        this.usedVoiceInput = false;
         
         // Clear input and reset height
         this.elements.userInput.value = '';
@@ -900,6 +943,20 @@ IMPORTANT: Follow these guidelines when responding:
         return assistantMessage;
     }
 
+    // Helper function to extract first sentence or first 30 characters
+    extractFirstSentence(text) {
+        if (!text) return '';
+        
+        // Find the first occurrence of sentence-ending punctuation
+        const match = text.match(/^[^.!?:]*[.!?:]/);
+        if (match) {
+            return match[0].trim();
+        }
+        
+        // If no sentence-ending punctuation, use first 30 characters
+        return text.substring(0, 30).trim();
+    }
+
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         // Ensure wllama is loaded
         if (!this.wllama) {
@@ -928,7 +985,24 @@ IMPORTANT: Follow these guidelines when responding:
         
         chatMLPrompt += '<|im_end|>\n\n';
         
-        // Don't include previous conversation history to keep prompt minimal and fast
+        // Add truncated previous prompt and response if available
+        if (this.conversationHistory.length >= 2) {
+            // Get the last user message and assistant response
+            const prevUser = this.conversationHistory[this.conversationHistory.length - 2];
+            const prevAssistant = this.conversationHistory[this.conversationHistory.length - 1];
+            
+            if (prevUser.role === 'user' && prevAssistant.role === 'assistant') {
+                const prevUserSentence = this.extractFirstSentence(prevUser.content);
+                const prevAssistantSentence = this.extractFirstSentence(prevAssistant.content);
+                
+                chatMLPrompt += '<|im_start|>user\n';
+                chatMLPrompt += prevUserSentence + '\n';
+                chatMLPrompt += '<|im_end|>\n\n';
+                chatMLPrompt += '<|im_start|>assistant\n';
+                chatMLPrompt += prevAssistantSentence + '\n';
+                chatMLPrompt += '<|im_end|>\n\n';
+            }
+        }
         
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
@@ -1111,6 +1185,13 @@ IMPORTANT: Follow these guidelines when responding:
         const audio = new Audio(audioPath);
         audio.play().catch(error => {
             console.error('Error playing audio:', error);
+        });
+    }
+
+    playModerationAudio() {
+        const audio = new Audio('moderation/sorry.wav');
+        audio.play().catch(error => {
+            console.error('Error playing moderation audio:', error);
         });
     }
 
