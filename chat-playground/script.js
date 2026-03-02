@@ -2233,7 +2233,7 @@ class ChatPlayground {
                         <img class="avatar-image" id="voice-avatar-image" style="display: none;" alt="Avatar">
                     </div>
                     <h3>Let's talk</h3>
-                    <p>Click Start to begin speaking with the AI assistant.</p>
+                    <p>Talk like you would to a person. The agent listens and responds.</p>
                 </div>
             `;
             // Update avatar display after creating the HTML
