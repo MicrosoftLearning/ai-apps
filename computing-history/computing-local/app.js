@@ -71,7 +71,7 @@ function escapeRegex(text) {
 
 async function loadInappropriateWords() {
     try {
-        const response = await fetch('./moderation/prohibited-words.txt');
+        const response = await fetch('./moderation/.mod');
         if (!response.ok) throw new Error('Failed to load inappropriate words');
 
         const reversedWordsText = await response.text();
