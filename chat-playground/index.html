@@ -323,7 +323,26 @@
             </div>
         </div>
     </div>
+
+    <!-- Voice Input Error Modal -->
+    <div class="modal-overlay" id="voice-input-error-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="voice-input-error-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="voice-input-error-title">Voice input unavailable</h2>
+                <button class="modal-close-btn" id="voice-input-error-close" aria-label="Close voice input error dialog">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="voice-fallback-description">A speech recognition error prevented voice input for this turn. You can type your message below and continue the conversation.</p>
+                <label for="voice-fallback-input" class="sr-only">Type your message</label>
+                <textarea id="voice-fallback-input" class="voice-fallback-input" rows="4" placeholder="Type your message here..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="voice-input-error-cancel" aria-label="Cancel typing and close dialog">Cancel</button>
+                <button class="btn-primary" id="voice-input-error-submit" aria-label="Submit typed message" disabled>Send typed message</button>
+            </div>
+        </div>
+    </div>
     
-    <script type="module" src="script.js?v=47"></script>
+    <script type="module" src="script.js?v=48"></script>
 </body>
 </html>

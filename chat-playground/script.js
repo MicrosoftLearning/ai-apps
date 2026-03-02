@@ -622,6 +622,7 @@ class ChatPlayground {
             if (chatPanel) {
                 chatPanel.classList.remove('voice-mode');
             }
+            this.closeVoiceInputErrorModal();
             if (voiceControls) {
                 voiceControls.style.display = 'none';
             }
@@ -1031,6 +1032,49 @@ class ChatPlayground {
                 // Only close if clicking the overlay itself, not the panel
                 if (e.target === flyoutOverlay) {
                     this.closeConfigFlyout();
+                }
+            });
+        }
+
+        // Voice input fallback modal controls
+        const voiceErrorModal = document.getElementById('voice-input-error-modal');
+        const voiceErrorCloseBtn = document.getElementById('voice-input-error-close');
+        const voiceErrorCancelBtn = document.getElementById('voice-input-error-cancel');
+        const voiceErrorSubmitBtn = document.getElementById('voice-input-error-submit');
+        const voiceFallbackInput = document.getElementById('voice-fallback-input');
+
+        if (voiceErrorCloseBtn) {
+            voiceErrorCloseBtn.addEventListener('click', () => this.closeVoiceInputErrorModal());
+        }
+
+        if (voiceErrorCancelBtn) {
+            voiceErrorCancelBtn.addEventListener('click', () => this.closeVoiceInputErrorModal());
+        }
+
+        if (voiceErrorSubmitBtn) {
+            voiceErrorSubmitBtn.addEventListener('click', () => this.submitTypedVoiceFallback());
+        }
+
+        if (voiceFallbackInput) {
+            voiceFallbackInput.addEventListener('input', () => {
+                const hasText = voiceFallbackInput.value.trim().length > 0;
+                if (voiceErrorSubmitBtn) {
+                    voiceErrorSubmitBtn.disabled = !hasText;
+                }
+            });
+
+            voiceFallbackInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.submitTypedVoiceFallback();
+                }
+            });
+        }
+
+        if (voiceErrorModal) {
+            voiceErrorModal.addEventListener('click', (e) => {
+                if (e.target === voiceErrorModal) {
+                    this.closeVoiceInputErrorModal();
                 }
             });
         }
@@ -2356,9 +2400,63 @@ class ChatPlayground {
         this.recognition.onerror = (event) => {
             this.isListening = false;
             console.error('Speech recognition error:', event.error);
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
             this.resetVoiceUI();
+
+            if (this.voiceMode && event.error !== 'aborted') {
+                this.openVoiceInputErrorModal(event.error);
+                return;
+            }
+
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
         };
+    }
+
+    openVoiceInputErrorModal(errorCode = '') {
+        const modal = document.getElementById('voice-input-error-modal');
+        const input = document.getElementById('voice-fallback-input');
+        const submitBtn = document.getElementById('voice-input-error-submit');
+        const description = modal ? modal.querySelector('.voice-fallback-description') : null;
+
+        if (!modal || !input) {
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+            return;
+        }
+
+        if (description) {
+            const details = errorCode ? ` (${errorCode})` : '';
+            description.textContent = `A speech recognition error${details} prevented voice input for this turn. You can type your message below and continue the conversation.`;
+        }
+
+        input.value = '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+
+        modal.style.display = 'flex';
+
+        setTimeout(() => {
+            input.focus();
+        }, 50);
+    }
+
+    closeVoiceInputErrorModal() {
+        const modal = document.getElementById('voice-input-error-modal');
+        if (!modal) return;
+
+        modal.style.display = 'none';
+    }
+
+    submitTypedVoiceFallback() {
+        const input = document.getElementById('voice-fallback-input');
+        if (!input) return;
+
+        const typedPrompt = input.value.trim();
+        if (!typedPrompt) {
+            return;
+        }
+
+        this.closeVoiceInputErrorModal();
+        this.handleSpokenInput(typedPrompt);
     }
 
     startVoiceInput() {
@@ -3319,6 +3417,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals with Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            const voiceInputErrorModal = document.getElementById('voice-input-error-modal');
+            if (voiceInputErrorModal && voiceInputErrorModal.style.display !== 'none') {
+                window.chatPlaygroundApp?.closeVoiceInputErrorModal();
+                return;
+            }
+
             const parametersModal = document.getElementById('parameters-modal');
             if (parametersModal && parametersModal.style.display !== 'none') {
                 window.closeParametersModal();

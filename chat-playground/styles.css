@@ -1357,6 +1357,31 @@ header h1 {
     color: #605e5c;
 }
 
+.voice-fallback-description {
+    margin: 0 0 12px 0;
+    color: #605e5c;
+    line-height: 1.5;
+}
+
+.voice-fallback-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px 12px;
+    border: 1px solid #8a8886;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    background: #ffffff;
+    color: #323130;
+}
+
+.voice-fallback-input:focus {
+    outline: none;
+    border-color: #0078d4;
+    box-shadow: 0 0 0 1px #0078d4;
+}
+
 .about-content strong {
     color: #323130;
     font-weight: 600;
@@ -2304,6 +2329,21 @@ body.dark-mode .btn-primary:disabled {
 
 body.dark-mode .btn-primary:disabled:hover {
     background: #555;
+}
+
+body.dark-mode .voice-fallback-description {
+    color: #b0b0b0;
+}
+
+body.dark-mode .voice-fallback-input {
+    background: #1e1e1e;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-mode .voice-fallback-input:focus {
+    border-color: #a855f7;
+    box-shadow: 0 0 0 1px #a855f7;
 }
 
 body.dark-mode .parameter-actions {
