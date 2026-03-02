@@ -70,8 +70,16 @@ class ChatPlayground {
         this.recognition = null;
         this.voicesAvailable = false;
         this.voicesLoaded = false;
+        this.voiceHealthCacheKey = 'chat-playground-voice-health-v1';
+        this.voiceHealthCacheTtlMs = 7 * 24 * 60 * 60 * 1000;
+        this.voiceHealthCache = {};
+        this.voiceHealthCheckPromise = null;
+        this.voiceSelectionProbeNonce = 0;
+        this.voiceSelectionProbePromise = null;
         this.showCaptions = false; // Track whether to show conversation text
         this.prohibitedTerms = []; // Content moderation terms loaded from file
+
+        this.loadVoiceHealthCache();
 
         // Initialize DOM element registry
         this.elements = {};
@@ -995,9 +1003,8 @@ class ChatPlayground {
         // Voice select dropdown
         const voiceSelect = document.getElementById('config-voice-select');
         if (voiceSelect) {
-            voiceSelect.addEventListener('change', (e) => {
-                this.speechSettings.voice = e.target.value;
-                console.log('Voice selected:', e.target.value);
+            voiceSelect.addEventListener('change', async (e) => {
+                await this.handleVoiceSelectionChange(e.target.value);
             });
         }
         
@@ -2335,6 +2342,239 @@ class ChatPlayground {
     // Removed updateTokenCount function - disclaimer is now static
     
     // ========== Speech and Voice Functions ==========
+
+    loadVoiceHealthCache() {
+        try {
+            const rawCache = localStorage.getItem(this.voiceHealthCacheKey);
+            this.voiceHealthCache = rawCache ? JSON.parse(rawCache) : {};
+        } catch (error) {
+            console.warn('Failed to load voice health cache:', error);
+            this.voiceHealthCache = {};
+        }
+    }
+
+    saveVoiceHealthCache() {
+        try {
+            localStorage.setItem(this.voiceHealthCacheKey, JSON.stringify(this.voiceHealthCache));
+        } catch (error) {
+            console.warn('Failed to save voice health cache:', error);
+        }
+    }
+
+    getVoiceHealthKey(voice) {
+        return `${voice.name}::${voice.lang}`;
+    }
+
+    isVoiceHealthEntryFresh(entry) {
+        if (!entry || !entry.checkedAt) return false;
+        return (Date.now() - entry.checkedAt) <= this.voiceHealthCacheTtlMs;
+    }
+
+    updateVoiceHealthStatus(voice, ok) {
+        if (!voice || !voice.name) return;
+        const key = this.getVoiceHealthKey(voice);
+        this.voiceHealthCache[key] = {
+            ok: !!ok,
+            checkedAt: Date.now()
+        };
+        this.saveVoiceHealthCache();
+    }
+
+    shouldMarkVoiceAsFailed(errorCode = '') {
+        const code = String(errorCode || '').toLowerCase();
+        return !['interrupted', 'canceled', 'cancelled'].includes(code);
+    }
+
+    getDisplayableVoices(voices) {
+        return voices.filter((voice) => {
+            const cacheEntry = this.voiceHealthCache[this.getVoiceHealthKey(voice)];
+            if (!cacheEntry || !this.isVoiceHealthEntryFresh(cacheEntry)) {
+                return true;
+            }
+            return cacheEntry.ok;
+        });
+    }
+
+    async probeVoiceAvailability(voice, timeoutMs = 4000, maxAttempts = 2) {
+        if (!voice || !('speechSynthesis' in window)) {
+            return 'inconclusive';
+        }
+
+        let sawInconclusiveError = false;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            const result = await new Promise((resolve) => {
+                let settled = false;
+                let timedOut = false;
+                const utterance = new SpeechSynthesisUtterance('Voice check test');
+                utterance.voice = voice;
+                utterance.volume = 0;
+                utterance.rate = 1;
+                utterance.pitch = 1;
+
+                const finish = (ok, errorCode = '') => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeoutHandle);
+                    utterance.onend = null;
+                    utterance.onerror = null;
+                    resolve({ ok, errorCode, timedOut });
+                };
+
+                utterance.onend = () => finish(true, '');
+                utterance.onerror = (event) => {
+                    const code = event && event.error ? event.error : 'unknown';
+                    finish(false, code);
+                };
+
+                const timeoutHandle = setTimeout(() => {
+                    timedOut = true;
+                    try {
+                        speechSynthesis.cancel();
+                    } catch (error) {
+                        console.warn('Voice probe cancel failed:', error);
+                    }
+                    finish(false, 'timeout');
+                }, timeoutMs);
+
+                try {
+                    speechSynthesis.cancel();
+                    speechSynthesis.speak(utterance);
+                } catch (error) {
+                    console.warn('Voice probe failed to start:', error);
+                    finish(false, 'start-failed');
+                }
+            });
+
+            if (result.ok) {
+                return 'ok';
+            }
+
+            if (!this.shouldMarkVoiceAsFailed(result.errorCode) && !result.timedOut) {
+                sawInconclusiveError = true;
+                continue;
+            }
+
+            if (attempt < maxAttempts) {
+                continue;
+            }
+
+            return 'failed';
+        }
+
+        return sawInconclusiveError ? 'inconclusive' : 'failed';
+    }
+
+    runVoiceHealthChecks(allEnglishVoices) {
+        if (!Array.isArray(allEnglishVoices) || allEnglishVoices.length === 0) {
+            return;
+        }
+
+        if (this.voiceHealthCheckPromise) {
+            return;
+        }
+
+        if (this.isListening || this.isSpeaking || this.isGenerating) {
+            return;
+        }
+
+        const voicesToProbe = allEnglishVoices.filter((voice) => {
+            const cacheEntry = this.voiceHealthCache[this.getVoiceHealthKey(voice)];
+            return !cacheEntry || !this.isVoiceHealthEntryFresh(cacheEntry);
+        });
+
+        if (voicesToProbe.length === 0) {
+            return;
+        }
+
+        this.voiceHealthCheckPromise = (async () => {
+            for (const voice of voicesToProbe) {
+                const isHealthy = await this.probeVoiceAvailability(voice);
+                this.updateVoiceHealthStatus(voice, isHealthy);
+            }
+        })().finally(() => {
+            this.voiceHealthCheckPromise = null;
+            this.populateVoices();
+        });
+    }
+
+    async handleVoiceSelectionChange(selectedVoiceName) {
+        this.speechSettings.voice = selectedVoiceName;
+        console.log('Voice selected:', selectedVoiceName);
+
+        if (!selectedVoiceName || selectedVoiceName === 'none') {
+            return;
+        }
+
+        const voices = speechSynthesis.getVoices();
+        const selectedVoice = voices.find((voice) => voice.name === selectedVoiceName);
+        if (!selectedVoice) {
+            this.showToast('Selected voice is no longer available.');
+            this.populateVoices();
+            return;
+        }
+
+        const currentNonce = ++this.voiceSelectionProbeNonce;
+        const probePromise = this.probeVoiceAvailability(selectedVoice);
+        this.voiceSelectionProbePromise = probePromise;
+        const probeResult = await probePromise;
+        if (this.voiceSelectionProbePromise === probePromise) {
+            this.voiceSelectionProbePromise = null;
+        }
+
+        if (currentNonce !== this.voiceSelectionProbeNonce) {
+            return;
+        }
+
+        if (probeResult === 'ok') {
+            this.updateVoiceHealthStatus(selectedVoice, true);
+            this.populateVoices();
+            return;
+        }
+
+        if (probeResult === 'failed') {
+            this.updateVoiceHealthStatus(selectedVoice, false);
+            this.populateVoices();
+            this.showToast('That voice is not available right now. Switched to a working voice.');
+            return;
+        }
+
+        this.showToast('Voice check was inconclusive. Keeping selected voice.');
+        this.populateVoices();
+    }
+
+    async waitForSpeechIdle(timeoutMs = 2000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (!speechSynthesis.speaking && !speechSynthesis.pending) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return !speechSynthesis.speaking && !speechSynthesis.pending;
+    }
+
+    async playPreviewAttempt(selectedVoice) {
+        return await new Promise((resolve) => {
+            const utterance = new SpeechSynthesisUtterance('This is my voice.');
+            utterance.voice = selectedVoice;
+            utterance.rate = 1;
+
+            utterance.onerror = (event) => {
+                resolve({ ok: false, errorCode: event?.error || 'unknown' });
+            };
+
+            utterance.onend = () => {
+                resolve({ ok: true, errorCode: '' });
+            };
+
+            try {
+                speechSynthesis.speak(utterance);
+            } catch (error) {
+                resolve({ ok: false, errorCode: 'start-failed' });
+            }
+        });
+    }
     
     populateVoices() {
         const voiceSelect = document.getElementById('config-voice-select');
@@ -2344,15 +2584,16 @@ class ChatPlayground {
             const voices = speechSynthesis.getVoices();
             // Get all English voices
             const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
+            const displayVoices = this.getDisplayableVoices(englishVoices);
 
             // Preserve currently selected voice
             const currentlySelectedVoice = this.speechSettings.voice || voiceSelect.value;
 
             voiceSelect.innerHTML = '';
 
-            if (englishVoices.length > 0) {
+            if (displayVoices.length > 0) {
                 this.voicesAvailable = true;
-                englishVoices.forEach((voice) => {
+                displayVoices.forEach((voice) => {
                     if (!voice || !voice.name) return;
                     const option = document.createElement('option');
                     option.value = voice.name;
@@ -2362,12 +2603,12 @@ class ChatPlayground {
                 });
                 
                 // Restore previously selected voice or select the first one
-                if (currentlySelectedVoice && englishVoices.find(v => v.name === currentlySelectedVoice)) {
+                if (currentlySelectedVoice && displayVoices.find(v => v.name === currentlySelectedVoice)) {
                     voiceSelect.value = currentlySelectedVoice;
                     this.speechSettings.voice = currentlySelectedVoice;
-                } else if (englishVoices.length > 0) {
-                    voiceSelect.value = englishVoices[0].name;
-                    this.speechSettings.voice = englishVoices[0].name;
+                } else if (displayVoices.length > 0) {
+                    voiceSelect.value = displayVoices[0].name;
+                    this.speechSettings.voice = displayVoices[0].name;
                 }
                 
                 // Enable voice select when voice mode is on
@@ -2378,13 +2619,15 @@ class ChatPlayground {
                 this.voicesAvailable = false;
                 const option = document.createElement('option');
                 option.value = 'none';
-                option.textContent = 'No voices available';
+                option.textContent = 'No working voices available';
                 voiceSelect.appendChild(option);
                 voiceSelect.disabled = true;
                 this.speechSettings.voice = null;
             }
             
             this.voicesLoaded = true;
+            // Do not run passive background probing here: some engines require direct
+            // user interaction and can falsely fail cloud voices when tested passively.
         };
 
         if (speechSynthesis.getVoices().length > 0) {
@@ -2746,10 +2989,11 @@ class ChatPlayground {
         speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(text);
+        let selectedVoice = null;
 
         if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
             const voices = speechSynthesis.getVoices();
-            const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+            selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
             if (selectedVoice) {
                 utterance.voice = selectedVoice;
             }
@@ -2766,7 +3010,11 @@ class ChatPlayground {
             this.onSpeechComplete();
         };
 
-        utterance.onerror = () => {
+        utterance.onerror = (event) => {
+            if (selectedVoice && this.shouldMarkVoiceAsFailed(event?.error)) {
+                this.updateVoiceHealthStatus(selectedVoice, false);
+                this.populateVoices();
+            }
             this.isSpeaking = false;
             this.onSpeechComplete();
         };
@@ -2879,7 +3127,7 @@ class ChatPlayground {
         this.resetVoiceUI();
     }
 
-    previewVoice() {
+    async previewVoice() {
         const voices = speechSynthesis.getVoices();
         const voiceSelect = document.getElementById('config-voice-select');
         const previewBtn = document.getElementById('preview-voice-btn');
@@ -2905,10 +3153,6 @@ class ChatPlayground {
             previewBtn.textContent = '...';
         }
 
-        const utterance = new SpeechSynthesisUtterance('This is my voice.');
-        utterance.voice = selectedVoice;
-        utterance.rate = 1;
-
         const resetButton = () => {
             if (previewBtn) {
                 previewBtn.disabled = false;
@@ -2916,21 +3160,40 @@ class ChatPlayground {
             }
         };
 
-        utterance.onerror = (event) => {
-            console.error('Voice preview error:', event.error);
-            this.showToast('Voice preview failed. Please try another voice.');
-            resetButton();
-        };
-
-        utterance.onend = () => {
-            resetButton();
-        };
-
         try {
-            speechSynthesis.speak(utterance);
+            // If a selection-triggered probe is in-flight, let it settle first
+            if (this.voiceSelectionProbePromise) {
+                await Promise.race([
+                    this.voiceSelectionProbePromise,
+                    new Promise(resolve => setTimeout(resolve, 2200))
+                ]);
+            }
+
+            await this.waitForSpeechIdle(1200);
+            speechSynthesis.cancel();
+
+            let result = await this.playPreviewAttempt(selectedVoice);
+
+            // Retry once on transient startup issues
+            if (!result.ok && !this.shouldMarkVoiceAsFailed(result.errorCode)) {
+                await new Promise(resolve => setTimeout(resolve, 250));
+                await this.waitForSpeechIdle(1200);
+                speechSynthesis.cancel();
+                result = await this.playPreviewAttempt(selectedVoice);
+            }
+
+            if (!result.ok) {
+                console.error('Voice preview error:', result.errorCode);
+                if (this.shouldMarkVoiceAsFailed(result.errorCode)) {
+                    this.updateVoiceHealthStatus(selectedVoice, false);
+                    this.populateVoices();
+                }
+                this.showToast('Voice preview failed. Please try another voice.');
+            }
         } catch (error) {
             console.error('Error speaking:', error);
             this.showToast('Error playing voice preview');
+        } finally {
             resetButton();
         }
     }
