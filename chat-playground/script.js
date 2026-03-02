@@ -1752,6 +1752,28 @@ class ChatPlayground {
         return text.substring(0, 60);
     }
 
+    // Helper function to remove a trailing incomplete sentence
+    trimIncompleteFinalSentence(text) {
+        if (!text) return '';
+
+        const trimmedText = text.trimEnd();
+        if (!trimmedText) return '';
+
+        // If the response already ends with sentence-final punctuation, keep it as-is
+        if (/[.!?]["')\]]*$/.test(trimmedText)) {
+            return trimmedText;
+        }
+
+        // Find the last complete sentence boundary and remove trailing partial sentence
+        const match = trimmedText.match(/([.!?]["')\]]*)(?![\s\S]*[.!?]["')\]]*)/);
+        if (!match) {
+            return '';
+        }
+
+        const sentenceEndIndex = match.index + match[0].length;
+        return trimmedText.slice(0, sentenceEndIndex).trimEnd();
+    }
+
     // Helper function to build simple ChatML prompt for voice mode with SmolLM2
     buildPrompt(userMessage, systemMessage) {
         let prompt = '';
@@ -1989,10 +2011,17 @@ class ChatPlayground {
             // Always add to conversation history to maintain context
             // BUT: Do NOT add stopped responses to history (they're incomplete/corrupted)
             if (fullResponse.trim() && !this.stopRequested) {
+                const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
+
+                if (!cleanedResponse) {
+                    contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                    return;
+                }
+
                 // Append file attribution if a file is uploaded
-                let displayResponse = fullResponse;
+                let displayResponse = cleanedResponse;
                 if (this.config.fileUpload.fileName) {
-                    displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                    displayResponse = cleanedResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
                 
                 // Add indicator if stopped
@@ -2005,7 +2034,7 @@ class ChatPlayground {
                 // Add to conversation history (without file attribution or stop indicator)
                 // Use original message without image classification to avoid persisting it
                 this.conversationHistory.push({ role: "user", content: originalUserMessage });
-                this.conversationHistory.push({ role: "assistant", content: fullResponse });
+                this.conversationHistory.push({ role: "assistant", content: cleanedResponse });
             } else if (this.stopRequested && fullResponse.trim()) {
                 // Response was stopped - display it but don't add to history
                 let displayResponse = fullResponse;
