@@ -136,7 +136,7 @@ class ChatPlayground {
 
     async loadProhibitedTerms() {
         try {
-            const response = await fetch('moderation/.mod');
+            const response = await fetch('moderation/mod.txt');
             if (!response.ok) throw new Error('Failed to load prohibited terms');
 
             const reversedTermsText = await response.text();
