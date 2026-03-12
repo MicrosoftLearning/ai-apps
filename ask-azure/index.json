@@ -28,7 +28,7 @@
                     "transparency",
                     "accountability",
                     "privacy",
-                    "bias"  
+                    "bias"
                 ],
                 "content": "Responsible AI involves the development and deployment of artificial intelligence systems in a manner that is ethical, transparent, and accountable. It emphasizes the importance of ensuring that AI technologies are designed to respect human rights, promote fairness, and mitigate potential risks associated with their use. Responsible AI practices include considerations for privacy, bias reduction, and the overall societal impact of AI applications. Microsoft defines a set of principles to guide the responsible development and use of AI technologies, including fairness, reliability and safety, privacy and security, inclusiveness, transparency, and accountability."
             }
@@ -500,9 +500,9 @@
             }
         ]
     },
-     {
+    {
         "category": "Microsoft Foundry",
-        "link": "https://aka.ms/mslearn-start-foundry",
+        "link": "https://aka.ms/mslearn-get-started-ai-apps-agents-lp",
         "documents": [
             {
                 "id": 32,
