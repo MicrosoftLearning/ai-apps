@@ -8,6 +8,8 @@ const WASM_PATHS = {
 
 const MODEL_REPO = "ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF";
 const MODEL_FILE = "smollm2-360m-instruct-q8_0.gguf";
+const MODERATION_LIST_PATH = "./moderation/mod.txt";
+const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that.";
 
 function makeId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -57,6 +59,186 @@ class ModelCoderLLM {
         this.sessionVersion = 0;
         this.activeGenerationTasks = new Set();
         this.activeRunId = 0;
+        this.moderationTerms = null;
+        this.moderationLoadPromise = null;
+    }
+
+    async _ensureModerationTerms() {
+        if (Array.isArray(this.moderationTerms)) {
+            return this.moderationTerms;
+        }
+
+        if (this.moderationLoadPromise) {
+            return this.moderationLoadPromise;
+        }
+
+        this.moderationLoadPromise = (async () => {
+            const response = await fetch(MODERATION_LIST_PATH, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error("Failed to load moderation list.");
+            }
+
+            const text = await response.text();
+            const lines = text
+                .split(/\r?\n/)
+                .map((line) => line.trim().toLowerCase())
+                .filter((line) => line.length > 0);
+
+            // List contains reversed words, so reverse each term for prompt matching.
+            this.moderationTerms = lines
+                .map((line) => line.split("").reverse().join(""))
+                .filter((line) => line.length > 0);
+
+            return this.moderationTerms;
+        })();
+
+        try {
+            return await this.moderationLoadPromise;
+        } finally {
+            this.moderationLoadPromise = null;
+        }
+    }
+
+    async _hasReversedModerationMatch(userPrompts) {
+        const prompts = Array.isArray(userPrompts)
+            ? userPrompts.map((v) => String(v ?? "").toLowerCase())
+            : [];
+
+        if (prompts.length === 0) {
+            return false;
+        }
+
+        const terms = await this._ensureModerationTerms();
+        if (!Array.isArray(terms) || terms.length === 0) {
+            return false;
+        }
+
+        for (const prompt of prompts) {
+            for (const term of terms) {
+                if (term && prompt.includes(term)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    _extractUserPromptsFromMessages(messages) {
+        if (!Array.isArray(messages)) {
+            return [];
+        }
+
+        return messages
+            .filter((message) => message && message.role === "user")
+            .map((message) => String(message.content ?? ""));
+    }
+
+    _extractUserPromptsFromInput(input) {
+        if (Array.isArray(input)) {
+            return input
+                .filter((message) => message && String(message.role || "user") === "user")
+                .map((message) => String(message.content ?? ""));
+        }
+
+        return [String(input ?? "")];
+    }
+
+    _createSafeResponseStream(streamType, requestedRunId = null) {
+        const streamId = makeId("stream");
+        const responseId = makeId("resp");
+        const createdAtVersion = this.sessionVersion;
+
+        const session = {
+            queue: [],
+            done: true,
+            error: null,
+            responseId,
+            createdAtVersion,
+            requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
+        };
+
+        if (streamType === "chat") {
+            session.queue.push({
+                object: "chat.completion.chunk",
+                choices: [
+                    {
+                        index: 0,
+                        delta: {
+                            content: MODERATION_SAFE_RESPONSE
+                        }
+                    }
+                ]
+            });
+            session.queue.push({
+                object: "chat.completion.chunk",
+                choices: [
+                    {
+                        index: 0,
+                        delta: {},
+                        finish_reason: "stop"
+                    }
+                ]
+            });
+        } else {
+            session.queue.push({
+                type: "response.output_text.delta",
+                delta: MODERATION_SAFE_RESPONSE
+            });
+            session.queue.push({
+                type: "response.completed",
+                response: {
+                    id: responseId,
+                    output_text: MODERATION_SAFE_RESPONSE
+                }
+            });
+        }
+
+        this.responsesById.set(responseId, MODERATION_SAFE_RESPONSE);
+        this.streamSessions.set(streamId, session);
+
+        return { stream_id: streamId, response_id: responseId };
+    }
+
+    _createSafeChatResponse() {
+        const responseId = makeId("chatcmpl");
+        this.responsesById.set(responseId, MODERATION_SAFE_RESPONSE);
+        return {
+            id: responseId,
+            object: "chat.completion",
+            choices: [
+                {
+                    index: 0,
+                    finish_reason: "stop",
+                    message: {
+                        role: "assistant",
+                        content: MODERATION_SAFE_RESPONSE
+                    }
+                }
+            ]
+        };
+    }
+
+    _createSafeResponsesResponse() {
+        const responseId = makeId("resp");
+        this.responsesById.set(responseId, MODERATION_SAFE_RESPONSE);
+        return {
+            id: responseId,
+            object: "response",
+            output_text: MODERATION_SAFE_RESPONSE,
+            output: [
+                {
+                    type: "message",
+                    role: "assistant",
+                    content: [
+                        {
+                            type: "output_text",
+                            text: MODERATION_SAFE_RESPONSE
+                        }
+                    ]
+                }
+            ]
+        };
     }
 
     setActiveRunId(runId) {
@@ -389,6 +571,21 @@ class ModelCoderLLM {
             this._ensureClient(payload.model);
             const messages = Array.isArray(payload.messages) ? payload.messages : [];
             validateMessages(messages, "messages");
+
+            const chatUserPrompts = this._extractUserPromptsFromMessages(messages);
+            if (await this._hasReversedModerationMatch(chatUserPrompts)) {
+                if (payload.stream) {
+                    const streamMeta = this._createSafeResponseStream("chat", payload.run_id);
+                    return {
+                        stream: true,
+                        stream_id: streamMeta.stream_id,
+                        id: streamMeta.response_id
+                    };
+                }
+
+                return this._createSafeChatResponse();
+            }
+
             const prompt = this._toChatML(messages);
 
             if (payload.stream) {
@@ -422,6 +619,21 @@ class ModelCoderLLM {
 
         if (payload.type === "responses.create") {
             this._ensureClient(payload.model);
+
+            const responsesUserPrompts = this._extractUserPromptsFromInput(payload.input);
+            if (await this._hasReversedModerationMatch(responsesUserPrompts)) {
+                if (payload.stream) {
+                    const streamMeta = this._createSafeResponseStream("responses", payload.run_id);
+                    return {
+                        stream: true,
+                        stream_id: streamMeta.stream_id,
+                        id: streamMeta.response_id
+                    };
+                }
+
+                return this._createSafeResponsesResponse();
+            }
+
             const normalizedInstructions = payload.instructions ?? payload.insructions;
             const messages = this._buildResponsesMessages(
                 payload.input,

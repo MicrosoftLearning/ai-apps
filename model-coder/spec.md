@@ -90,6 +90,8 @@ Validation behavior:
 - `base_url` must be `http://localwllama`
 - `model` must be `smollm2`
 - message role/content types are validated
+- user prompts are checked against `moderation/mod.txt` reversed-term filters in JS before ChatML assembly
+- matched prompts return `I'm sorry. I can't help with that` as the model response
 
 ## Local Model Runtime
 
