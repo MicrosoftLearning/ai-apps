@@ -63,3 +63,16 @@ gnitoohs
 gnibmob
 gnillik
 gnibbats
+reggin
+sreggin
+stuls
+toggaf
+stoggaf
+ekyd
+sekyd
+diy
+sdiy
+ekik
+sekik
+snug
+sbmob
