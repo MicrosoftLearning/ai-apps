@@ -495,17 +495,15 @@ function getSavedThemePreference() {
 
 function applyEmbeddedEditorTheme() {
     const editor = getEditor();
-    const container = document.getElementById("editor-container");
-    if (!editor && !container) {
+    if (!editor) {
         return;
     }
 
-    if (editor) {
-        editor.setAttribute("data-theme", state.darkTheme ? "dark" : "light");
-        editor.style.backgroundColor = state.darkTheme ? "#0d0f12" : "#ffffff";
-        editor.style.color = state.darkTheme ? "#f5f6f8" : "#111111";
-    }
+    editor.setAttribute("data-theme", state.darkTheme ? "dark" : "light");
+    editor.style.backgroundColor = "";
+    editor.style.color = "";
 
+    const container = document.getElementById("editor-container");
     const styleId = "model-coder-embedded-theme";
     const roots = [];
 
@@ -536,47 +534,88 @@ function applyEmbeddedEditorTheme() {
             root.appendChild(styleEl);
         }
 
-        if (state.darkTheme) {
-            styleEl.textContent = `
+        if (!state.darkTheme) {
+            styleEl.textContent = "";
+            continue;
+        }
+
+        // Third-party fix: One Dark-inspired theme from @codemirror/theme-one-dark.
+        styleEl.textContent = `
         .cm-editor,
         .cm-scroller,
         .cm-content,
-        .cm-gutters,
-        .cm-activeLine,
-        .cm-activeLineGutter {
-            background: #0d0f12 !important;
-            color: #e6edf3 !important;
+        .cm-gutters {
+            background-color: #282c34 !important;
+            color: #abb2bf !important;
+        }
+
+        .cm-content {
+            caret-color: #528bff !important;
         }
 
         .cm-gutters {
-            border-right: 1px solid #2f353d !important;
+            background-color: #282c34 !important;
+            color: #7d8799 !important;
+            border: none !important;
         }
 
-        .cm-line {
-            color: #e6edf3 !important;
+        .cm-panels {
+            background-color: #21252b !important;
+            color: #abb2bf !important;
         }
 
-        .cm-gutterElement {
-            color: #9aa4af !important;
+        .cm-panels.cm-panels-top {
+            border-bottom: 2px solid #000 !important;
         }
 
-        .cm-cursor,
-        .cm-dropCursor {
-            border-left-color: #f5f6f8 !important;
+        .cm-panels.cm-panels-bottom {
+            border-top: 2px solid #000 !important;
         }
 
-        .cm-content span,
-        .cm-line span,
-        .cm-line span *,
-        [class*="tok-"],
-        [class*="cm-"] {
-            color: #ffffff !important;
+        .cm-editor .cm-cursor,
+        .cm-editor .cm-dropCursor {
+            border-left-color: #528bff !important;
+        }
+
+        .cm-editor .cm-activeLine,
+        .cm-editor .cm-activeLineGutter {
+            background-color: #2c313a !important;
+        }
+
+        .cm-editor .cm-selectionMatch {
+            background-color: #aafe661a !important;
+        }
+
+        /* Keep selection styling explicit and centralized to avoid override conflicts. */
+        .cm-editor .cm-selectionLayer {
+            z-index: 2 !important;
+            mix-blend-mode: normal !important;
+        }
+
+        .cm-editor .cm-selectionLayer .cm-selectionBackground,
+        .cm-editor .cm-selectionBackground {
+            background-color: rgba(82, 139, 255, 0.42) !important;
+        }
+
+        .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
+        .cm-editor.cm-focused .cm-selectionBackground {
+            background-color: rgba(82, 139, 255, 0.62) !important;
+            outline: 1px solid rgba(173, 204, 255, 0.7) !important;
+        }
+
+        .cm-editor ::selection,
+        .cm-editor *::selection,
+        .cm-editor .cm-content::selection,
+        .cm-editor .cm-line::selection {
+            background-color: rgba(82, 139, 255, 0.62) !important;
+            color: #f0f6fc !important;
+        }
+
+        .cm-editor .cm-searchMatch {
+            background-color: #72a1ff59 !important;
+            outline: 1px solid #457dff !important;
         }
         `;
-    } else {
-        // Keep PyScript/CodeMirror default syntax colors in light mode.
-        styleEl.textContent = "";
-        }
     }
 }
 

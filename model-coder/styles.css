@@ -28,52 +28,10 @@ body.dark-theme {
     --terminal-bg: #0d0f12;
     --terminal-fg: #f5f6f8;
     --terminal-cursor: #f5f6f8;
-    --editor-bg: #0d0f12;
-    --editor-fg: #f5f6f8;
+    --editor-bg: #282c34;
+    --editor-fg: #abb2bf;
 }
 
-body.dark-theme #editor-container,
-body.dark-theme #editor-container .cm-editor,
-body.dark-theme #editor-container .cm-scroller,
-body.dark-theme #editor-container .cm-content,
-body.dark-theme #editor-container .cm-gutters,
-body.dark-theme #editor-container .cm-line,
-body.dark-theme #editor-container .cm-gutterElement,
-body.dark-theme #editor-container .cm-content span,
-body.dark-theme #editor-container pre,
-body.dark-theme #editor-container code,
-body.dark-theme #editor-container textarea,
-body.dark-theme #editor-container div,
-body.dark-theme #editor-container span {
-    color: var(--editor-fg) !important;
-}
-
-body.dark-theme #editor-container,
-body.dark-theme #editor-container .cm-editor,
-body.dark-theme #editor-container .cm-scroller,
-body.dark-theme #editor-container .cm-content,
-body.dark-theme #editor-container .cm-gutters {
-    background: var(--editor-bg) !important;
-}
-
-/* Fallback for closed shadow/iframe editor rendering where token CSS cannot be targeted directly. */
-body.dark-theme #editor-container {
-    filter: brightness(1.35) contrast(1.2) saturate(1.1);
-}
-
-body.dark-theme #editor-container .cm-editor,
-body.dark-theme #editor-container iframe {
-    filter: brightness(1.15) contrast(1.1);
-}
-
-body.dark-theme #python-editor::part(editor),
-body.dark-theme #python-editor::part(scroller),
-body.dark-theme #python-editor::part(content),
-body.dark-theme #python-editor::part(gutters),
-body.dark-theme #python-editor::part(line) {
-    background: var(--editor-bg) !important;
-    color: var(--editor-fg) !important;
-}
 
 * {
     box-sizing: border-box;
@@ -443,14 +401,6 @@ body.dark-theme .modal-card:focus-visible {
 #editor-container {
     background: var(--editor-bg);
     color: var(--editor-fg);
-}
-
-#editor-container .cm-editor,
-#editor-container .cm-scroller,
-#editor-container .cm-content,
-#editor-container .cm-gutters {
-    background: var(--editor-bg) !important;
-    color: var(--editor-fg) !important;
 }
 
 #editor-container .cm-gutters {
