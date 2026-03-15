@@ -140,7 +140,7 @@ class ModelCoderLLM {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadModel();
                 this.isReady = true;
-                this._status("ready", "Model ready: SmolLM2 localmodel");
+                this._status("ready", "Model ready: SmolLM2 smollm2");
                 this.isLoading = false;
                 return;
             } catch (error) {
@@ -176,8 +176,8 @@ class ModelCoderLLM {
         if (!this.isReady || !this.wllama) {
             throw new Error("Model is not ready yet.");
         }
-        if (model !== "localmodel") {
-            throw new Error("The model parameter must be 'localmodel'.");
+        if (model !== "smollm2") {
+            throw new Error("The model parameter must be 'smollm2'.");
         }
     }
 

@@ -40,9 +40,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -91,9 +91,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -134,9 +134,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -190,9 +190,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -240,9 +240,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -293,9 +293,9 @@ async def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize an async OpenAI client
         async_client = AsyncOpenAI(
@@ -344,9 +344,9 @@ async def main():
 
     try:
         # Configuration settings 
-        endpoint = "https://localmodel"
+        endpoint = "http://localwllama"
         key = "key123"
-        model_name = "localmodel"
+        model_name = "smollm2"
 
         # Initialize the OpenAI client
         async_client = AsyncOpenAI(
@@ -409,6 +409,7 @@ const state = {
 };
 
 let modelResetInFlight = Promise.resolve();
+let terminalResizeRafId = 0;
 
 function openAboutModal() {
     if (!aboutModalBackdrop || !aboutModal) {
@@ -654,12 +655,122 @@ function getTerminal() {
     return document.getElementById("python-terminal");
 }
 
+function getActiveTerminalInstance() {
+    const container = document.getElementById("terminal-container");
+    const candidates = [];
+
+    if (container) {
+        candidates.push(container, ...container.querySelectorAll("*"));
+    }
+
+    // PyScript stores terminal instance on the runner script element.
+    const runnerScripts = document.querySelectorAll('script[type="py"][data-model-coder-runner="true"]');
+    candidates.push(...runnerScripts);
+
+    for (const node of candidates) {
+        const terminal = node?.terminal;
+        if (terminal && typeof terminal.resize === "function") {
+            return terminal;
+        }
+    }
+
+    return null;
+}
+
+function fitTerminalUsingAddon(terminal) {
+    const addonEntries = terminal?._addonManager?._addons;
+    if (!Array.isArray(addonEntries)) {
+        return false;
+    }
+
+    for (const entry of addonEntries) {
+        const addon = entry?.instance || entry?.addon || entry;
+        if (addon && typeof addon.fit === "function") {
+            addon.fit();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function fitTerminalByMeasurement(terminal, container) {
+    if (!terminal || !container) {
+        return false;
+    }
+
+    const viewport = container.querySelector(".xterm-viewport") || container.querySelector(".xterm-screen");
+    const rowSample = container.querySelector(".xterm-rows > div");
+    const rowHeight = rowSample?.getBoundingClientRect().height || 0;
+    const viewportHeight = viewport?.getBoundingClientRect().height || 0;
+
+    if (!(rowHeight > 0) || !(viewportHeight > 0)) {
+        return false;
+    }
+
+    const nextRows = Math.max(2, Math.floor(viewportHeight / rowHeight));
+    const nextCols = Math.max(2, Number(terminal.cols) || 80);
+
+    if (typeof terminal.resize === "function") {
+        terminal.resize(nextCols, nextRows);
+    }
+
+    if (typeof terminal.refresh === "function") {
+        terminal.refresh(0, Math.max(0, nextRows - 1));
+    }
+
+    return true;
+}
+
+function syncTerminalToPaneSize() {
+    const container = document.getElementById("terminal-container");
+    const terminal = getActiveTerminalInstance();
+    if (!container || !terminal) {
+        return;
+    }
+
+    if (fitTerminalUsingAddon(terminal)) {
+        return;
+    }
+
+    if (fitTerminalByMeasurement(terminal, container)) {
+        return;
+    }
+
+    // Last resort: some integrations only react to window resize.
+    window.dispatchEvent(new Event("resize"));
+}
+
+function requestTerminalResizeSync() {
+    if (terminalResizeRafId) {
+        cancelAnimationFrame(terminalResizeRafId);
+    }
+
+    terminalResizeRafId = requestAnimationFrame(() => {
+        terminalResizeRafId = 0;
+        syncTerminalToPaneSize();
+    });
+}
+
+function queueTerminalResizeSync() {
+    let attempts = 0;
+    const maxAttempts = 20;
+    const timer = setInterval(() => {
+        attempts += 1;
+        requestTerminalResizeSync();
+        if (getActiveTerminalInstance() || attempts >= maxAttempts) {
+            clearInterval(timer);
+        }
+    }, 120);
+}
+
 function setPaneSizes(editorPx, terminalPx) {
     if (!workspace) {
         return;
     }
     workspace.style.setProperty("--editor-size", `${Math.round(editorPx)}px`);
     workspace.style.setProperty("--terminal-size", `${Math.round(terminalPx)}px`);
+    requestTerminalResizeSync();
 }
 
 function resetPaneSizes() {
@@ -771,6 +882,7 @@ function resetTerminalContainer() {
     const replacement = current.cloneNode(false);
     replacement.innerHTML = "";
     current.replaceWith(replacement);
+    requestTerminalResizeSync();
     return replacement;
 }
 
@@ -844,6 +956,7 @@ function launchTerminalScript(scriptCode, runId) {
     runner.addEventListener("error", markCompleted, { once: true });
 
     document.body.appendChild(runner);
+    queueTerminalResizeSync();
 }
 
 function stopActiveRun(message = "Run stopped. You can load another template or run code again.") {
@@ -872,14 +985,14 @@ function completeActiveRun(runId = state.activeRunId) {
         return;
     }
 
-    // End the active terminal session but keep existing terminal output visible.
-    const staleRunners = document.querySelectorAll('script[type="py"][data-model-coder-runner="true"]');
-    staleRunners.forEach((node) => node.remove());
+    // Keep runner element so its terminal instance remains available for resizing.
+    // It will be removed by the next run, stop, template switch, or clear action.
 
     state.sessionActive = false;
     state.running = false;
     void requestModelSessionReset();
     updateRunState();
+    requestTerminalResizeSync();
 }
 
 function clearTerminalOutput(options = {}) {
@@ -1228,7 +1341,7 @@ async function initializeModel() {
     try {
         await window.modelCoderInit(3);
         state.modelReady = true;
-        setPill(statusModel, "Model ready: localmodel", "ready");
+        setPill(statusModel, "Model ready: smollm2", "ready");
     } catch (error) {
         setPill(statusModel, `Model failed: ${error.message}`, "error");
         retryBtn.hidden = false;
@@ -1264,6 +1377,7 @@ async function initializeApp() {
     applyTheme(savedTheme === "dark");
 
     initializePaneSplitter();
+    window.addEventListener("resize", requestTerminalResizeSync);
 
     window.addEventListener("py:ready", markRuntimeReady, { once: true });
 
@@ -1306,3 +1420,4 @@ initializeApp().catch((error) => {
     setPill(statusRuntime, `Startup failed: ${error.message}`, "error");
     console.error(error);
 });
+

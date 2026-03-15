@@ -77,18 +77,18 @@ The implementation is split across these files:
 
 The wrapper exposed via `nopenai.py` supports:
 
-- `OpenAI(base_url="https://localmodel", api_key="...")`
-- `AsyncOpenAI(base_url="https://localmodel", api_key="...")`
+- `OpenAI(base_url="http://localwllama", api_key="...")`
+- `AsyncOpenAI(base_url="http://localwllama", api_key="...")`
 - Chat Completions:
-  - `chat.completions.create(model="localmodel", messages=[...], stream=False|True)`
+  - `chat.completions.create(model="smollm2", messages=[...], stream=False|True)`
 - Responses API:
-  - `responses.create(model="localmodel", input=..., instructions=..., previous_response_id=..., stream=False|True)`
+  - `responses.create(model="smollm2", input=..., instructions=..., previous_response_id=..., stream=False|True)`
 - Synchronous and asynchronous stream iterators
 
 Validation behavior:
 
-- `base_url` must be `https://localmodel`
-- `model` must be `localmodel`
+- `base_url` must be `http://localwllama`
+- `model` must be `smollm2`
 - message role/content types are validated
 
 ## Local Model Runtime

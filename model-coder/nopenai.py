@@ -23,6 +23,8 @@ except Exception:
     _pyscript_window = None
 
 _BRIDGE_DEBUG = False
+_EXPECTED_API_KEY = "key123"
+_EXPECTED_MODEL_NAME = "smollm2"
 
 
 def _to_ns(value: Any) -> Any:
@@ -246,6 +248,17 @@ class OpenAIError(Exception):
     pass
 
 
+def _validate_client_credentials(base_url: str, api_key: str):
+    if base_url != "http://localwllama":
+        raise OpenAIError("Endpoint not found.")
+
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ValueError("api_key must be a non-empty string")
+
+    if api_key != _EXPECTED_API_KEY:
+        raise OpenAIError(f"Incorrect API key provided: {api_key}.")
+
+
 class _BaseStream:
     def __init__(self, stream_id: str):
         self.stream_id = stream_id
@@ -307,6 +320,11 @@ def _validate_message_list(messages):
             raise ValueError("each message must include content")
 
 
+def _validate_model_name(model: str):
+    if model != _EXPECTED_MODEL_NAME:
+        raise OpenAIError(f"model {model} not found.")
+
+
 class ChatCompletionsStream(_BaseStream):
     pass
 
@@ -325,6 +343,7 @@ class AsyncResponsesStream(_AsyncBaseStream):
 
 class _ChatCompletionsAPI:
     def create(self, *, model: str, messages, stream: bool = False, **kwargs):
+        _validate_model_name(model)
         _validate_message_list(messages)
         payload = {
             "type": "chat.completions.create",
@@ -356,6 +375,7 @@ class _ResponsesAPI:
         previous_response_id: str = None,
         **kwargs,
     ):
+        _validate_model_name(model)
         if isinstance(input, list):
             _validate_message_list(input)
 
@@ -377,6 +397,7 @@ class _ResponsesAPI:
 
 class _AsyncChatCompletionsAPI:
     async def create(self, *, model: str, messages, stream: bool = False, **kwargs):
+        _validate_model_name(model)
         _validate_message_list(messages)
         payload = {
             "type": "chat.completions.create",
@@ -408,6 +429,7 @@ class _AsyncResponsesAPI:
         previous_response_id: str = None,
         **kwargs,
     ):
+        _validate_model_name(model)
         if isinstance(input, list):
             _validate_message_list(input)
 
@@ -429,10 +451,7 @@ class _AsyncResponsesAPI:
 
 class OpenAI:
     def __init__(self, *, base_url: str, api_key: str, **kwargs):
-        if base_url != "https://localmodel":
-            raise ValueError("base_url must be 'https://localmodel'")
-        if not isinstance(api_key, str) or not api_key.strip():
-            raise ValueError("api_key must be a non-empty string")
+        _validate_client_credentials(base_url, api_key)
 
         self.base_url = base_url
         self.api_key = api_key
@@ -443,10 +462,7 @@ class OpenAI:
 
 class AsyncOpenAI:
     def __init__(self, *, base_url: str, api_key: str, **kwargs):
-        if base_url != "https://localmodel":
-            raise ValueError("base_url must be 'https://localmodel'")
-        if not isinstance(api_key, str) or not api_key.strip():
-            raise ValueError("api_key must be a non-empty string")
+        _validate_client_credentials(base_url, api_key)
 
         self.base_url = base_url
         self.api_key = api_key
