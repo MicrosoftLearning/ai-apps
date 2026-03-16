@@ -10,6 +10,7 @@ Most of the apps (with two Azure-based exceptions) are designed to run locally i
 - [Ask Azure (Microsoft Foundry-based AI Agent)](./ask-azure/)
 - [Chat Playground](./chat-playground/)
 - [Computing History (Azure-based and browser-based variants)](./computing-history/)
+- [Model Coder (model client coding sandbox)](./model-coder/)
 - [Speech Playground](./speech-playground/)
 - [Information Extractor](./info-extractor/)
 - [Text Analyzer](./text-analyzer/)
@@ -32,122 +33,21 @@ In some cases, depending on the app mode configuration, input to models (i.e. pr
 
 ### Generative AI
 
-The **Ask Azure** and Azure-based **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 4.1 Mini](https://ai.azure.com/catalog/models/gpt-4.1-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
-
-The Ask Azure app applies the following system prompt:
-
-```
-You are Andrew, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
-
-IMPORTANT: Follow these guidelines when responding:
-- Do not engage in conversation on topics other than artificial intelligence and computing.
-- Explain concepts clearly and concisely in a single paragraph based only on the provided context.
-- Keep responses short and focused on the question, with no headings.
-- Use examples and analogies when helpful.
-- Use simple language suitable for learners in a conversational, friendly tone.
-- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- Do not start responses with "A:" or "Q:".
-- Keep your responses concise and to the point.
-```
-
-The following apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). No additional training or fine-tuning has been performed on the model. You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
-
-In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [SmolLM2](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
+Many of the apps use generative AI models. Reasonable precausytions have been taken to mitigate any potential harmful output from these models, but it's important to note that LLMs can produce unpredictable results.
 
 > **IMPORTANT**: Generative AI functionality in these apps is designed exclusively for *educational* use. Do <u>not</u> rely on the output from these apps for any real-world application, decision, or action.
 
-#### Ask Andrew (sample AI agent)
+#### Azure-based models (in Microsoft Foundry)
 
-Ask Andrew provides the option to use Microsoft Phi 3-Mini via WebLLM (running on the local GPU) or a fallback CPU mode in which SmolLM2 is used via WLLAMA. When using the Microsoft Phi model, the system prompt is:
+The **Ask Azure** and Azure-based **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 4.1 Mini](https://ai.azure.com/catalog/models/gpt-4.1-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
 
-```
-You are Andrew, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
+#### Local (in-browser) LLMs
 
-IMPORTANT: Follow these guidelines when responding:
-- Do not engage in conversation on topics other than artificial intelligence and computing.
-- Explain concepts clearly and concisely in a single paragraph based only on the provided context.
-- Keep responses short and focused on the question, with no headings.
-- Use examples and analogies when helpful.
-- Use simple language suitable for learners in a conversational, friendly tone.
-- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- If the context includes "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.", use that exact phrasing and no additional information.
-- Do not start responses with "A:" or "Q:".
-- Keep your responses concise and to the the point.
-- Do NOT provide links for more information (these will be added automatically later).
-```
+Some apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). No additional training or fine-tuning has been performed on the model. You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
 
-The results of searching the index.json file are appended to the user prompt.
+In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [smollm2](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
 
-When using SmolLM2, the system prompt is:
-
-```
-You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written and answer questions based on the information below. 
-
-Instructions:
-You are Andrew, an AI learning assistant who helps students understand AI concepts.
-
-IMPORTANT: Follow these guidelines when responding:
-- Do not engage in conversation on topics other than artificial intelligence and computing.
-- Explain concepts clearly and concisely in a single paragraph based only on the provided information.
-- Keep responses short and focused on the specific question in the current user message.
-- Use simple language suitable for learners in a conversational, friendly tone.
-- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-
-Information:
-Use ONLY this information to answer user questions:
-
-{the text retrieved from index.json based on the keywords in the current user message}
-
-
-Acknowledge these rules by answering the user's question correctly based on the information above.
-```
-
-The index searched for context is in the [index.json](./ask-andrew/index.json) file and the search is performed locally in-browser. No prompt text or any other data is sent outside of the browser.
-
-#### Chat Playground
-
-Chat Playground provides the option to use the Microsoft Phi 3 mini model on GPU, or the SmolLM2 model on CPU. The default system prompt is `You are an AI assistant that helps people find information`. Additionally, the app makes the following augmentations to prompts:
-
-- When the user uploads a data file, the app augments the prompt with the contents of the uploaded text file .
-- When the user enables image analysis and uploads an image, the app appends `({image-class-prediction})` to the user prompt (where the image class prediction is the text label predicted for the image by the MobileNetV3 image classification model).
-
-#### Computing History
-
-The Computing History app is provided in two variants:
-
-- Azure-chat (requires a model deployed in Microsoft Foundry)
-- Browser-chat (Uses local models running in WLLAMA and Tensorflow.js)
-
-#### Speech Playground
-
-Speech Playground provides the option to use WebLLM (Microsoft Phi 3 Mini on GPU) or WLLAMA (SmolLM2 on CPU). The default system prompt is `You are a helpful AI assistant that answers spoken questions with vocalized responses.` to which the additional instruction `IMPORTANT: Make your responses brief and to the point.` is appended. The user may change the system prompt in the UI, but the additional instruction to keep responses short is always appended.
-
-#### Information Extractor
-
-Information Extractor provides the option to use generative AI, or a fallback mode that uses heuristic-based field mapping techniques (which you can explicitly activate by disabling the *Use Generative AI* toggle)
-
-The app uses the following prompts:
-
-- System prompt: `You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values.`
-- User prompt:
-
-    ```
-    The following text was extracted from a scanned receipt:
-    ---
-    {OCR text extracted from uploaded image}
-    ---
-    Please identify the most likely values for these fields:
-    - Vendor
-    - Vendor-Address
-    - Vendor-Phone
-    - Receipt-Date
-    - Receipt-Time
-    - Total-spent
-    
-    Date fields should be formatted as mm/dd/yyyy
-    
-    Respond as a list of fields with their values.
-    ```
+All in-browser LLM-based apps include a *minimal* content moderation solution in which the app validates input for common potentially offensive or harmful terms, and returns an appropriate message without submitting the prompt to the model. In some cases, legitimately non-offensive and non-harmful prompts may be blocked by this mechanism.
 
 ### Other AI models and technologies
 
@@ -159,4 +59,6 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) Text Analyzer to support named entity recognition.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Text Analyzer for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
-- [PyScript](https://pyscript.net/) used by ML Lab, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
+- [PyScript](https://pyscript.net/) used by Model Coder, ML Lab, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
+
+The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to the smollm2 model in the local WLLAMA environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.
