@@ -33,7 +33,7 @@ In some cases, depending on the app mode configuration, input to models (i.e. pr
 
 ### Generative AI
 
-Many of the apps use generative AI models. Reasonable precausytions have been taken to mitigate any potential harmful output from these models, but it's important to note that LLMs can produce unpredictable results.
+Many of the apps use generative AI models. Reasonable precautions have been taken to mitigate any potential harmful output from these models, but it's important to note that LLMs can produce unpredictable results.
 
 > **IMPORTANT**: Generative AI functionality in these apps is designed exclusively for *educational* use. Do <u>not</u> rely on the output from these apps for any real-world application, decision, or action.
 
