@@ -322,7 +322,7 @@ class ModelCoderLLM {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadModel();
                 this.isReady = true;
-                this._status("ready", "Model ready: SmolLM2 smollm2");
+                this._status("ready", "Model ready: smollm2");
                 this.isLoading = false;
                 return;
             } catch (error) {
