@@ -65,7 +65,7 @@ def main():
                 model=model_name,
                 messages=[
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": "You are a helpful AI assistant that answers questions and provides information."
                     },
                     {
@@ -147,7 +147,7 @@ def main():
         # Initial messages
         conversation_messages=[
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": "You are a helpful AI assistant that answers questions and provides information."
                     }
         ]
