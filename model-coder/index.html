@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Coder</title>
+    <meta name="description" content="Learn OpenAI-style Python coding against a local SmolLM2 model in the browser.">
+    <script src="coi-serviceworker.js"></script>
+    <link rel="stylesheet" href="styles.css">
+
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+</head>
+<body>
+    <a class="sr-only" href="#main-workspace">Skip to editor and terminal</a>
+    <div class="app-shell">
+        <header class="topbar">
+            <div>
+                <h1>Model Coder</h1>
+                <p>Run OpenAI-style Python in your browser.</p>
+            </div>
+            <div class="topbar-controls" role="toolbar" aria-label="Sample and run controls" aria-describedby="controls-help">
+                <span id="controls-help" class="sr-only">Tab through sample selection, run controls, layout reset, and theme switch.</span>
+                <div class="template-picker">
+                    <label for="template-select" class="template-label" title="Choose sample" aria-label="Choose sample">&#128195;</label>
+                    <select id="template-select" aria-label="Sample picker" title="Choose sample" aria-describedby="template-help">
+                        <option value="blank-page" selected>Blank Page</option>
+                        <option value="simple-chat-chatcompletions">Simple chat (ChatCompletions API)</option>
+                        <option value="simple-chat-responses">Simple chat (Responses API)</option>
+                        <option value="conversation-tracking-chatcompletions">Conversation Tracking (ChatCompletions API)</option>
+                        <option value="conversation-tracking-responses">Conversation Tracking (Responses API)</option>
+                        <option value="streaming-responses">Streaming (Responses API)</option>
+                        <option value="async-chat">Async chat (Responses API)</option>
+                        <option value="async-stream">Async streaming (Responses API)</option>
+                    </select>
+                    <span id="template-help" class="sr-only">Selecting a different sample loads its starter code in the editor.</span>
+                </div>
+                <button id="run-btn" type="button" disabled title="Run Code" aria-label="Run code">&#9654;</button>
+                <button id="stop-btn" type="button" class="secondary" disabled title="Stop Run" aria-label="Stop run">&#9209;</button>
+                <button id="reset-layout-btn" type="button" class="secondary" title="Reset layout" aria-label="Reset pane layout">&#127529;</button>
+                <button id="theme-btn" type="button" class="secondary" title="Theme" aria-label="Toggle color theme" aria-pressed="false">&#9680;</button>
+                <button id="about-btn" type="button" class="secondary" title="About this app" aria-label="About this app"><strong>?</strong></button>
+                <button id="retry-btn" type="button" class="secondary" hidden aria-label="Retry model loading">Retry Model Load</button>
+            </div>
+        </header>
+
+        <section class="status-row" aria-label="Runtime and model status">
+            <div class="status-pill" id="runtime-status" role="status" aria-live="polite" aria-atomic="true">PyScript loading...</div>
+            <div class="status-pill" id="model-status" role="status" aria-live="polite" aria-atomic="true">Model initializing...</div>
+        </section>
+
+        <main id="main-workspace" class="workspace" role="main" aria-label="Code workspace">
+            <section class="panel panel-editor" aria-labelledby="editor-heading">
+                <div class="panel-header">
+                    <h2 id="editor-heading">Editor</h2>
+                    <span id="saved-indicator">Not run yet</span>
+                </div>
+                <div id="editor-container" class="panel-body" tabindex="0" role="region" aria-label="Python code editor" aria-describedby="editor-help"></div>
+                <span id="editor-help" class="sr-only">This is the code editor area. Use Tab to move to the pane splitter and terminal after editing.</span>
+
+                <script
+                    id="python-editor"
+                    type="py-editor"
+                    target="editor-container"
+                    env="model-coder"
+                    config='{"packages": ["numpy", "pandas", "matplotlib", "scikit-learn"]}'
+                ></script>
+            </section>
+
+            <div
+                id="pane-splitter"
+                class="pane-splitter"
+                role="separator"
+                aria-label="Resize editor and terminal panes"
+                aria-orientation="horizontal"
+                aria-describedby="splitter-help"
+                tabindex="0"
+            ></div>
+            <span id="splitter-help" class="sr-only">Use Up and Down arrow keys to resize editor and terminal panes.</span>
+
+            <section class="panel panel-terminal" aria-labelledby="terminal-heading">
+                <div class="panel-header">
+                    <h2 id="terminal-heading">Terminal</h2>
+                    <span>Interactive print() and input()</span>
+                </div>
+                <div id="terminal-container" class="panel-body" tabindex="0" role="region" aria-label="Python terminal output and input" aria-describedby="terminal-help"></div>
+                <span id="terminal-help" class="sr-only">This terminal shows script output and supports input prompts when code requests input.</span>
+            </section>
+        </main>
+    </div>
+
+    <div id="about-modal-backdrop" class="modal-backdrop" hidden>
+        <section
+            id="about-modal"
+            class="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-modal-title"
+            aria-describedby="about-modal-description"
+            tabindex="-1"
+        >
+            <header class="modal-header">
+                <h2 id="about-modal-title">About This App</h2>
+                <button id="about-close-btn" type="button" class="secondary" aria-label="Close About dialog" title="Close">&#10005;</button>
+            </header>
+            <div class="modal-body" id="about-modal-description">
+                <p>
+                    Model Coder is an educational sandbox for learning basic OpenAI-style Python coding syntax.
+                    It lets you experiment with prompts, responses, streaming, and async patterns in a safe environment.
+                </p>
+                <p>
+                    The app runs entirely in your browser using PyScript for Python execution and a local LLM through wllama.
+                    No prompts, code, or output are sent to external services while you use this sandbox.
+                </p>
+                <p>
+                    Use the following parameters to connect to your local model:
+                    <ul>
+                        <li><strong>base_url</strong> (the endpoint for your local wllama instance): <code>http://localwllama</code></li>
+                        <li><strong>api_key</strong> (the authentication key for your local wllama instance): <code>key123</code></li>
+                        <li><strong>model</strong> (the name of the model deployment): <code>smollm2</code></li>
+                    </ul>
+
+                </p>
+                <p>
+                    Prompts are filtered locally using a moderation word list. If a blocked term is detected,
+                    the app returns: <code>I'm sorry. I can't help with that.</code>.
+                </p>
+                <p>
+                    To get started, select a sample from the dropdown or write your own code in the editor pane, then click the run button. Check the model status in the top left to see when the model is ready to use. Happy coding!
+                </p>
+            </div>
+        </section>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
