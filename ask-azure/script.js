@@ -1,4 +1,4 @@
-class AskAndrew {
+class AskAnton {
     constructor() {
         this.conversationHistory = [];
         this.isGenerating = false;
@@ -23,7 +23,7 @@ class AskAndrew {
         this.shouldStop = false;
         this.currentAudio = null;
         this.isSpeaking = false;
-        
+
         this.elements = {
             chatContainer: document.getElementById('chat-container'),
             chatMessages: document.getElementById('chat-messages'),
@@ -47,8 +47,8 @@ class AskAndrew {
             foundryRegion: document.getElementById('foundry-region'),
             configStatus: document.getElementById('config-status')
         };
-        
-        this.systemPrompt = `You are Andrew, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
+
+        this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
 
 IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing.
@@ -66,22 +66,22 @@ IMPORTANT: Follow these guidelines when responding:
         try {
             // Load configuration
             this.loadConfig();
-            
+
             // Load the index
             await this.loadIndex();
-            
+
             // Initialize speech recognition
             this.initializeSpeechRecognition();
-            
+
             // Update UI state again after speech recognition is initialized
             this.updateUIState();
-            
+
             // Setup event listeners
             this.setupEventListeners();
-            
+
             // Show chat interface
             this.showChatInterface();
-            
+
         } catch (error) {
             console.error('Initialization error:', error);
             alert('Failed to initialize. Please refresh the page.');
@@ -89,7 +89,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     loadConfig() {
-        const saved = localStorage.getItem('askAndrewFoundryConfig');
+        const saved = localStorage.getItem('askAntonFoundryConfig');
         if (saved) {
             try {
                 const savedConfig = JSON.parse(saved);
@@ -98,12 +98,12 @@ IMPORTANT: Follow these guidelines when responding:
                 this.config.deployment = savedConfig.deployment || '';
                 this.config.region = savedConfig.region || '';
                 // Note: apiKey is NOT loaded from storage for security reasons
-                
+
                 this.elements.foundryEndpoint.value = this.config.endpoint;
                 this.elements.foundryKey.value = ''; // API key must be re-entered each session
                 this.elements.foundryDeployment.value = this.config.deployment;
                 this.elements.foundryRegion.value = this.config.region;
-                
+
                 // Only mark as configured if API key is present in memory
                 if (this.config.endpoint && this.config.apiKey && this.config.deployment) {
                     this.isConfigured = true;
@@ -121,13 +121,13 @@ IMPORTANT: Follow these guidelines when responding:
         const deployment = this.elements.foundryDeployment.value.trim();
         const region = this.elements.foundryRegion.value.trim();
         const statusDiv = this.elements.configStatus;
-        
+
         if (!endpoint || !apiKey || !deployment) {
             statusDiv.textContent = 'Please fill in all fields';
             statusDiv.className = 'config-status error';
             return;
         }
-        
+
         // Validate endpoint format and extract base URL
         let baseEndpoint = endpoint;
         try {
@@ -137,7 +137,7 @@ IMPORTANT: Follow these guidelines when responding:
                 statusDiv.className = 'config-status error';
                 return;
             }
-            
+
             // Extract substring from beginning to first ".com" (inclusive)
             const comIndex = endpoint.indexOf('.com');
             if (comIndex !== -1) {
@@ -148,26 +148,26 @@ IMPORTANT: Follow these guidelines when responding:
             statusDiv.className = 'config-status error';
             return;
         }
-        
+
         this.config.endpoint = baseEndpoint;
         this.config.apiKey = apiKey;
         this.config.deployment = deployment;
         this.config.region = region;
-        
+
         // Save non-sensitive config to localStorage (do not persist apiKey)
         const configToPersist = {
             endpoint: this.config.endpoint,
             deployment: this.config.deployment,
             region: this.config.region
         };
-        localStorage.setItem('askAndrewFoundryConfig', JSON.stringify(configToPersist));
-        
+        localStorage.setItem('askAntonFoundryConfig', JSON.stringify(configToPersist));
+
         this.isConfigured = true;
         statusDiv.textContent = 'Configuration saved successfully!';
         statusDiv.className = 'config-status success';
-        
+
         this.updateUIState();
-        
+
         // Auto-close modal after short delay
         setTimeout(() => {
             this.hideConfigModal();
@@ -177,12 +177,12 @@ IMPORTANT: Follow these guidelines when responding:
     updateUIState() {
         // Mic button should be enabled if speech is supported, regardless of config
         this.elements.micBtn.disabled = !this.recognition;
-        
+
         // Enable input and send button regardless of config state
         // The sendMessage() function will handle showing a message if not configured
         this.elements.userInput.disabled = false;
         this.elements.sendBtn.disabled = false;
-        
+
         if (this.isConfigured) {
             this.elements.restartBtn.disabled = false;
         } else {
@@ -196,7 +196,7 @@ IMPORTANT: Follow these guidelines when responding:
             if (!response.ok) throw new Error('Failed to load index');
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
-            
+
             // Build a flat lookup map: keyword -> {document, category, link}
             this.keywordMap = new Map();
             this.indexData.forEach(category => {
@@ -232,7 +232,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.recognition = null;
             return;
         }
-        
+
         this.recognition = true; // Flag to indicate speech is available
         this.mediaRecorder = null;
         this.audioChunks = [];
@@ -243,13 +243,13 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.micBtn.classList.remove('listening');
         this.elements.micBtn.title = 'Voice input';
         this.elements.micBtn.setAttribute('aria-pressed', 'false');
-        
+
         // Clear the auto-stop timeout
         if (this.recordingTimeout) {
             clearTimeout(this.recordingTimeout);
             this.recordingTimeout = null;
         }
-        
+
         // Stop recording if active
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
             this.mediaRecorder.stop();
@@ -261,7 +261,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
             return;
         }
-        
+
         if (!this.config.region) {
             this.addMessage('assistant', 'Please add the Azure region to your configuration for speech-to-text to work.');
             return;
@@ -269,51 +269,51 @@ IMPORTANT: Follow these guidelines when responding:
 
         try {
             // Request microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ 
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
                     sampleRate: 16000
-                } 
+                }
             });
-            
+
             this.audioChunks = [];
-            
+
             // Use audio/webm;codecs=opus or check available types
             let mimeType = 'audio/webm;codecs=opus';
             if (!MediaRecorder.isTypeSupported(mimeType)) {
                 mimeType = 'audio/webm';
             }
-            
+
             this.mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-            
+
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     this.audioChunks.push(event.data);
                 }
             };
-            
+
             this.mediaRecorder.onstop = async () => {
                 // Stop all tracks to release the microphone
                 stream.getTracks().forEach(track => track.stop());
-                
+
                 this.stopListening();
-                
+
                 // Clear the auto-stop timeout
                 if (this.recordingTimeout) {
                     clearTimeout(this.recordingTimeout);
                     this.recordingTimeout = null;
                 }
-                
+
                 if (this.audioChunks.length === 0) {
                     return;
                 }
-                
+
                 try {
                     const audioBlob = new Blob(this.audioChunks, { type: mimeType });
-                    
+
                     // Convert to WAV format for Azure Speech API
                     const wavBlob = await this.convertToWav(audioBlob);
-                    
+
                     // Call Azure Speech API
                     await this.transcribeAudio(wavBlob);
                 } catch (error) {
@@ -321,21 +321,21 @@ IMPORTANT: Follow these guidelines when responding:
                     alert('Failed to process audio. Please try again.');
                 }
             };
-            
+
             // Request data in chunks for better compatibility
             this.mediaRecorder.start(100);
             this.isListening = true;
             this.elements.micBtn.classList.add('listening');
             this.elements.micBtn.title = 'Listening... (auto-stops in 5s or click to stop)';
             this.elements.micBtn.setAttribute('aria-pressed', 'true');
-            
+
             // Auto-stop recording after 5 seconds
             this.recordingTimeout = setTimeout(() => {
                 if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
                     this.mediaRecorder.stop();
                 }
             }, 5000); // 5 seconds
-            
+
         } catch (error) {
             console.error('Error accessing microphone:', error);
             alert('Could not access microphone. Please check permissions.');
@@ -347,19 +347,19 @@ IMPORTANT: Follow these guidelines when responding:
         try {
             // Create an audio context
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
+
             // Read the blob as array buffer
             const arrayBuffer = await audioBlob.arrayBuffer();
-            
+
             // Decode the audio data
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            
+
             // Convert to WAV format
             const wavBuffer = this.audioBufferToWav(audioBuffer);
-            
+
             // Create a blob from the WAV buffer
             const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
-            
+
             return wavBlob;
         } catch (error) {
             console.error('Error converting to WAV:', error);
@@ -372,7 +372,7 @@ IMPORTANT: Follow these guidelines when responding:
         const sampleRate = 16000; // Force 16kHz for Azure Speech
         const format = 1; // PCM
         const bitsPerSample = 16;
-        
+
         // Resample if needed
         let samples;
         if (audioBuffer.sampleRate !== sampleRate) {
@@ -380,11 +380,11 @@ IMPORTANT: Follow these guidelines when responding:
         } else {
             samples = audioBuffer.getChannelData(0);
         }
-        
+
         const numSamples = samples.length;
         const buffer = new ArrayBuffer(44 + numSamples * 2);
         const view = new DataView(buffer);
-        
+
         // Write WAV header
         this.writeString(view, 0, 'RIFF');
         view.setUint32(4, 36 + numSamples * 2, true);
@@ -399,7 +399,7 @@ IMPORTANT: Follow these guidelines when responding:
         view.setUint16(34, bitsPerSample, true);
         this.writeString(view, 36, 'data');
         view.setUint32(40, numSamples * 2, true);
-        
+
         // Write PCM samples
         let offset = 44;
         for (let i = 0; i < numSamples; i++) {
@@ -407,7 +407,7 @@ IMPORTANT: Follow these guidelines when responding:
             view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
             offset += 2;
         }
-        
+
         return buffer;
     }
 
@@ -417,19 +417,19 @@ IMPORTANT: Follow these guidelines when responding:
         const sourceLength = sourceData.length;
         const targetLength = Math.round(sourceLength * targetSampleRate / sourceRate);
         const resampledData = new Float32Array(targetLength);
-        
+
         for (let i = 0; i < targetLength; i++) {
             const sourceIndex = i * sourceRate / targetSampleRate;
             const index = Math.floor(sourceIndex);
             const fraction = sourceIndex - index;
-            
+
             if (index + 1 < sourceLength) {
                 resampledData[i] = sourceData[index] * (1 - fraction) + sourceData[index + 1] * fraction;
             } else {
                 resampledData[i] = sourceData[index];
             }
         }
-        
+
         return resampledData;
     }
 
@@ -444,7 +444,7 @@ IMPORTANT: Follow these guidelines when responding:
             // Construct Azure Speech endpoint using the region
             const speechEndpoint = `https://${this.config.region}.stt.speech.microsoft.com`;
             const url = `${speechEndpoint}/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
-            
+
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -454,18 +454,18 @@ IMPORTANT: Follow these guidelines when responding:
                 },
                 body: audioBlob
             });
-            
+
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Speech API error:', errorText);
                 throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
             }
-            
+
             const data = await response.json();
-            
+
             // Extract transcript from response
             let transcript = '';
-            
+
             // Check different possible response formats
             if (data.DisplayText) {
                 transcript = data.DisplayText;
@@ -477,16 +477,16 @@ IMPORTANT: Follow these guidelines when responding:
                     transcript = data.NBest[0].Display || data.NBest[0].Lexical;
                 }
             }
-            
+
             // Trim and check for empty transcript
             transcript = transcript.trim();
-            
+
             if (transcript) {
                 this.elements.userInput.value = transcript;
                 this.usedVoiceInput = true;
                 this.autoResizeTextarea();
                 this.elements.userInput.focus();
-                
+
                 // Automatically submit the message
                 setTimeout(() => {
                     this.sendMessage();
@@ -501,10 +501,10 @@ IMPORTANT: Follow these guidelines when responding:
                     errorMsg += ` Audio received (${data.Duration / 10000000}s).`;
                 }
                 errorMsg += ' Please speak louder or try again.';
-                
+
                 alert(errorMsg);
             }
-            
+
         } catch (error) {
             console.error('Error transcribing audio:', error);
             alert('Failed to transcribe audio: ' + error.message);
@@ -520,7 +520,7 @@ IMPORTANT: Follow these guidelines when responding:
                 this.sendMessage();
             }
         });
-        
+
         // Enter key to send (Shift+Enter for new line)
         this.elements.userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating && !this.isSpeaking) {
@@ -528,12 +528,12 @@ IMPORTANT: Follow these guidelines when responding:
                 this.sendMessage();
             }
         });
-        
+
         // Auto-resize textarea
         this.elements.userInput.addEventListener('input', () => {
             this.autoResizeTextarea();
         });
-        
+
         // Global keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             // Ctrl/Cmd + K to focus input
@@ -547,67 +547,67 @@ IMPORTANT: Follow these guidelines when responding:
                 this.restartConversation();
             }
         });
-        
+
         // Microphone button
         if (this.elements.micBtn) {
             this.elements.micBtn.addEventListener('click', () => {
                 this.toggleSpeechRecognition();
             });
         }
-        
+
         // Restart button
         this.elements.restartBtn.addEventListener('click', () => {
             this.restartConversation();
         });
-        
+
         // Config button
         this.elements.configBtn.addEventListener('click', () => {
             this.lastFocusedElement = this.elements.configBtn;
             this.showConfigModal();
         });
-        
+
         // About button
         this.elements.aboutBtn.addEventListener('click', () => {
             this.lastFocusedElement = this.elements.aboutBtn;
             this.showAboutModal();
         });
-        
+
         // About modal handlers
         this.elements.aboutModalClose.addEventListener('click', () => {
             this.hideAboutModal();
         });
-        
+
         this.elements.aboutModalOk.addEventListener('click', () => {
             this.hideAboutModal();
         });
-        
+
         // Close about modal on overlay click
         this.elements.aboutModal.addEventListener('click', (e) => {
             if (e.target === this.elements.aboutModal || e.target.classList.contains('modal-overlay')) {
                 this.hideAboutModal();
             }
         });
-        
+
         // Config modal handlers
         this.elements.configModalClose.addEventListener('click', () => {
             this.hideConfigModal();
         });
-        
+
         this.elements.configCancel.addEventListener('click', () => {
             this.hideConfigModal();
         });
-        
+
         this.elements.configSave.addEventListener('click', () => {
             this.saveConfig();
         });
-        
+
         // Close config modal on overlay click
         this.elements.configModal.addEventListener('click', (e) => {
             if (e.target === this.elements.configModal || e.target.classList.contains('modal-overlay')) {
                 this.hideConfigModal();
             }
         });
-        
+
         // Close modals on Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -618,7 +618,7 @@ IMPORTANT: Follow these guidelines when responding:
                 }
             }
         });
-        
+
         // Example question buttons
         const exampleBtns = document.querySelectorAll('.example-btn');
         exampleBtns.forEach(btn => {
@@ -639,14 +639,14 @@ IMPORTANT: Follow these guidelines when responding:
 
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
-        
+
         // Normalize the question: remove punctuation, extra spaces
         const normalizedQuestion = lowerQuestion.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
         const words = normalizedQuestion.split(' ');
-        
+
         // Extract all n-grams (trigrams, bigrams, unigrams)
         const nGrams = [];
-        
+
         // Trigrams (3-word phrases)
         for (let i = 0; i <= words.length - 3; i++) {
             nGrams.push({
@@ -654,7 +654,7 @@ IMPORTANT: Follow these guidelines when responding:
                 length: 3
             });
         }
-        
+
         // Bigrams (2-word phrases)
         for (let i = 0; i <= words.length - 2; i++) {
             nGrams.push({
@@ -662,7 +662,7 @@ IMPORTANT: Follow these guidelines when responding:
                 length: 2
             });
         }
-        
+
         // Unigrams (single words) - filter out very short words and common stop words
         const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give'];
         words.forEach(word => {
@@ -673,18 +673,18 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             }
         });
-        
+
         console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
-        
+
         // Match n-grams to keywords in the index
         const matchedKeywords = new Set();
         const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
-        
+
         nGrams.forEach(ngram => {
             const match = this.keywordMap.get(ngram.text);
             if (match) {
                 matchedKeywords.add(ngram.text);
-                
+
                 const docId = match.document.id;
                 if (!documentMatches.has(docId)) {
                     documentMatches.set(docId, {
@@ -697,7 +697,7 @@ IMPORTANT: Follow these guidelines when responding:
                 documentMatches.get(docId).matchedKeywords.push(ngram.text);
             }
         });
-        
+
         // Filter out keywords that are subsets of longer matched keywords
         // Example: if "large language model" is matched, remove "language model" and "language"
         const filteredKeywords = new Set();
@@ -706,7 +706,7 @@ IMPORTANT: Follow these guidelines when responding:
             const bWords = b.split(' ').length;
             return bWords - aWords; // Longer phrases first
         });
-        
+
         sortedKeywords.forEach(keyword => {
             // Check if this keyword is a subset of any already-added keyword
             let isSubset = false;
@@ -720,10 +720,10 @@ IMPORTANT: Follow these guidelines when responding:
                 filteredKeywords.add(keyword);
             }
         });
-        
+
         console.log('Matched keywords (before filtering):', Array.from(matchedKeywords));
         console.log('Filtered keywords (after removing subsets):', Array.from(filteredKeywords));
-        
+
         // Rebuild document matches using only filtered keywords
         const finalDocumentMatches = [];
         documentMatches.forEach((match, docId) => {
@@ -736,7 +736,7 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             }
         });
-        
+
         console.log(`Found ${finalDocumentMatches.length} matching documents`);
         if (finalDocumentMatches.length > 0) {
             console.log('Matched documents:', finalDocumentMatches.map(m => ({
@@ -746,16 +746,16 @@ IMPORTANT: Follow these guidelines when responding:
                 keywords: m.matchedKeywords
             })));
         }
-        
+
         return {
             matches: finalDocumentMatches,
             matchedKeywords: Array.from(filteredKeywords)
         };
     }
-    
+
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
-        
+
         // If no matches, fall back to AI Concepts category
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
@@ -771,18 +771,18 @@ IMPORTANT: Follow these guidelines when responding:
             }
             return { context: null, categories: [], links: [], documents: [] };
         }
-        
+
         // Build context from all matched documents - use full content, no summarization
         const contextParts = matches.map(match => {
             return `[${match.category} - ${match.document.title}]\n${match.document.content}`;
         });
-        
+
         const categories = [...new Set(matches.map(m => m.category))];
         const links = [...new Set(matches.map(m => m.link))];
         const documents = matches.map(m => m.document);
-        
+
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
-        
+
         return {
             context: contextParts.join('\n\n'),
             categories: categories,
@@ -793,61 +793,61 @@ IMPORTANT: Follow these guidelines when responding:
 
     async sendMessage() {
         const userMessage = this.elements.userInput.value.trim();
-        
+
         if (!userMessage || this.isGenerating) return;
-        
+
         // Reset stop flag
         this.shouldStop = false;
-        
+
         // Store voice input flag before clearing
         const usedVoice = this.usedVoiceInput;
         this.usedVoiceInput = false;
-        
+
         // Clear input and reset height
         this.elements.userInput.value = '';
         this.elements.userInput.style.height = 'auto';
-        
+
         // Add user message to chat
         this.addMessage('user', userMessage);
-        
+
         // Check if configured
         if (!this.isConfigured) {
             this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
             return;
         }
-        
+
         // Disable input while processing and change button to stop
         this.elements.userInput.disabled = true;
         this.setStopButtonState();
         this.elements.micBtn.disabled = true;
-        
+
         // Check if this is an initial greeting (only if no messages yet)
         const messageCount = this.elements.chatMessages.querySelectorAll('.message').length;
         if (messageCount <= 1) { // Only user's message is in chat
             const greetingPattern = /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[\s!?]*$/i;
             if (greetingPattern.test(userMessage)) {
                 // Respond with greeting without searching
-                const greetingResponse = "Hello, I'm Andrew. I'm here to help you learn about AI concepts. What would you like to know?";
+                const greetingResponse = "Hello, I'm Anton. I'm here to help you learn about AI concepts. What would you like to know?";
                 this.addMessage('assistant', greetingResponse);
-                
+
                 // Synthesize speech if user used voice input
                 if (usedVoice && this.config.region) {
                     await this.synthesizeSpeech(greetingResponse);
                 }
-                
+
                 this.elements.userInput.disabled = false;
                 this.setSendButtonState();
                 if (this.recognition) this.elements.micBtn.disabled = false;
                 return;
             }
         }
-        
+
         // Search for relevant context
         const searchResult = this.searchContext(userMessage);
-        
+
         // Generate response
         await this.generateResponse(userMessage, searchResult, usedVoice);
-        
+
         // Re-enable input
         this.elements.userInput.disabled = false;
         // Only reset button if not speaking
@@ -882,27 +882,27 @@ IMPORTANT: Follow these guidelines when responding:
 
     stopResponse() {
         this.shouldStop = true;
-        
+
         // Stop any playing audio
         if (this.currentAudio) {
             this.currentAudio.pause();
             this.currentAudio.currentTime = 0;
             this.currentAudio = null;
         }
-        
+
         this.isSpeaking = false;
-        
+
         // Reset button state immediately
         this.setSendButtonState();
     }
 
-    
+
     toggleSpeechRecognition() {
         if (!this.recognition) {
             alert('Microphone access is not supported in your browser.');
             return;
         }
-        
+
         if (this.isListening) {
             this.stopListening();
         } else {
@@ -925,19 +925,19 @@ IMPORTANT: Follow these guidelines when responding:
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
         messageDiv.setAttribute('role', 'article');
-        messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Andrew' : 'You'}`);
-        
+        messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Anton' : 'You'}`);
+
         if (role === 'assistant') {
             messageDiv.innerHTML = `
-                <div class="avatar andrew-avatar" aria-hidden="true">
-                    <img src="images/andrew-icon.png" alt="Andrew the AI assistant avatar" class="avatar-image">
+                <div class="avatar anton-avatar" aria-hidden="true">
+                    <img src="images/anton-icon.png" alt="Anton the AI assistant avatar" class="avatar-image">
                 </div>
                 <div class="message-content">
-                    <p class="message-author" aria-label="From Andrew">Andrew</p>
+                    <p class="message-author" aria-label="From Anton">Anton</p>
                     <div class="message-text" ${isTyping ? 'aria-live="polite" aria-busy="true"' : ''}>
-                        ${isTyping 
-                            ? '<span class="typing-indicator" aria-label="Andrew is typing">●●●</span>' 
-                            : this.escapeHtml(content)}
+                        ${isTyping
+                    ? '<span class="typing-indicator" aria-label="Anton is typing">●●●</span>'
+                    : this.escapeHtml(content)}
                     </div>
                 </div>
             `;
@@ -950,37 +950,37 @@ IMPORTANT: Follow these guidelines when responding:
                 <div class="avatar user-avatar" aria-hidden="true">👤</div>
             `;
         }
-        
+
         this.elements.chatMessages.appendChild(messageDiv);
         this.scrollToBottom();
-        
+
         return messageDiv;
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links } = searchResult;
-        
+
         this.isGenerating = true;
-        
+
         // Show typing indicator
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        messageTextDiv.innerHTML ='<span class="typing-indicator">●●●</span>';
-        
+        messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+
         try {
             // Build prompt with context if available
             let input = userMessage;
             if (context) {
                 input = `Context:\n${context}\n\nQuestion: ${userMessage}`;
             }
-            
+
             // Call Foundry Responses API
             const response = await this.callFoundryAPI(input);
-            
+
             // Format and display the response
             let formattedResponse = this.escapeHtml(response).replace(/\n/g, '<br>');
             formattedResponse = `<p>${formattedResponse}</p>`;
-            
+
             // Add learn more links
             if (links && links.length > 0 && categories && categories.length > 0) {
                 const linkHtml = links.map((link, index) => {
@@ -989,16 +989,16 @@ IMPORTANT: Follow these guidelines when responding:
                 }).join(' • ');
                 formattedResponse += `<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;"><p><strong>Learn more:</strong> ${linkHtml}</p>`;
             }
-            
+
             // Start typing animation and speech synthesis at the same time
             const typingPromise = this.animateTyping(messageTextDiv, formattedResponse, 10);
-            const speechPromise = (usedVoiceInput && this.config.region && !this.shouldStop) 
+            const speechPromise = (usedVoiceInput && this.config.region && !this.shouldStop)
                 ? this.synthesizeSpeech(response)
                 : Promise.resolve();
-            
+
             // Wait for both to complete
             await Promise.all([typingPromise, speechPromise]);
-            
+
             // Add to conversation history
             this.conversationHistory.push({
                 role: 'user',
@@ -1008,14 +1008,14 @@ IMPORTANT: Follow these guidelines when responding:
                 role: 'assistant',
                 content: response
             });
-            
+
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
             this.addMessage('assistant', 'Sorry, I encountered an error: ' + error.message);
         } finally {
             this.isGenerating = false;
-            
+
             // Clear search status after response is complete
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -1025,19 +1025,19 @@ IMPORTANT: Follow these guidelines when responding:
 
     async callFoundryAPI(input) {
         const url = `${this.config.endpoint}/openai/v1/responses`;
-        
+
         const requestBody = {
             model: this.config.deployment,
             input: input,
             instructions: this.systemPrompt,
             store: true
         };
-        
+
         // Include previous response ID for conversation continuity
         if (this.previousResponseId) {
             requestBody.previous_response_id = this.previousResponseId;
         }
-        
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -1046,28 +1046,28 @@ IMPORTANT: Follow these guidelines when responding:
             },
             body: JSON.stringify(requestBody)
         });
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`API request failed: ${response.status} - ${errorText}`);
         }
-        
+
         const data = await response.json();
-        
+
         // Store the response ID for next turn
         if (data.id) {
             this.previousResponseId = data.id;
         }
-        
+
         // Extract response text
         let responseText = '';
-        
+
         if (data.output) {
             if (Array.isArray(data.output)) {
                 responseText = data.output
                     .map(item => {
                         if (item.type === 'message' && item.content) {
-                            return Array.isArray(item.content) 
+                            return Array.isArray(item.content)
                                 ? item.content.map(c => c.text || '').join('')
                                 : item.content;
                         }
@@ -1085,11 +1085,11 @@ IMPORTANT: Follow these guidelines when responding:
         } else if (data.message) {
             responseText = data.message.content || data.message;
         }
-        
+
         if (!responseText) {
             throw new Error('No response text found in API response');
         }
-        
+
         return responseText;
     }
 
@@ -1102,11 +1102,11 @@ IMPORTANT: Follow these guidelines when responding:
     async animateTyping(element, htmlContent, speed = 10) {
         // Start with empty content
         element.innerHTML = '';
-        
+
         // Split content into characters for typing effect
         const chars = htmlContent.split('');
         let currentHtml = '';
-        
+
         for (let i = 0; i < chars.length; i++) {
             // Check if we should stop
             if (this.shouldStop) {
@@ -1115,21 +1115,21 @@ IMPORTANT: Follow these guidelines when responding:
                 this.scrollToBottom();
                 return false; // Return false to indicate interrupted
             }
-            
+
             currentHtml += chars[i];
-            
+
             // Update the element with current content
             // Use a temporary div to parse HTML and get valid structure
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = currentHtml;
             element.innerHTML = tempDiv.innerHTML;
-            
+
             this.scrollToBottom();
-            
+
             // Small delay for typing effect (speed in milliseconds)
             await new Promise(resolve => setTimeout(resolve, speed));
         }
-        
+
         // Ensure final content is complete and properly formatted
         element.innerHTML = htmlContent;
         this.scrollToBottom();
@@ -1144,7 +1144,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Randomly select one of the 7 audio files
         const audioNumber = Math.floor(Math.random() * 7) + 1;
         const audioPath = `audio/response_${audioNumber}.wav`;
-        
+
         const audio = new Audio(audioPath);
         audio.play().catch(error => {
             console.error('Error playing audio:', error);
@@ -1156,10 +1156,10 @@ IMPORTANT: Follow these guidelines when responding:
         if (this.ttsToken && this.ttsTokenExpiry && Date.now() < this.ttsTokenExpiry) {
             return this.ttsToken;
         }
-        
+
         // Fetch new token
         const tokenEndpoint = `https://${this.config.region}.api.cognitive.microsoft.com/sts/v1.0/issueToken`;
-        
+
         try {
             const response = await fetch(tokenEndpoint, {
                 method: 'POST',
@@ -1168,15 +1168,15 @@ IMPORTANT: Follow these guidelines when responding:
                     'Content-Length': '0'
                 }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`Token fetch failed: ${response.status}`);
             }
-            
+
             this.ttsToken = await response.text();
             // Token valid for 10 minutes, refresh after 9 minutes
             this.ttsTokenExpiry = Date.now() + (9 * 60 * 1000);
-            
+
             return this.ttsToken;
         } catch (error) {
             console.error('Error fetching TTS token:', error);
@@ -1188,34 +1188,34 @@ IMPORTANT: Follow these guidelines when responding:
         if (this.shouldStop) {
             return;
         }
-        
+
         this.isSpeaking = true;
-        
+
         try {
             // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
             const parser = new DOMParser();
             const doc = parser.parseFromString(text, 'text/html');
             const plainText = doc.body.textContent || '';
-            
+
             if (!plainText.trim()) {
                 this.isSpeaking = false;
                 return;
             }
-            
+
             // Use region-based TTS endpoint (same as PowerShell script)
             const speechEndpoint = `https://${this.config.region}.tts.speech.microsoft.com`;
             const url = `${speechEndpoint}/cognitiveservices/v1`;
-            
-            // Build SSML with Lewis Multilingual voice
+
+            // Build SSML with Christopher Multilingual voice
             const ssml = `<speak version="1.0" xml:lang="en-US">
-  <voice xml:lang="en-US" xml:gender="Male" name="en-US-LewisMultilingualNeural">
-    ${this.escapeXml(plainText)}
-  </voice>
-</speak>`;
-            
+                <voice xml:lang="en-US" xml:gender="Male" name="en-US-ChristopherMultilingualNeural">
+                    ${this.escapeXml(plainText)}
+                </voice>
+                </speak>`;
+
             // Get TTS token (exchanges API key for OAuth token)
             const token = await this.getTtsToken();
-            
+
             let response;
             try {
                 response = await fetch(url, {
@@ -1230,7 +1230,7 @@ IMPORTANT: Follow these guidelines when responding:
             } catch (fetchError) {
                 throw new Error(`TTS request failed: ${fetchError.message}`);
             }
-            
+
             if (!response.ok) {
                 let errorText = '';
                 try {
@@ -1238,7 +1238,7 @@ IMPORTANT: Follow these guidelines when responding:
                 } catch (e) {
                     errorText = '(could not read error response)';
                 }
-                
+
                 console.error('TTS request failed');
                 console.error('  URL:', url);
                 console.error('  Region:', this.config.region);
@@ -1251,14 +1251,14 @@ IMPORTANT: Follow these guidelines when responding:
                 }
                 throw new Error(`TTS failed: ${response.status} - ${errorText || 'Unknown error'}`);
             }
-            
+
             const audioBlob = await response.blob();
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
-            
+
             // Store reference to current audio
             this.currentAudio = audio;
-            
+
             // Check again if we should stop before playing
             if (this.shouldStop) {
                 URL.revokeObjectURL(audioUrl);
@@ -1267,7 +1267,7 @@ IMPORTANT: Follow these guidelines when responding:
                 this.setSendButtonState();
                 return;
             }
-            
+
             // Play the audio and wait for it to finish
             await new Promise((resolve, reject) => {
                 audio.onended = () => {
@@ -1277,7 +1277,7 @@ IMPORTANT: Follow these guidelines when responding:
                     this.setSendButtonState();
                     resolve();
                 };
-                
+
                 audio.onerror = (error) => {
                     URL.revokeObjectURL(audioUrl);
                     this.currentAudio = null;
@@ -1285,7 +1285,7 @@ IMPORTANT: Follow these guidelines when responding:
                     this.setSendButtonState();
                     reject(error);
                 };
-                
+
                 audio.play().catch(error => {
                     console.error('Error playing synthesized speech:', error);
                     URL.revokeObjectURL(audioUrl);
@@ -1295,7 +1295,7 @@ IMPORTANT: Follow these guidelines when responding:
                     reject(error);
                 });
             });
-            
+
         } catch (error) {
             console.error('Error synthesizing speech:', error);
             this.currentAudio = null;
@@ -1322,14 +1322,14 @@ IMPORTANT: Follow these guidelines when responding:
             // Clear conversation history
             this.conversationHistory = [];
             this.previousResponseId = null;
-            
+
             // Clear chat messages (keep welcome message)
             const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
             messages.forEach(msg => msg.remove());
-            
+
             // Clear search status
             this.elements.searchStatus.textContent = '';
-            
+
             console.log('Conversation restarted');
         }
     }
@@ -1347,7 +1347,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.setupModalFocusTrap(this.elements.configModal);
         }, 100);
     }
-    
+
     hideConfigModal() {
         this.elements.configModal.style.display = 'none';
         this.elements.configModal.setAttribute('aria-hidden', 'true');
@@ -1374,7 +1374,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.setupModalFocusTrap(this.elements.aboutModal);
         }, 100);
     }
-    
+
     hideAboutModal() {
         this.elements.aboutModal.style.display = 'none';
         this.elements.aboutModal.setAttribute('aria-hidden', 'true');
@@ -1393,16 +1393,16 @@ IMPORTANT: Follow these guidelines when responding:
         const focusableElements = modalElement.querySelectorAll(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
-        
+
         if (focusableElements.length === 0) return;
-        
+
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
-        
+
         // Store the trap handler for cleanup
         this.modalFocusTrapHandler = (e) => {
             if (e.key !== 'Tab') return;
-            
+
             if (e.shiftKey) {
                 // Shift+Tab - going backwards
                 if (document.activeElement === firstElement) {
@@ -1417,7 +1417,7 @@ IMPORTANT: Follow these guidelines when responding:
                 }
             }
         };
-        
+
         modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
     }
 
@@ -1430,13 +1430,13 @@ IMPORTANT: Follow these guidelines when responding:
 }
 
 // Make instance globally accessible for onclick handler
-window.askAndrew = null;
+window.askAnton = null;
 
 // Initialize the app when DOM is loaded
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        window.askAndrew = new AskAndrew();
+        window.askAnton = new AskAnton();
     });
 } else {
-    window.askAndrew = new AskAndrew();
+    window.askAnton = new AskAnton();
 }
