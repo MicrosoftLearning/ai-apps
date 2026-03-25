@@ -40,15 +40,15 @@ async function init() {
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
     updateLoadingStatus('smollm', 'loading', 'Loading...');
-    
+
     // Load both models in parallel
     const mobilenetPromise = loadModel();
     const wllamaPromise = initWllama();
     const moderationPromise = loadInappropriateWords();
-    
+
     try {
         await Promise.all([mobilenetPromise, wllamaPromise, moderationPromise]);
-        
+
         // Both models loaded successfully
         hideLoadingOverlay();
     } catch (e) {
@@ -109,7 +109,7 @@ async function loadModel() {
         model = await tf.loadLayersModel(MODEL_URL);
         console.log("Classifier model loaded");
         updateLoadingStatus('mobilenet', 'loading', '75%');
-        
+
         // Warmup prediction to initialize GPU kernels and prevent first-run issues
         console.log("Warming up model...");
         tf.tidy(() => {
@@ -142,17 +142,17 @@ async function initWllama() {
     try {
         console.log("Initializing wllama...");
         updateLoadingStatus('smollm', 'loading', '10%');
-        
+
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
             'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
-        
+
         // Initialize wllama with CDN-hosted WASM files
         wllama = new Wllama(CONFIG_PATHS);
         updateLoadingStatus('smollm', 'loading', '20%');
-        
+
         // Load model from HuggingFace with optimized settings
         await wllama.loadModelFromHF(
             'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
@@ -168,7 +168,7 @@ async function initWllama() {
                 }
             }
         );
-        
+
         wllamaReady = true;
         updateLoadingStatus('smollm', 'ready', '100%');
         console.log("Wllama initialized successfully");
@@ -189,14 +189,14 @@ async function initWllama() {
 function updateLoadingStatus(modelType, status, progress) {
     const statusId = modelType === 'mobilenet' ? 'mobilenetStatus' : 'smollmStatus';
     const progressId = modelType === 'mobilenet' ? 'mobilenetProgress' : 'smollmProgress';
-    
+
     const statusElement = document.getElementById(statusId);
     const progressElement = document.getElementById(progressId);
-    
+
     if (!statusElement || !progressElement) return;
-    
+
     const iconSpan = statusElement.querySelector('.status-icon');
-    
+
     if (status === 'loading') {
         iconSpan.textContent = '⏳';
         statusElement.classList.remove('ready', 'error');
@@ -210,7 +210,7 @@ function updateLoadingStatus(modelType, status, progress) {
         statusElement.classList.remove('loading', 'ready');
         statusElement.classList.add('error');
     }
-    
+
     progressElement.textContent = progress;
 }
 
@@ -241,7 +241,7 @@ function addMessage(text, sender, imageUrl = null) {
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    
+
     // Sanitize text to prevent XSS attacks
     if (typeof DOMPurify !== 'undefined') {
         bubble.innerHTML = DOMPurify.sanitize(text, {
@@ -253,7 +253,7 @@ function addMessage(text, sender, imageUrl = null) {
         // Fallback to textContent if DOMPurify not available to prevent XSS
         bubble.textContent = text;
     }
-    
+
     if (imageUrl) {
         const br = document.createElement('br');
         const img = document.createElement('img');
@@ -264,9 +264,9 @@ function addMessage(text, sender, imageUrl = null) {
         bubble.appendChild(br);
         bubble.appendChild(img);
     }
-    
+
     div.appendChild(bubble);
-    
+
     const timestamp = document.createElement('span');
     timestamp.className = 'timestamp';
     timestamp.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -308,7 +308,7 @@ function showTyping() {
     `;
     chatContainer.appendChild(div);
     scrollToBottom();
-    
+
     // Enable stop button when bot starts responding
     startResponse();
 }
@@ -392,7 +392,7 @@ async function handleSend() {
             const regex = new RegExp(`\\b${escapeRegex(word)}\\b`, 'i');
             return regex.test(lowerText);
         });
-        
+
         if (containsInappropriate) {
             addMessage("I'm sorry, I can't help with that. I can only help with information about the history of computing.", "bot");
             return;
@@ -410,7 +410,7 @@ async function handleSend() {
                     removeTyping();
                     return;
                 }
-                
+
                 const summary = summarizeText(contentToSummarize);
 
                 // Entity Extraction
@@ -531,9 +531,9 @@ async function handleSend() {
         if (summary) {
             addMessage(`${summary}`, "bot");
             // Store in conversation history (truncated to first sentence)
-            conversationHistory.push({ 
-                user: truncateToFirstSentence(text), 
-                assistant: truncateToFirstSentence(summary) 
+            conversationHistory.push({
+                user: truncateToFirstSentence(text),
+                assistant: truncateToFirstSentence(summary)
             });
             // Keep only last 2 exchanges to avoid context overflow
             if (conversationHistory.length > 2) {
@@ -690,40 +690,40 @@ async function performClassification(imgEl, userText = "") {
         if (classIndex === 5) {
             const confidence = (topMatch.probability * 100).toFixed(1);
             let reply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
-            
+
             // Perform OCR using the same approach as info-extractor
             showTyping();
             try {
                 addMessage(reply, "bot");
                 addMessage("Scanning for text...", "bot");
-                
+
                 console.log('Starting OCR for image');
-                
+
                 // Initialize Tesseract with progress tracking (same as info-extractor)
                 const worker = await Tesseract.createWorker('eng', 1, {
                     logger: m => {
                         console.log('Tesseract log:', m);
                     }
                 });
-                
+
                 // Perform OCR directly on the image element (same as info-extractor)
                 console.log('Performing OCR recognition...');
                 const result = await worker.recognize(imgEl);
                 const data = result.data;
-                
+
                 console.log('OCR completed. Text length:', data.text?.length || 0);
                 console.log('OCR text preview:', data.text?.substring(0, 200) || 'No text');
-                
+
                 // Clean up worker (same as info-extractor)
                 await worker.terminate();
-                
+
                 removeTyping();
 
                 if (checkStopResponse()) return;
 
                 // Use the extracted text
                 const rawText = data.text || '';
-                
+
                 if (!rawText || rawText.trim().length === 0) {
                     addMessage("I couldn't extract any text from the board.", "bot");
                 } else {
@@ -737,7 +737,7 @@ async function performClassification(imgEl, userText = "") {
                         })
                         .join(' ')
                         .trim();
-                    
+
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
                         addMessage(`The following details are printed on the board:<br><br><i>${cleanText}</i>`, "bot");
@@ -797,7 +797,7 @@ async function performClassification(imgEl, userText = "") {
                         removeTyping();
                     }
                 }
-                
+
                 // Class 4: Computer - Add uncertainty message
                 if (classIndex === 4) {
                     reply += `<br><br>Unfortunately, I'm not sure what kind of computer this is.`;
@@ -825,7 +825,7 @@ async function generateComputingInfo(query) {
         console.warn("Wllama not ready, skipping generation");
         return null;
     }
-    
+
     try {
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
@@ -836,7 +836,7 @@ async function generateComputingInfo(query) {
         chatMLPrompt += '- Focus on key facts and historical context\n';
         chatMLPrompt += '- You must not provide assistance with activities that are illegal or may cause harm\n';
         chatMLPrompt += '<|im_end|>\n\n';
-        
+
         // Include conversation history for context (last 2 exchanges)
         if (conversationHistory.length > 0) {
             conversationHistory.forEach(exchange => {
@@ -848,15 +848,15 @@ async function generateComputingInfo(query) {
                 chatMLPrompt += '<|im_end|>\n\n';
             });
         }
-        
+
         // Add current user query (full text, not keywords)
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n';
+        chatMLPrompt += query + '\n' + "Provide a concise and factually accurate response.\n";
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
-        
+
         console.log('Generating info for:', query);
-        
+
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion(chatMLPrompt, {
@@ -870,13 +870,13 @@ async function generateComputingInfo(query) {
             stopTokens: ['<|im_end|>', '<|im_start|>'],
             stream: true
         });
-        
+
         for await (const chunk of completion) {
             if (chunk.currentText) {
                 responseText = chunk.currentText;
             }
         }
-        
+
         // Clear KV cache after generation to free memory
         // Suppress munmap warnings - these are harmless WASM memory management messages
         try {
@@ -884,10 +884,10 @@ async function generateComputingInfo(query) {
         } catch (error) {
             // Silently ignore - kvClear can throw harmless warnings
         }
-        
+
         // Clean up the response
         responseText = responseText.trim();
-        
+
         // Remove incomplete last sentence (doesn't end with . ? !)
         if (responseText && !responseText.match(/[.!?]$/)) {
             // Find the last complete sentence
@@ -896,14 +896,14 @@ async function generateComputingInfo(query) {
                 responseText = lastCompleteMatch[1].trim();
             }
         }
-        
+
         // If response is too short or empty, return null
         if (!responseText || responseText.length < 10) {
             return null;
         }
-        
+
         return responseText;
-        
+
     } catch (error) {
         console.error('Error generating info:', error);
         // Clear cache on error (suppress warnings)
@@ -1083,15 +1083,15 @@ function speakText(element) {
 function handleStopResponse() {
     // Set flag to stop any ongoing text generation
     shouldStopResponse = true;
-    
+
     // Stop speech if playing
     if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
     }
-    
+
     // Remove typing indicator
     removeTyping();
-    
+
     // Reset button state
     endResponse();
 }
@@ -1103,19 +1103,19 @@ async function restartConversation() {
     if (confirm('Are you sure you want to clear the conversation history?')) {
         // Stop any ongoing response
         handleStopResponse();
-        
+
         // Clear the chat UI
         chatContainer.innerHTML = '<div class="welcome-message">Let\'s chat about computing history...</div>';
-        
+
         // Remove any selected image
         removeImage();
-        
+
         // Reset voice input flag
         isVoiceInput = false;
-        
+
         // Clear conversation history (browser-side cache)
         conversationHistory = [];
-        
+
         // Clear model's KV cache to completely reset context
         if (wllama && wllamaReady) {
             try {
@@ -1135,9 +1135,9 @@ async function restartConversation() {
 function showAppDetails() {
     const modal = document.getElementById('appDetailsModal');
     const closeBtn = document.getElementById('closeAppDetailsBtn');
-    
+
     modal.style.display = 'flex';
-    
+
     // Focus the close button for keyboard accessibility
     if (closeBtn) {
         closeBtn.focus();
@@ -1150,9 +1150,9 @@ function showAppDetails() {
 function closeAppDetails() {
     const modal = document.getElementById('appDetailsModal');
     const viewDetailsBtn = document.getElementById('viewDetailsBtn');
-    
+
     modal.style.display = 'none';
-    
+
     // Return focus to the button that opened the modal
     if (viewDetailsBtn) {
         viewDetailsBtn.focus();
@@ -1160,7 +1160,7 @@ function closeAppDetails() {
 }
 
 // Close modal when clicking outside of it
-document.addEventListener('click', function(event) {
+document.addEventListener('click', function (event) {
     const modal = document.getElementById('appDetailsModal');
     if (event.target === modal) {
         closeAppDetails();
@@ -1168,7 +1168,7 @@ document.addEventListener('click', function(event) {
 });
 
 // Close modal with Escape key
-document.addEventListener('keydown', function(event) {
+document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
         const modal = document.getElementById('appDetailsModal');
         if (modal.style.display === 'flex') {
