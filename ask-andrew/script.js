@@ -17,7 +17,7 @@ class AskAndrew {
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
         this.usedVoiceInput = false;
-        
+
         this.elements = {
             progressSection: document.getElementById('progress-section'),
             progressFill: document.getElementById('progress-fill'),
@@ -39,7 +39,7 @@ class AskAndrew {
             modalClose: document.getElementById('modal-close'),
             modalOk: document.getElementById('modal-ok')
         };
-        
+
         this.systemPrompt = `You are Andrew, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
 
 IMPORTANT: Follow these guidelines when responding:
@@ -67,13 +67,13 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Load the index
             await this.loadIndex();
-            
+
             // Try to initialize WebLLM first, fall back to wllama if needed
             await this.initializeEngine();
-            
+
             // Setup event listeners
             this.setupEventListeners();
-            
+
         } catch (error) {
             console.error('Initialization error:', error);
             this.showError('Failed to initialize. Please refresh the page.');
@@ -110,7 +110,7 @@ IMPORTANT: Follow these guidelines when responding:
             if (!response.ok) throw new Error('Failed to load index');
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
-            
+
             // Build a flat lookup map: keyword -> {document, category, link}
             this.keywordMap = new Map();
             this.indexData.forEach(category => {
@@ -147,31 +147,31 @@ IMPORTANT: Follow these guidelines when responding:
     async initializeWebLLM() {
         try {
             this.updateProgress(15, 'Loading AI model (WebGPU)...');
-            
+
             const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-            
+
             this.engine = await webllm.CreateMLCEngine(
                 targetModelId,
                 {
                     initProgressCallback: (progress) => {
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         this.updateProgress(
-                            percentage, 
+                            percentage,
                             `Loading model: ${Math.round(progress.progress * 100)}%`
                         );
                     }
                 }
             );
-            
+
             this.updateProgress(100, 'Ready to chat!');
             console.log('WebLLM engine initialized successfully');
             this.webGPUAvailable = true;
             this.usingWllama = false;
-            
+
             setTimeout(() => {
                 this.showChatInterface();
             }, 500);
-            
+
         } catch (error) {
             console.error('Failed to initialize WebLLM:', error);
             throw error; // Re-throw to trigger fallback
@@ -185,22 +185,22 @@ IMPORTANT: Follow these guidelines when responding:
                 console.log('Wllama already initialized');
                 return;
             }
-            
+
             const isLazyLoad = this.webGPUAvailable; // If WebGPU is available, this is a lazy load
-            
+
             if (!isLazyLoad) {
                 this.updateProgress(15, 'Loading AI model (CPU mode)...');
             }
-            
+
             // Configure WASM paths for CDN
             const CONFIG_PATHS = {
                 'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
                 'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
             };
-            
+
             // Initialize wllama with CDN-hosted WASM files
             this.wllama = new Wllama(CONFIG_PATHS);
-            
+
             // Load model from HuggingFace with optimized settings
             await this.wllama.loadModelFromHF(
                 'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
@@ -211,7 +211,7 @@ IMPORTANT: Follow these guidelines when responding:
                     progressCallback: ({ loaded, total }) => {
                         const percentage = Math.max(15, Math.round((loaded / total) * 85) + 15);
                         const progress = loaded / total;
-                        
+
                         if (!isLazyLoad) {
                             this.updateProgress(
                                 percentage,
@@ -227,21 +227,21 @@ IMPORTANT: Follow these guidelines when responding:
                     }
                 }
             );
-            
+
             if (!isLazyLoad) {
                 this.updateProgress(100, 'Ready to chat! (CPU mode)');
             }
             console.log('Wllama initialized successfully with SmolLM2-360M-Instruct');
-            
+
             if (!isLazyLoad) {
                 this.webGPUAvailable = false;
                 this.usingWllama = true;
-                
+
                 setTimeout(() => {
                     this.showChatInterface();
                 }, 500);
             }
-            
+
         } catch (error) {
             console.error('Failed to initialize wllama:', error);
             if (!this.webGPUAvailable) {
@@ -254,7 +254,7 @@ IMPORTANT: Follow these guidelines when responding:
     updateProgress(percentage, text) {
         this.elements.progressFill.style.width = `${percentage}%`;
         this.elements.progressText.textContent = text;
-        
+
         // Update progress bar ARIA attributes
         const progressBar = document.querySelector('.progress-bar');
         if (progressBar) {
@@ -284,7 +284,7 @@ IMPORTANT: Follow these guidelines when responding:
                 this.sendMessage();
             }
         });
-        
+
         // Enter key to send (Shift+Enter for new line)
         this.elements.userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating) {
@@ -292,12 +292,12 @@ IMPORTANT: Follow these guidelines when responding:
                 this.sendMessage();
             }
         });
-        
+
         // Auto-resize textarea
         this.elements.userInput.addEventListener('input', () => {
             this.autoResizeTextarea();
         });
-        
+
         // Keyboard navigation
         this.elements.userInput.addEventListener('keydown', (e) => {
             // Enter to send (without Shift)
@@ -312,7 +312,7 @@ IMPORTANT: Follow these guidelines when responding:
                 this.stopGeneration();
             }
         });
-        
+
         // Global keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             // Ctrl/Cmd + K to focus input
@@ -326,60 +326,60 @@ IMPORTANT: Follow these guidelines when responding:
                 this.restartConversation();
             }
         });
-        
+
         // Microphone button
         this.elements.micBtn.addEventListener('click', () => {
             this.handleMicClick();
         });
-        
+
         // Restart button
         this.elements.restartBtn.addEventListener('click', () => {
             this.restartConversation();
         });
-        
+
         // Mode toggle button
         this.elements.modeToggle.addEventListener('change', () => {
             this.toggleMode();
         });
-        
+
         // About button
         this.elements.aboutBtn.addEventListener('click', () => {
             this.lastFocusedElement = this.elements.aboutBtn;
             this.showAboutModal();
         });
-        
+
         // About modal handlers
         this.elements.aboutModalClose.addEventListener('click', () => {
             this.hideAboutModal();
         });
-        
+
         this.elements.aboutModalOk.addEventListener('click', () => {
             this.hideAboutModal();
         });
-        
+
         // Close about modal on overlay click
         this.elements.aboutModal.addEventListener('click', (e) => {
             if (e.target === this.elements.aboutModal || e.target.classList.contains('modal-overlay')) {
                 this.hideAboutModal();
             }
         });
-        
+
         // Modal handlers
         this.elements.modalClose.addEventListener('click', () => {
             this.hideAiModeModal();
         });
-        
+
         this.elements.modalOk.addEventListener('click', () => {
             this.hideAiModeModal();
         });
-        
+
         // Close modal on overlay click
         this.elements.aiModeModal.addEventListener('click', (e) => {
             if (e.target === this.elements.aiModeModal || e.target.classList.contains('modal-overlay')) {
                 this.hideAiModeModal();
             }
         });
-        
+
         // Close modal on Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -390,7 +390,7 @@ IMPORTANT: Follow these guidelines when responding:
                 }
             }
         });
-        
+
         // Example question buttons
         const exampleBtns = document.querySelectorAll('.example-btn');
         exampleBtns.forEach(btn => {
@@ -420,7 +420,7 @@ IMPORTANT: Follow these guidelines when responding:
     containsProhibitedWords(text) {
         // Convert to lowercase for case-insensitive matching
         const lowerText = text.toLowerCase();
-        
+
         // Create word boundaries regex pattern for whole word matching
         for (const word of this.prohibitedWords) {
             // Use word boundary to match whole words only
@@ -430,20 +430,20 @@ IMPORTANT: Follow these guidelines when responding:
                 return true;
             }
         }
-        
+
         return false;
     }
 
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
-        
+
         // Normalize the question: remove punctuation, extra spaces
         const normalizedQuestion = lowerQuestion.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
         const words = normalizedQuestion.split(' ');
-        
+
         // Extract all n-grams (trigrams, bigrams, unigrams)
         const nGrams = [];
-        
+
         // Trigrams (3-word phrases)
         for (let i = 0; i <= words.length - 3; i++) {
             nGrams.push({
@@ -451,7 +451,7 @@ IMPORTANT: Follow these guidelines when responding:
                 length: 3
             });
         }
-        
+
         // Bigrams (2-word phrases)
         for (let i = 0; i <= words.length - 2; i++) {
             nGrams.push({
@@ -459,7 +459,7 @@ IMPORTANT: Follow these guidelines when responding:
                 length: 2
             });
         }
-        
+
         // Unigrams (single words) - filter out very short words and common stop words
         const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give'];
         words.forEach(word => {
@@ -470,18 +470,18 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             }
         });
-        
+
         console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
-        
+
         // Match n-grams to keywords in the index
         const matchedKeywords = new Set();
         const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
-        
+
         nGrams.forEach(ngram => {
             const match = this.keywordMap.get(ngram.text);
             if (match) {
                 matchedKeywords.add(ngram.text);
-                
+
                 const docId = match.document.id;
                 if (!documentMatches.has(docId)) {
                     documentMatches.set(docId, {
@@ -494,7 +494,7 @@ IMPORTANT: Follow these guidelines when responding:
                 documentMatches.get(docId).matchedKeywords.push(ngram.text);
             }
         });
-        
+
         // Filter out keywords that are subsets of longer matched keywords
         // Example: if "large language model" is matched, remove "language model" and "language"
         const filteredKeywords = new Set();
@@ -503,7 +503,7 @@ IMPORTANT: Follow these guidelines when responding:
             const bWords = b.split(' ').length;
             return bWords - aWords; // Longer phrases first
         });
-        
+
         sortedKeywords.forEach(keyword => {
             // Check if this keyword is a subset of any already-added keyword
             let isSubset = false;
@@ -517,10 +517,10 @@ IMPORTANT: Follow these guidelines when responding:
                 filteredKeywords.add(keyword);
             }
         });
-        
+
         console.log('Matched keywords (before filtering):', Array.from(matchedKeywords));
         console.log('Filtered keywords (after removing subsets):', Array.from(filteredKeywords));
-        
+
         // Rebuild document matches using only filtered keywords
         const finalDocumentMatches = [];
         documentMatches.forEach((match, docId) => {
@@ -533,7 +533,7 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             }
         });
-        
+
         console.log(`Found ${finalDocumentMatches.length} matching documents`);
         if (finalDocumentMatches.length > 0) {
             console.log('Matched documents:', finalDocumentMatches.map(m => ({
@@ -543,16 +543,16 @@ IMPORTANT: Follow these guidelines when responding:
                 keywords: m.matchedKeywords
             })));
         }
-        
+
         return {
             matches: finalDocumentMatches,
             matchedKeywords: Array.from(filteredKeywords)
         };
     }
-    
+
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
-        
+
         // If no matches, fall back to AI Concepts category
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
@@ -568,18 +568,18 @@ IMPORTANT: Follow these guidelines when responding:
             }
             return { context: null, categories: [], links: [], documents: [] };
         }
-        
+
         // Build context from all matched documents - use full content, no summarization
         const contextParts = matches.map(match => {
             return `[${match.category} - ${match.document.title}]\n${match.document.content}`;
         });
-        
+
         const categories = [...new Set(matches.map(m => m.category))];
         const links = [...new Set(matches.map(m => m.link))];
         const documents = matches.map(m => m.document);
-        
+
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
-        
+
         return {
             context: contextParts.join('\n\n'),
             categories: categories,
@@ -590,53 +590,53 @@ IMPORTANT: Follow these guidelines when responding:
 
     async sendMessage() {
         const userMessage = this.elements.userInput.value.trim();
-        
+
         // Validate input
         if (!userMessage || this.isGenerating) return;
-        
+
         // Limit message length to prevent abuse
         const MAX_MESSAGE_LENGTH = 1000;
         if (userMessage.length > MAX_MESSAGE_LENGTH) {
             this.addSystemMessage(`Message too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`);
             return;
         }
-        
+
         // Store voice input flag before any processing
         const usedVoice = this.usedVoiceInput;
         this.usedVoiceInput = false;
-        
+
         // Content moderation: check for prohibited words (whole words only)
         if (this.containsProhibitedWords(userMessage)) {
             // Clear input and reset height
             this.elements.userInput.value = '';
             this.elements.userInput.style.height = 'auto';
-            
+
             // Add user message to chat
             this.addMessage('user', userMessage);
-            
+
             // Play audio if voice input was used
             if (usedVoice) {
                 this.playModerationAudio();
             }
-            
+
             // Add moderation response
             this.addMessage('assistant', "I'm sorry. I can't help with that. Please ask me about AI-related topics.");
             return;
         }
-        
+
         // Check if wllama is still loading when in CPU mode
         if (this.usingWllama && !this.wllama) {
             this.addSystemMessage('CPU mode is still loading. Please wait...');
             return;
         }
-        
+
         // Clear input and reset height
         this.elements.userInput.value = '';
         this.elements.userInput.style.height = 'auto';
-        
+
         // Add user message to chat
         this.addMessage('user', userMessage);
-        
+
         // Check if this is an initial greeting (only if no messages yet)
         const messageCount = this.elements.chatMessages.querySelectorAll('.message').length;
         if (messageCount <= 1) { // Only user's message is in chat
@@ -648,10 +648,10 @@ IMPORTANT: Follow these guidelines when responding:
                 return;
             }
         }
-        
+
         // Search for relevant context
         const searchResult = this.searchContext(userMessage);
-        
+
         // Generate response
         await this.generateResponse(userMessage, searchResult, usedVoice);
     }
@@ -673,14 +673,14 @@ IMPORTANT: Follow these guidelines when responding:
         this.isGenerating = false;
         this.stopRequested = true;
         this.currentStream = null;
-        
+
         // Abort the generation properly using AbortController
         if (this.currentAbortController) {
             console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
-        
+
         this.updateSendButton(false);
         console.log('Stop requested');
     }
@@ -691,15 +691,15 @@ IMPORTANT: Follow these guidelines when responding:
             this.showAiModeModal();
             return;
         }
-        
+
         this.usingWllama = !this.usingWllama;
         this.updateModeToggle();
-        
+
         // If switching to wllama and it's not loaded yet, show loading message
         if (this.usingWllama && !this.wllama) {
             const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0%');
             const loadingMsgElement = loadingMsg.querySelector('p');
-            
+
             // Lazy load wllama
             this.initializeWllama((progress) => {
                 // Update the loading message with progress
@@ -729,25 +729,25 @@ IMPORTANT: Follow these guidelines when responding:
 
     updateModeToggle() {
         const isGpuMode = !this.usingWllama;
-        
+
         // Update checkbox state
         this.elements.modeToggle.checked = this.usingWllama;
         this.elements.modeToggle.setAttribute('aria-checked', this.usingWllama ? 'true' : 'false');
-        
+
         // Update text label
         this.elements.modeToggleText.textContent = isGpuMode ? 'GPU' : 'CPU';
-        
+
         // Update title and aria-label
-        const modeTitle = isGpuMode ? 
-            'Currently using GPU (WebLLM). Toggle to switch to CPU mode.' : 
+        const modeTitle = isGpuMode ?
+            'Currently using GPU (WebLLM). Toggle to switch to CPU mode.' :
             'Currently using CPU (wllama). Toggle to switch to GPU mode.';
         const ariaLabel = isGpuMode ?
             'Toggle engine mode. Currently in GPU mode. Toggle to switch to CPU mode.' :
             'Toggle engine mode. Currently in CPU mode. Toggle to switch to GPU mode.';
-        
+
         this.elements.modeToggle.parentElement.parentElement.title = modeTitle;
         this.elements.modeToggle.setAttribute('aria-label', ariaLabel);
-        
+
         // Disable toggle if WebGPU not available
         if (!this.webGPUAvailable) {
             this.elements.modeToggle.disabled = true;
@@ -756,12 +756,12 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.modeToggleText.textContent = 'CPU';
             this.elements.modeToggle.parentElement.parentElement.title = 'WebGPU not available - CPU mode only. Click for more info.';
             this.elements.modeToggle.setAttribute('aria-label', 'Engine mode set to CPU only. WebGPU not available. Press for more information.');
-            
+
             // Make the label clickable to show info modal
             const label = this.elements.modeToggle.parentElement;
             label.style.cursor = 'pointer';
             label.tabIndex = 0; // Make focusable for keyboard navigation
-            
+
             label.onclick = (e) => {
                 if (this.elements.modeToggle.disabled) {
                     e.preventDefault();
@@ -769,7 +769,7 @@ IMPORTANT: Follow these guidelines when responding:
                     this.showAiModeModal();
                 }
             };
-            
+
             // Add keyboard support for info modal when disabled
             label.onkeydown = (e) => {
                 if (this.elements.modeToggle.disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -800,7 +800,7 @@ IMPORTANT: Follow these guidelines when responding:
         messageDiv.className = `message ${role}-message`;
         messageDiv.setAttribute('role', 'article');
         messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Andrew' : 'You'}`);
-        
+
         if (role === 'assistant') {
             messageDiv.innerHTML = `
                 <div class="avatar andrew-avatar" aria-hidden="true">
@@ -809,9 +809,9 @@ IMPORTANT: Follow these guidelines when responding:
                 <div class="message-content">
                     <p class="message-author" aria-label="From Andrew">Andrew</p>
                     <div class="message-text" ${isTyping ? 'aria-live="polite" aria-busy="true"' : ''}>
-                        ${isTyping 
-                            ? '<span class="typing-indicator" aria-label="Andrew is typing">●●●</span>' 
-                            : this.escapeHtml(content)}
+                        ${isTyping
+                    ? '<span class="typing-indicator" aria-label="Andrew is typing">●●●</span>'
+                    : this.escapeHtml(content)}
                     </div>
                 </div>
             `;
@@ -824,65 +824,65 @@ IMPORTANT: Follow these guidelines when responding:
                 <div class="avatar user-avatar" aria-hidden="true">👤</div>
             `;
         }
-        
+
         this.elements.chatMessages.appendChild(messageDiv);
         this.scrollToBottom();
-        
+
         return messageDiv;
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links } = searchResult;
-        
+
         this.isGenerating = true;
         this.stopRequested = false;
         this.updateSendButton(true);
-        
+
         // Add empty message that we'll stream into
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        
+
         // Show thinking indicator with CPU mode notice if applicable
         if (this.usingWllama) {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
         } else {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
         }
-        
+
         try {
             // Route to the appropriate engine
             let assistantMessage = '';
-            
+
             if (this.usingWllama) {
                 assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
             } else {
                 assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
-            
+
             // Add learn more links
             if (links && links.length > 0 && categories && categories.length > 0) {
                 // Store original message without learn more for conversation history
                 const originalMessage = assistantMessage;
-                
+
                 // Add placeholder for learn more section for display only
                 assistantMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
-                
+
                 // Format the message
                 let formattedMessage = this.formatResponse(assistantMessage);
-                
+
                 // Build HTML links with category names
                 const linkHtml = links.map((link, index) => {
                     const categoryName = categories[Math.min(index, categories.length - 1)];
                     return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
                 }).join(' • ');
                 formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
-                
+
                 messageTextDiv.innerHTML = formattedMessage;
-                
+
                 // Reset assistantMessage to original for conversation history
                 assistantMessage = originalMessage;
             }
-            
+
             // Only add to conversation history if not stopped (to prevent corruption)
             if (!this.stopRequested && assistantMessage.trim()) {
                 this.conversationHistory.push({
@@ -896,7 +896,7 @@ IMPORTANT: Follow these guidelines when responding:
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
-            
+
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
@@ -906,7 +906,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.stopRequested = false;
             this.currentStream = null;
             this.updateSendButton(false);
-            
+
             // Clear search status after response is complete
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -919,35 +919,35 @@ IMPORTANT: Follow these guidelines when responding:
         if (context) {
             userPrompt = `${context}\n\nQ: ${userMessage}`;
         }
-        
+
         const recentHistory = this.conversationHistory.slice(-6);
         recentHistory.push({
             role: 'user',
             content: userPrompt
         });
-        
+
         const messages = [
             { role: 'system', content: this.systemPrompt },
             ...recentHistory
         ];
-        
+
         const completion = await this.engine.chat.completions.create({
             messages: messages,
             temperature: 0.7,
             max_tokens: 500,
             stream: true
         });
-        
+
         this.currentStream = completion;
         let assistantMessage = '';
         let audioPlayed = false;
-        
+
         for await (const chunk of completion) {
             if (this.stopRequested) {
                 console.log('Generation stopped by user');
                 break;
             }
-            
+
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
                 // Play audio on first chunk if voice input was used
@@ -955,26 +955,26 @@ IMPORTANT: Follow these guidelines when responding:
                     this.playRandomResponseAudio();
                     audioPlayed = true;
                 }
-                
+
                 assistantMessage += delta;
                 messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                 this.scrollToBottom();
             }
         }
-        
+
         return assistantMessage;
     }
 
     // Helper function to extract first sentence or first 30 characters
     extractFirstSentence(text) {
         if (!text) return '';
-        
+
         // Find the first occurrence of sentence-ending punctuation
         const match = text.match(/^[^.!?:]*[.!?:]/);
         if (match) {
             return match[0].trim();
         }
-        
+
         // If no sentence-ending punctuation, use first 30 characters
         return text.substring(0, 30).trim();
     }
@@ -984,39 +984,26 @@ IMPORTANT: Follow these guidelines when responding:
         if (!this.wllama) {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
         }
-        
+
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Andrew, an AI learning assistant. Answer questions using ONLY the information below.\n\n';
+        chatMLPrompt += 'You are Andrew, an AI learning assistant. Answer questions using ONLY the information provided.\n\n';
         chatMLPrompt += 'Rules:\n';
         chatMLPrompt += '- AI and computing topics only\n';
         chatMLPrompt += '- One clear paragraph, simple language\n';
         chatMLPrompt += '- No development steps or instructions\n\n';
-        chatMLPrompt += 'Information:\n';
-        
-        // Add context from index.json if available (truncate to prevent context overflow)
-        if (context) {
-            const maxContextLength = 400;
-            const truncatedContext = context.length > maxContextLength 
-                ? context.substring(0, maxContextLength) + '...' 
-                : context;
-            chatMLPrompt += truncatedContext + '\n';
-        } else {
-            chatMLPrompt += 'No specific information available.\n';
-        }
-        
         chatMLPrompt += '<|im_end|>\n\n';
-        
+
         // Add truncated previous prompt and response if available
         if (this.conversationHistory.length >= 2) {
             // Get the last user message and assistant response
             const prevUser = this.conversationHistory[this.conversationHistory.length - 2];
             const prevAssistant = this.conversationHistory[this.conversationHistory.length - 1];
-            
+
             if (prevUser.role === 'user' && prevAssistant.role === 'assistant') {
                 const prevUserSentence = this.extractFirstSentence(prevUser.content);
                 const prevAssistantSentence = this.extractFirstSentence(prevAssistant.content);
-                
+
                 chatMLPrompt += '<|im_start|>user\n';
                 chatMLPrompt += prevUserSentence + '\n';
                 chatMLPrompt += '<|im_end|>\n\n';
@@ -1025,22 +1012,33 @@ IMPORTANT: Follow these guidelines when responding:
                 chatMLPrompt += '<|im_end|>\n\n';
             }
         }
-        
+
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
         chatMLPrompt += userMessage + '\n';
+        chatMLPrompt += 'Information:\n';
+
+        // Add context from index.json if available (truncate to prevent context overflow)
+        if (context) {
+            const maxContextLength = 400;
+            const truncatedContext = context.length > maxContextLength
+                ? context.substring(0, maxContextLength) + '...'
+                : context;
+            chatMLPrompt += 'Use this information to respond:\n---\n' + truncatedContext + '\n';
+        }
+
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
-        
+
         console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
-        
+
         let assistantMessage = '';
         let audioPlayed = false;
-        
+
         // Create AbortController for this generation
         const controller = new AbortController();
         this.currentAbortController = controller;
-        
+
         // Clear KV cache before generation to ensure clean state
         try {
             await this.wllama.kvClear();
@@ -1048,7 +1046,7 @@ IMPORTANT: Follow these guidelines when responding:
         } catch (error) {
             console.log('KV cache clear failed:', error.message);
         }
-        
+
         // Use streaming with proper abort support
         try {
             const completion = await this.wllama.createCompletion(chatMLPrompt, {
@@ -1063,9 +1061,9 @@ IMPORTANT: Follow these guidelines when responding:
                 abortSignal: controller.signal,
                 stream: true
             });
-            
+
             this.currentStream = completion;
-            
+
             for await (const chunk of completion) {
                 if (chunk.currentText) {
                     // Play audio on first chunk if voice input was used
@@ -1073,21 +1071,21 @@ IMPORTANT: Follow these guidelines when responding:
                         this.playRandomResponseAudio();
                         audioPlayed = true;
                     }
-                    
+
                     assistantMessage = chunk.currentText;
                     messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                     this.scrollToBottom();
                 }
             }
-            
+
             // Clear abort controller on successful completion
             this.currentAbortController = null;
-            
+
             // Clear KV cache after successful generation
             console.log('Clearing KV cache after generation');
             await this.wllama.kvClear();
             console.log('KV cache cleared successfully');
-            
+
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
             if (error.name === 'AbortError' || error.message?.includes('abort')) {
@@ -1106,38 +1104,38 @@ IMPORTANT: Follow these guidelines when responding:
             }
             this.currentAbortController = null;
         }
-        
+
         console.log('Wllama response complete, length:', assistantMessage.length);
-        
+
         return assistantMessage;
     }
 
     formatResponse(text) {
         // Split out the learn more section and note if they exist
         const learnMoreMatch = text.match(/([\s\S]*?)(---\s*\n\n\*\*Learn more:\*\*.*?)(\n\n\*Note:.*)?$/);
-        
+
         if (learnMoreMatch) {
             const mainContent = learnMoreMatch[1];
             const learnMoreSection = learnMoreMatch[2];
             const noteSection = learnMoreMatch[3] || '';
-            
+
             // Format main content (escape HTML)
             let formatted = this.escapeHtml(mainContent);
-            
+
             // Convert **bold** to <strong>
             formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            
+
             // Convert *italic* to <em>
             formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
-            
+
             // Convert line breaks to paragraphs
             formatted = formatted.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-            
+
             // Add learn more section - preserve placeholders and HTML structure
             const learnMoreFormatted = learnMoreSection
                 .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                 .replace(/---\s*\n\n/g, '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">\n\n');
-            
+
             // Format note section - preserve placeholders
             let noteFormatted = '';
             if (noteSection) {
@@ -1146,22 +1144,22 @@ IMPORTANT: Follow these guidelines when responding:
                 // Wrap in styled paragraph - placeholders will be replaced by caller
                 noteFormatted = `<p style="font-style: italic; color: #666; font-size: 0.9em; margin-top: 10px;">Note: ${noteText}</p>`;
             }
-            
+
             return formatted + learnMoreFormatted + noteFormatted;
         }
-        
+
         // No learn more section, process normally
         let formatted = this.escapeHtml(text);
-        
+
         // Convert **bold** to <strong>
         formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        
+
         // Convert *italic* to <em>
         formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        
+
         // Convert line breaks to paragraphs
         formatted = formatted.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-        
+
         return formatted;
     }
 
@@ -1175,21 +1173,21 @@ IMPORTANT: Follow these guidelines when responding:
         // Parse HTML to extract text while preserving structure
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = htmlContent;
-        
+
         // For simple animation, just show the content progressively
         element.innerHTML = '';
         const words = htmlContent.split(' ');
-        
+
         for (let i = 0; i < words.length; i++) {
             if (this.stopRequested) break;
-            
+
             element.innerHTML = words.slice(0, i + 1).join(' ');
             this.scrollToBottom();
-            
+
             // Small delay between words
             await new Promise(resolve => setTimeout(resolve, speed));
         }
-        
+
         // Ensure final content is complete
         element.innerHTML = htmlContent;
         this.scrollToBottom();
@@ -1198,12 +1196,12 @@ IMPORTANT: Follow these guidelines when responding:
     scrollToBottom() {
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
-    
+
     playRandomResponseAudio() {
         // Randomly select one of the 7 audio files
         const audioNumber = Math.floor(Math.random() * 7) + 1;
         const audioPath = `audio/response_${audioNumber}.wav`;
-        
+
         const audio = new Audio(audioPath);
         audio.play().catch(error => {
             console.error('Error playing audio:', error);
@@ -1220,22 +1218,22 @@ IMPORTANT: Follow these guidelines when responding:
     handleMicClick() {
         // Check if Speech Recognition is available
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
+
         if (!SpeechRecognition) {
             this.addMessage('assistant', 'Speech input is not available in this browser.');
             return;
         }
-        
+
         const recognition = new SpeechRecognition();
         recognition.lang = 'en-US';
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
-        
+
         // Visual feedback - button appears active while listening
         this.elements.micBtn.style.opacity = '0.6';
         this.elements.micBtn.title = 'Listening...';
         this.elements.micBtn.setAttribute('aria-label', 'Listening to your voice input');
-        
+
         recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript;
             this.elements.userInput.value = transcript;
@@ -1243,7 +1241,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.usedVoiceInput = true;
             this.sendMessage();
         };
-        
+
         recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             this.addMessage('assistant', 'Speech input is not available.');
@@ -1251,13 +1249,13 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.micBtn.title = 'Voice input';
             this.elements.micBtn.setAttribute('aria-label', 'Voice input');
         };
-        
+
         recognition.onend = () => {
             this.elements.micBtn.style.opacity = '1';
             this.elements.micBtn.title = 'Voice input';
             this.elements.micBtn.setAttribute('aria-label', 'Voice input');
         };
-        
+
         try {
             recognition.start();
             console.log('Speech recognition started');
@@ -1269,23 +1267,23 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.micBtn.setAttribute('aria-label', 'Voice input');
         }
     }
-    
+
     restartConversation() {
         if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
             // Clear conversation history
             this.conversationHistory = [];
-            
+
             // Clear chat messages (keep welcome message)
             const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
             messages.forEach(msg => msg.remove());
-            
+
             // Clear search status
             this.elements.searchStatus.textContent = '';
-            
+
             console.log('Conversation restarted');
         }
     }
-    
+
     showAiModeModal() {
         this.elements.aiModeModal.style.display = 'flex';
         this.currentModal = this.elements.aiModeModal;
@@ -1295,7 +1293,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.setupModalFocusTrap(this.elements.aiModeModal);
         }, 100);
     }
-    
+
     hideAiModeModal() {
         this.elements.aiModeModal.style.display = 'none';
         this.elements.aiModeModal.setAttribute('aria-hidden', 'true');
@@ -1321,7 +1319,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.setupModalFocusTrap(this.elements.aboutModal);
         }, 100);
     }
-    
+
     hideAboutModal() {
         this.elements.aboutModal.style.display = 'none';
         this.elements.aboutModal.setAttribute('aria-hidden', 'true');
@@ -1340,16 +1338,16 @@ IMPORTANT: Follow these guidelines when responding:
         const focusableElements = modalElement.querySelectorAll(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
-        
+
         if (focusableElements.length === 0) return;
-        
+
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
-        
+
         // Store the trap handler for cleanup
         this.modalFocusTrapHandler = (e) => {
             if (e.key !== 'Tab') return;
-            
+
             if (e.shiftKey) {
                 // Shift+Tab - going backwards
                 if (document.activeElement === firstElement) {
@@ -1364,7 +1362,7 @@ IMPORTANT: Follow these guidelines when responding:
                 }
             }
         };
-        
+
         modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
     }
 

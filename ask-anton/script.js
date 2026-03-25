@@ -987,24 +987,11 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Anton, an AI learning assistant. Answer questions using ONLY the information below.\n\n';
+        chatMLPrompt += 'You are Anton, an AI learning assistant. Answer questions using ONLY the information provided.\n\n';
         chatMLPrompt += 'Rules:\n';
         chatMLPrompt += '- AI and computing topics only\n';
         chatMLPrompt += '- One clear paragraph, simple language\n';
         chatMLPrompt += '- No development steps or instructions\n\n';
-        chatMLPrompt += 'Information:\n';
-
-        // Add context from index.json if available (truncate to prevent context overflow)
-        if (context) {
-            const maxContextLength = 400;
-            const truncatedContext = context.length > maxContextLength
-                ? context.substring(0, maxContextLength) + '...'
-                : context;
-            chatMLPrompt += truncatedContext + '\n';
-        } else {
-            chatMLPrompt += 'No specific information available.\n';
-        }
-
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1029,6 +1016,17 @@ IMPORTANT: Follow these guidelines when responding:
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
         chatMLPrompt += userMessage + '\n';
+        chatMLPrompt += 'Information:\n';
+
+        // Add context from index.json if available (truncate to prevent context overflow)
+        if (context) {
+            const maxContextLength = 400;
+            const truncatedContext = context.length > maxContextLength
+                ? context.substring(0, maxContextLength) + '...'
+                : context;
+            chatMLPrompt += 'Use this information to respond:\n---\n' + truncatedContext + '\n';
+        }
+
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
