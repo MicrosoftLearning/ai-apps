@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Computing Historian</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖥️</text></svg>">
+    <title>Computing History Agent - Browser</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖥️</text></svg>">
     <link rel="stylesheet" href="style.css">
     <!-- TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
@@ -23,17 +25,20 @@
         }
     </script>
 </head>
+
 <body>
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle" aria-live="polite">
+    <div id="loadingOverlay" class="loading-overlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle"
+        aria-live="polite">
         <div class="loading-content">
-            <h2 id="loadingTitle">🖥️ AI Computing Historian</h2>
+            <h2 id="loadingTitle">🖥️ Computing History Agent</h2>
             <p class="loading-subtitle">Loading models...</p>
             <div class="loading-progress" role="status" aria-live="polite">
                 <div class="model-status" id="mobilenetStatus">
                     <span class="status-icon" aria-hidden="true">⏳</span>
                     <span class="status-text">MobileNet (Image Classification)</span>
-                    <span class="status-progress" id="mobilenetProgress" aria-label="MobileNet loading progress">0%</span>
+                    <span class="status-progress" id="mobilenetProgress"
+                        aria-label="MobileNet loading progress">0%</span>
                 </div>
                 <div class="model-status" id="smollmStatus">
                     <span class="status-icon" aria-hidden="true">⏳</span>
@@ -43,19 +48,22 @@
             </div>
         </div>
     </div>
-    
+
     <div class="container">
         <h1>🖥️ AI Computing Historian</h1>
         <p class="subheading">Browser-based Model</p>
-        
+
         <!-- Chat Interface -->
         <div class="chat-container" id="chat-container" role="region" aria-label="Chat interface">
             <div class="chat-header">
-                <button class="view-instructions-btn" id="viewDetailsBtn" title="View app details" aria-label="View app details" tabindex="1">&#128195;</button>
-                <button class="restart-btn" id="restartBtn" title="Restart conversation" aria-label="Restart conversation" tabindex="2">💬</button>
+                <button class="view-instructions-btn" id="viewDetailsBtn" title="View app details"
+                    aria-label="View app details" tabindex="1">&#128195;</button>
+                <button class="restart-btn" id="restartBtn" title="Restart conversation"
+                    aria-label="Restart conversation" tabindex="2">💬</button>
             </div>
-            
-            <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-atomic="false" aria-relevant="additions">
+
+            <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-atomic="false"
+                aria-relevant="additions">
                 <div class="welcome-message">Let's chat about computing history...</div>
             </div>
 
@@ -65,19 +73,24 @@
                     <button id="remove-img-btn" class="remove-image" aria-label="Remove image" tabindex="7">✕</button>
                 </div>
                 <div class="input-row">
-                    <input type="file" id="image-upload" accept="image/*" style="display: none;" aria-label="Select image file">
-                    <button id="upload-btn" class="attach-btn" title="Attach image" aria-label="Attach image" tabindex="3">📎</button>
-                    <button id="mic-btn" class="mic-btn" title="Voice input" aria-label="Voice input" aria-pressed="false" tabindex="4">🎤</button>
-                    <textarea id="text-input" placeholder="Type your message..." rows="1" aria-label="Message input" tabindex="5"></textarea>
+                    <input type="file" id="image-upload" accept="image/*" style="display: none;"
+                        aria-label="Select image file">
+                    <button id="upload-btn" class="attach-btn" title="Attach image" aria-label="Attach image"
+                        tabindex="3">📎</button>
+                    <button id="mic-btn" class="mic-btn" title="Voice input" aria-label="Voice input"
+                        aria-pressed="false" tabindex="4">🎤</button>
+                    <textarea id="text-input" placeholder="Type your message..." rows="1" aria-label="Message input"
+                        tabindex="5"></textarea>
                     <button id="send-btn" class="send-btn" aria-label="Send message" tabindex="6">▶</button>
                 </div>
             </div>
         </div>
-        
+
         <p class="disclaimer">AI-generated content can include mistakes</p>
-        
+
         <!-- Agent Configuration Modal -->
-        <div id="appDetailsModal" class="modal" style="display: none;" role="dialog" aria-labelledby="appDetailsTitle" aria-modal="true">
+        <div id="appDetailsModal" class="modal" style="display: none;" role="dialog" aria-labelledby="appDetailsTitle"
+            aria-modal="true">
             <div class="modal-content">
                 <div class="modal-header">
                     <h2 id="appDetailsTitle">Agent Configuration</h2>
@@ -90,7 +103,8 @@
                     </div>
                     <div class="modal-section">
                         <h3>Instructions</h3>
-                        <p class="modal-value">You are a knowledgeable assistant about computing history. Provide factual, concise information.</p>
+                        <p class="modal-value">You are a knowledgeable assistant about computing history. Provide
+                            factual, concise information.</p>
                     </div>
                     <div class="modal-section">
                         <h3>Tools</h3>
@@ -102,4 +116,5 @@
     </div>
     <script type="module" src="app.js"></script>
 </body>
+
 </html>
