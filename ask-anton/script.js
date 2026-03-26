@@ -1023,7 +1023,7 @@ IMPORTANT: Follow these guidelines when responding:
             const truncatedContext = context.length > maxContextLength
                 ? context.substring(0, maxContextLength) + '...'
                 : context;
-            chatMLPrompt += 'Give a concise and factually accurate response based only on the following information:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Give a concise and factually accurate response based ONLY on the following information:\n---\n' + truncatedContext + '\n';
         }
 
         chatMLPrompt += '<|im_end|>\n\n';
