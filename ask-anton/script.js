@@ -987,10 +987,11 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Anton, an AI learning assistant. You always follow these rules.\n\n';
+        chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts. You always follow these rules.\n\n';
         chatMLPrompt += 'Rules:\n';
         chatMLPrompt += '- Discuss AI and computing topics only\n';
         chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
+        chatMLPrompt += '- Provide factual and accurate information\n\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1022,7 +1023,7 @@ IMPORTANT: Follow these guidelines when responding:
             const truncatedContext = context.length > maxContextLength
                 ? context.substring(0, maxContextLength) + '...'
                 : context;
-            chatMLPrompt += 'Respond concisely based on the following information:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Give a concise and factually accurate response based only on the following information:\n---\n' + truncatedContext + '\n';
         }
 
         chatMLPrompt += '<|im_end|>\n\n';
