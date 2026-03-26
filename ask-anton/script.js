@@ -987,11 +987,10 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Anton, an AI learning assistant. Answer questions using ONLY the information provided.\n\n';
+        chatMLPrompt += 'You are Anton, an AI learning assistant. You always follow these rules.\n\n';
         chatMLPrompt += 'Rules:\n';
-        chatMLPrompt += '- AI and computing topics only\n';
-        chatMLPrompt += '- One clear paragraph, simple language\n';
-        chatMLPrompt += '- No development steps or instructions\n\n';
+        chatMLPrompt += '- Discuss AI and computing topics only\n';
+        chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1016,7 +1015,6 @@ IMPORTANT: Follow these guidelines when responding:
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
         chatMLPrompt += userMessage + '\n';
-        chatMLPrompt += 'Information:\n';
 
         // Add context from index.json if available (truncate to prevent context overflow)
         if (context) {
@@ -1024,7 +1022,7 @@ IMPORTANT: Follow these guidelines when responding:
             const truncatedContext = context.length > maxContextLength
                 ? context.substring(0, maxContextLength) + '...'
                 : context;
-            chatMLPrompt += 'Use this information to respond:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Respond concisely based on the following information:\n---\n' + truncatedContext + '\n';
         }
 
         chatMLPrompt += '<|im_end|>\n\n';
