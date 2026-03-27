@@ -1016,7 +1016,6 @@ IMPORTANT: Follow these guidelines when responding:
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
         chatMLPrompt += userMessage + '\n';
-        chatMLPrompt += 'Information:\n';
 
         // Add context from index.json if available (truncate to prevent context overflow)
         if (context) {
@@ -1024,7 +1023,7 @@ IMPORTANT: Follow these guidelines when responding:
             const truncatedContext = context.length > maxContextLength
                 ? context.substring(0, maxContextLength) + '...'
                 : context;
-            chatMLPrompt += 'Use this information to respond:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Respond concisely based on the following information:\n---\n' + truncatedContext + '\n';
         }
 
         chatMLPrompt += '<|im_end|>\n\n';
