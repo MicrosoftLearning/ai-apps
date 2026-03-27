@@ -56,6 +56,8 @@
         <!-- Chat Interface -->
         <div class="chat-container" id="chat-container" role="region" aria-label="Chat interface">
             <div class="chat-header">
+                <button class="view-instructions-btn" id="aboutBtn" title="About this app" aria-label="About this app"
+                    tabindex="0">&#128712;</button>
                 <button class="view-instructions-btn" id="viewDetailsBtn" title="View app details"
                     aria-label="View app details" tabindex="1">&#128195;</button>
                 <button class="restart-btn" id="restartBtn" title="Restart conversation"
@@ -87,6 +89,30 @@
         </div>
 
         <p class="disclaimer">AI-generated content can include mistakes</p>
+
+        <!-- About Modal -->
+        <div id="aboutModal" class="modal" style="display: none;" role="dialog" aria-labelledby="aboutModalTitle"
+            aria-modal="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="aboutModalTitle">About This App</h2>
+                    <button id="closeAboutBtn" class="modal-close" aria-label="Close modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-section">
+                        <p>This app is an educational example designed to help you explore examples of AI capabilities,
+                            including generative AI chat, image classification, and speech recognition.</p>
+                        <p style="margin-top: 1em;">It runs AI models entirely in your browser using TensorFlow.js and
+                            Wllama, with no cloud services required.</p>
+                    </div>
+                    <div class="modal-section">
+                        <h3>Guided Tour</h3>
+                        <p>Take a <a href="https://aka.ms/mslearn-explore-ai-workloads" target="_blank"
+                                rel="noopener noreferrer">guided tour</a> of common AI workloads in this app.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Agent Configuration Modal -->
         <div id="appDetailsModal" class="modal" style="display: none;" role="dialog" aria-labelledby="appDetailsTitle"

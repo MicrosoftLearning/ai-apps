@@ -328,7 +328,7 @@ function startResponse() {
     isResponding = true;
     shouldStopResponse = false;
     sendBtn.classList.add('stop-mode');
-    sendBtn.textContent = '■';
+    sendBtn.textContent = '⬜';
     sendBtn.title = 'Stop';
 }
 
@@ -984,6 +984,11 @@ imageUpload.addEventListener('change', handleImageInput);
 document.getElementById('remove-img-btn').addEventListener('click', removeImage);
 
 // Modal and UI buttons
+const aboutBtn = document.getElementById('aboutBtn');
+if (aboutBtn) {
+    aboutBtn.addEventListener('click', showAbout);
+}
+
 const viewDetailsBtn = document.getElementById('viewDetailsBtn');
 if (viewDetailsBtn) {
     viewDetailsBtn.addEventListener('click', showAppDetails);
@@ -997,6 +1002,11 @@ if (restartBtn) {
 const closeAppDetailsBtn = document.getElementById('closeAppDetailsBtn');
 if (closeAppDetailsBtn) {
     closeAppDetailsBtn.addEventListener('click', closeAppDetails);
+}
+
+const closeAboutBtn = document.getElementById('closeAboutBtn');
+if (closeAboutBtn) {
+    closeAboutBtn.addEventListener('click', closeAbout);
 }
 
 // Voice Input (Speech-to-Text)
@@ -1132,6 +1142,24 @@ async function restartConversation() {
 /**
  * Shows the app details modal with focus management
  */
+function showAbout() {
+    const modal = document.getElementById('aboutModal');
+    const closeBtn = document.getElementById('closeAboutBtn');
+    modal.style.display = 'flex';
+    if (closeBtn) {
+        closeBtn.focus();
+    }
+}
+
+function closeAbout() {
+    const modal = document.getElementById('aboutModal');
+    const aboutBtn = document.getElementById('aboutBtn');
+    modal.style.display = 'none';
+    if (aboutBtn) {
+        aboutBtn.focus();
+    }
+}
+
 function showAppDetails() {
     const modal = document.getElementById('appDetailsModal');
     const closeBtn = document.getElementById('closeAppDetailsBtn');
@@ -1170,6 +1198,11 @@ document.addEventListener('click', function (event) {
 // Close modal with Escape key
 document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
+        const aboutModal = document.getElementById('aboutModal');
+        if (aboutModal && aboutModal.style.display === 'flex') {
+            closeAbout();
+            return;
+        }
         const modal = document.getElementById('appDetailsModal');
         if (modal.style.display === 'flex') {
             closeAppDetails();

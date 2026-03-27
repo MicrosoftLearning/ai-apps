@@ -22,9 +22,9 @@
                 <h2>Configuration</h2>
                 <span class="toggle-icon" id="toggleIcon" aria-hidden="true">▼</span>
             </div>
-            <p class="config-note">First, create a project and deploy a model in <a href="https://ai.azure.com"
-                    target="_blank" rel="noopener noreferrer">Microsoft Foundry</a> (New)</p>
             <div class="config-content" id="configContent" role="form" aria-label="Azure OpenAI configuration form">
+                <p class="config-note">First, create a project and deploy a model in <a href="https://ai.azure.com"
+                        target="_blank" rel="noopener noreferrer">Microsoft Foundry</a> (New)</p>
                 <div class="config-field">
                     <label for="endpoint">Endpoint:</label>
                     <input type="text" id="endpoint" placeholder="https://{your-resource}.services.ai.azure.com"
@@ -35,14 +35,10 @@
                     <input type="password" id="apiKey" placeholder="Your API Key" aria-required="true" tabindex="2">
                 </div>
                 <div class="config-field">
-                    <label for="region">Foundry Project Region:</label>
-                    <input type="text" id="region" placeholder="eastus" aria-required="true" tabindex="3">
-                </div>
-                <div class="config-field">
                     <label for="deployment">Model Deployment Name:</label>
-                    <input type="text" id="deployment" placeholder="gpt-4" aria-required="true" tabindex="4">
+                    <input type="text" id="deployment" placeholder="gpt-4" aria-required="true" tabindex="3">
                 </div>
-                <button id="saveConfigBtn" class="save-btn" aria-label="Save configuration settings" tabindex="5">Save
+                <button id="saveConfigBtn" class="save-btn" aria-label="Save configuration settings" tabindex="4">Save
                     Configuration</button>
                 <div id="configStatus" class="config-status" role="status" aria-live="polite" aria-atomic="true"></div>
             </div>
@@ -51,6 +47,8 @@
         <!-- Chat Interface -->
         <div class="chat-container" id="chatContainer" role="region" aria-label="Chat interface">
             <div class="chat-header">
+                <button id="aboutBtn" class="view-instructions-btn" disabled title="About this app"
+                    aria-label="About this app" tabindex="5">&#128712;</button>
                 <button id="viewInstructionsBtn" class="view-instructions-btn" disabled title="View agent instructions"
                     aria-label="View agent instructions" tabindex="6">&#128195;</button>
                 <button id="restartBtn" class="restart-btn" disabled title="Restart conversation"
@@ -85,6 +83,30 @@
         </div>
 
         <p class="disclaimer">AI-generated content can include mistakes</p>
+
+        <!-- About Modal -->
+        <div id="aboutModal" class="modal" style="display: none;" role="dialog" aria-labelledby="aboutModalTitle"
+            aria-modal="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="aboutModalTitle">About This App</h2>
+                    <button id="closeAboutBtn" class="modal-close" aria-label="Close modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-section">
+                        <p>This app is an educational example designed to help you explore examples of AI capabilities,
+                            including generative AI chat, image analysis, and speech recognition.</p>
+                        <p style="margin-top: 1em;">It uses a Microsoft Foundry project to host an AI model that acts as
+                            a conversational agent specializing in computing history.</p>
+                    </div>
+                    <div class="modal-section">
+                        <h3>Guided Tour</h3>
+                        <p>Take a <a href="https://aka.ms/mslearn-explore-ai-workloads" target="_blank"
+                                rel="noopener noreferrer">guided tour</a> of common AI workloads in this app.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Instructions Modal -->
         <div id="instructionsModal" class="modal" style="display: none;" role="dialog" aria-labelledby="modalTitle"
