@@ -149,7 +149,7 @@
 
                 <h3>Getting Started</h3>
                 <p>Click the ⚙️ Configure button to set up your Microsoft Foundry connection (endpoint, API key, and
-                    region). Then try asking questions like "What is machine learning?" or "Explain artificial
+                    deployment). Then try asking questions like "What is machine learning?" or "Explain artificial
                     intelligence".</p>
             </div>
             <div class="modal-footer">
@@ -176,9 +176,10 @@
                     <div class="form-group">
                         <label for="foundry-endpoint">Endpoint URL:</label>
                         <input type="url" id="foundry-endpoint"
-                            placeholder="https://your-resource.inference.ai.azure.com" autocomplete="off"
+                            placeholder="https://your-resource.services.ai.azure.com" autocomplete="off"
                             aria-describedby="endpoint-help">
-                        <small id="endpoint-help" class="form-help">Your Foundry inference endpoint</small>
+                        <small id="endpoint-help" class="form-help">Your Foundry endpoint. The app derives the Speech
+                            endpoint from this host automatically.</small>
                     </div>
 
                     <div class="form-group">
@@ -186,14 +187,6 @@
                         <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
                             aria-describedby="key-help">
                         <small id="key-help" class="form-help">Your Foundry API key</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="foundry-region">Azure Region:</label>
-                        <input type="text" id="foundry-region" placeholder="e.g., westus, eastus" autocomplete="off"
-                            aria-describedby="region-help">
-                        <small id="region-help" class="form-help">Azure region for speech services (e.g.,
-                            westus)</small>
                     </div>
 
                     <div class="form-group">
@@ -216,7 +209,7 @@
     </div>
 
     <!-- Scripts -->
-    <script type="module" src="script.js?v=76"></script>
+    <script type="module" src="script.js?v=77"></script>
 </body>
 
 </html>

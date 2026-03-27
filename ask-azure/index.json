@@ -535,7 +535,7 @@
                     "foundry models",
                     "model catalog"
                 ],
-                "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, and other model providers."
+                "content": "Microsoft Foundry provides access to a variety of pre-trained models through its model catalog. The model catalog includes models from Microsoft, OpenAI, and other model providers."
             },
             {
                 "id": 36,
@@ -544,7 +544,7 @@
                     "foundry agent",
                     "agent framework"
                 ],
-                "content": "Microsoft Foundry includes an agent framework that enables developers to create AI agents that can perform tasks autonomously. The framework provides tools for defining agent behavior, integrating with external systems, and managing agent interactions."
+                "content": "Microsoft Foundry offers an agent framework that allows developers to create AI agents that can perform tasks autonomously. The framework provides tools for defining agent behavior, integrating with external systems, and managing agent interactions."
             },
             {
                 "id": 37,

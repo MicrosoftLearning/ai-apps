@@ -11,14 +11,11 @@ class AskAnton {
         this.config = {
             endpoint: '',
             apiKey: '',
-            deployment: '',
-            region: ''
+            deployment: ''
         };
         this.previousResponseId = null;
         this.recognition = null;
         this.isListening = false;
-        this.ttsToken = null;
-        this.ttsTokenExpiry = null;
         this.recordingTimeout = null;
         this.shouldStop = false;
         this.currentAudio = null;
@@ -44,7 +41,6 @@ class AskAnton {
             foundryEndpoint: document.getElementById('foundry-endpoint'),
             foundryKey: document.getElementById('foundry-key'),
             foundryDeployment: document.getElementById('foundry-deployment'),
-            foundryRegion: document.getElementById('foundry-region'),
             configStatus: document.getElementById('config-status')
         };
 
@@ -95,13 +91,11 @@ IMPORTANT: Follow these guidelines when responding:
                 // Load non-sensitive config from storage
                 this.config.endpoint = savedConfig.endpoint || '';
                 this.config.deployment = savedConfig.deployment || '';
-                this.config.region = savedConfig.region || '';
                 // Note: apiKey is NOT loaded from storage for security reasons
 
                 this.elements.foundryEndpoint.value = this.config.endpoint;
                 this.elements.foundryKey.value = ''; // API key must be re-entered each session
                 this.elements.foundryDeployment.value = this.config.deployment;
-                this.elements.foundryRegion.value = this.config.region;
 
                 // Only mark as configured if API key is present in memory
                 if (this.config.endpoint && this.config.apiKey && this.config.deployment) {
@@ -118,7 +112,6 @@ IMPORTANT: Follow these guidelines when responding:
         const endpoint = this.elements.foundryEndpoint.value.trim();
         const apiKey = this.elements.foundryKey.value.trim();
         const deployment = this.elements.foundryDeployment.value.trim();
-        const region = this.elements.foundryRegion.value.trim();
         const statusDiv = this.elements.configStatus;
 
         if (!endpoint || !apiKey || !deployment) {
@@ -151,13 +144,11 @@ IMPORTANT: Follow these guidelines when responding:
         this.config.endpoint = baseEndpoint;
         this.config.apiKey = apiKey;
         this.config.deployment = deployment;
-        this.config.region = region;
 
         // Save non-sensitive config to localStorage (do not persist apiKey)
         const configToPersist = {
             endpoint: this.config.endpoint,
-            deployment: this.config.deployment,
-            region: this.config.region
+            deployment: this.config.deployment
         };
         localStorage.setItem('askAntonFoundryConfig', JSON.stringify(configToPersist));
 
@@ -237,6 +228,30 @@ IMPORTANT: Follow these guidelines when responding:
         this.audioChunks = [];
     }
 
+    getSpeechEndpointBase() {
+        if (!this.config.endpoint) {
+            throw new Error('A Foundry endpoint is required before using speech services.');
+        }
+
+        let parsedEndpoint;
+        try {
+            parsedEndpoint = new URL(this.config.endpoint);
+        } catch (error) {
+            throw new Error('The Foundry endpoint is not a valid URL.');
+        }
+
+        const speechHostname = parsedEndpoint.hostname.replace(
+            '.services.ai.azure.com',
+            '.cognitiveservices.azure.com'
+        );
+
+        if (speechHostname === parsedEndpoint.hostname) {
+            throw new Error('The Foundry endpoint must use the services.ai.azure.com host pattern to derive the speech endpoint.');
+        }
+
+        return `${parsedEndpoint.protocol}//${speechHostname}`;
+    }
+
     stopListening() {
         this.isListening = false;
         this.elements.micBtn.classList.remove('listening');
@@ -258,11 +273,6 @@ IMPORTANT: Follow these guidelines when responding:
     async startAzureSpeechRecognition() {
         if (!this.isConfigured) {
             this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
-            return;
-        }
-
-        if (!this.config.region) {
-            this.addMessage('assistant', 'Please add the Azure region to your configuration for speech-to-text to work.');
             return;
         }
 
@@ -440,23 +450,41 @@ IMPORTANT: Follow these guidelines when responding:
 
     async transcribeAudio(audioBlob) {
         try {
-            // Construct Azure Speech endpoint using the region
-            const speechEndpoint = `https://${this.config.region}.stt.speech.microsoft.com`;
-            const url = `${speechEndpoint}/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
+            const speechEndpoint = this.getSpeechEndpointBase();
+            const requestHeaders = {
+                'Ocp-Apim-Subscription-Key': this.config.apiKey,
+                'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
+                'Accept': 'application/json'
+            };
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Ocp-Apim-Subscription-Key': this.config.apiKey,
-                    'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
-                    'Accept': 'application/json'
-                },
-                body: audioBlob
-            });
+            const candidateUrls = [
+                `${speechEndpoint}/stt/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`,
+                `${speechEndpoint}/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`
+            ];
 
-            if (!response.ok) {
-                const errorText = await response.text();
+            let response = null;
+            let errorText = '';
+
+            for (const url of candidateUrls) {
+                response = await fetch(url, {
+                    method: 'POST',
+                    headers: requestHeaders,
+                    body: audioBlob
+                });
+
+                if (response.ok) {
+                    break;
+                }
+
+                errorText = await response.text();
                 console.error('Speech API error:', errorText);
+
+                if (response.status !== 404) {
+                    throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+                }
+            }
+
+            if (!response || !response.ok) {
                 throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
             }
 
@@ -830,7 +858,7 @@ IMPORTANT: Follow these guidelines when responding:
                 this.addMessage('assistant', greetingResponse);
 
                 // Synthesize speech if user used voice input
-                if (usedVoice && this.config.region) {
+                if (usedVoice) {
                     await this.synthesizeSpeech(greetingResponse);
                 }
 
@@ -990,7 +1018,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Start typing animation and speech synthesis at the same time
             const typingPromise = this.animateTyping(messageTextDiv, formattedResponse, 10);
-            const speechPromise = (usedVoiceInput && this.config.region && !this.shouldStop)
+            const speechPromise = (usedVoiceInput && !this.shouldStop)
                 ? this.synthesizeSpeech(response)
                 : Promise.resolve();
 
@@ -1192,39 +1220,6 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
-    async getTtsToken() {
-        // Check if we have a valid token
-        if (this.ttsToken && this.ttsTokenExpiry && Date.now() < this.ttsTokenExpiry) {
-            return this.ttsToken;
-        }
-
-        // Fetch new token
-        const tokenEndpoint = `https://${this.config.region}.api.cognitive.microsoft.com/sts/v1.0/issueToken`;
-
-        try {
-            const response = await fetch(tokenEndpoint, {
-                method: 'POST',
-                headers: {
-                    'Ocp-Apim-Subscription-Key': this.config.apiKey,
-                    'Content-Length': '0'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Token fetch failed: ${response.status}`);
-            }
-
-            this.ttsToken = await response.text();
-            // Token valid for 10 minutes, refresh after 9 minutes
-            this.ttsTokenExpiry = Date.now() + (9 * 60 * 1000);
-
-            return this.ttsToken;
-        } catch (error) {
-            console.error('Error fetching TTS token:', error);
-            throw error;
-        }
-    }
-
     async synthesizeSpeech(text) {
         if (this.shouldStop) {
             return;
@@ -1243,9 +1238,8 @@ IMPORTANT: Follow these guidelines when responding:
                 return;
             }
 
-            // Use region-based TTS endpoint (same as PowerShell script)
-            const speechEndpoint = `https://${this.config.region}.tts.speech.microsoft.com`;
-            const url = `${speechEndpoint}/cognitiveservices/v1`;
+            const speechEndpoint = this.getSpeechEndpointBase();
+            const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
 
             // Build SSML with Christopher Multilingual voice
             const ssml = `<speak version="1.0" xml:lang="en-US">
@@ -1254,15 +1248,12 @@ IMPORTANT: Follow these guidelines when responding:
                 </voice>
                 </speak>`;
 
-            // Get TTS token (exchanges API key for OAuth token)
-            const token = await this.getTtsToken();
-
             let response;
             try {
                 response = await fetch(url, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Ocp-Apim-Subscription-Key': this.config.apiKey,
                         'Content-Type': 'application/ssml+xml',
                         'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
                     },
@@ -1282,7 +1273,6 @@ IMPORTANT: Follow these guidelines when responding:
 
                 console.error('TTS request failed');
                 console.error('  URL:', url);
-                console.error('  Region:', this.config.region);
                 console.error('  Status:', response.status);
                 console.error('  Status Text:', response.statusText);
                 console.error('  Error:', errorText || '(empty error response)');
