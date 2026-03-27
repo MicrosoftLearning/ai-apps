@@ -149,29 +149,55 @@ async function initWllama() {
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
 
-        // Initialize wllama with CDN-hosted WASM files
-        wllama = new Wllama(CONFIG_PATHS);
-        updateLoadingStatus('smollm', 'loading', '20%');
+        const progressCallback = ({ loaded, total }) => {
+            const progress = Math.round((loaded / total) * 100);
+            const adjustedProgress = Math.round(20 + (progress * 0.8)); // 20% to 100%
+            updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
+            console.log(`Loading wllama: ${progress}%`);
+        };
 
-        // Load model from HuggingFace with optimized settings
-        await wllama.loadModelFromHF(
-            'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-            'smollm2-360m-instruct-q8_0.gguf',
-            {
-                n_ctx: 768,      // Smaller context for faster processing
-                n_threads: 1,     // Single thread can be more stable
-                progressCallback: ({ loaded, total }) => {
-                    const progress = Math.round((loaded / total) * 100);
-                    const adjustedProgress = Math.round(20 + (progress * 0.8)); // 20% to 100%
-                    updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
-                    console.log(`Loading wllama: ${progress}%`);
+        // Try multithreaded (4 threads) first, fall back to single-threaded
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? 4 : 1;
+        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
+
+        try {
+            wllama = new Wllama(CONFIG_PATHS);
+            updateLoadingStatus('smollm', 'loading', '20%');
+
+            await wllama.loadModelFromHF(
+                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                'smollm2-360m-instruct-q8_0.gguf',
+                {
+                    n_ctx: 768,
+                    n_threads: preferredThreads,
+                    progressCallback
                 }
+            );
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+        } catch (multiErr) {
+            if (preferredThreads > 1) {
+                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+                updateLoadingStatus('smollm', 'loading', '20%');
+
+                wllama = new Wllama(CONFIG_PATHS);
+                await wllama.loadModelFromHF(
+                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                    'smollm2-360m-instruct-q8_0.gguf',
+                    {
+                        n_ctx: 768,
+                        n_threads: 1,
+                        progressCallback
+                    }
+                );
+                console.log("Wllama initialized successfully with 1 thread (fallback)");
+            } else {
+                throw multiErr;
             }
-        );
+        }
 
         wllamaReady = true;
         updateLoadingStatus('smollm', 'ready', '100%');
-        console.log("Wllama initialized successfully");
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
         updateLoadingStatus('smollm', 'error', 'Failed');
@@ -1073,7 +1099,7 @@ function speakText(element) {
 
     // Keep stop button enabled (already set by startResponse)
     sendBtn.classList.add('stop-mode');
-    sendBtn.textContent = '■';
+    sendBtn.textContent = '⬜';
     sendBtn.title = 'Stop';
 
     utterance.onend = () => {
