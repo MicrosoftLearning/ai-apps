@@ -52,12 +52,11 @@ class AskAnton {
 
 IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing.
-- Explain concepts clearly and concisely in a single paragraph based only on the provided context.
+- Explain concepts clearly and concisely based on the provided context.
 - Keep responses short and focused on the question, with no headings.
 - Use examples and analogies when helpful.
-- Use simple language suitable for learners in a conversational, friendly tone.
-- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- Keep your responses concise and to the point.`;
+- When external information is needed, use the Microsoft Learn MCP server and rely on Microsoft Learn content only.
+- Only provide code examples when specifically asked, and only from official documentation found using the Microsoft Learn MCP server.`;
 
         this.initialize();
     }
@@ -978,8 +977,7 @@ IMPORTANT: Follow these guidelines when responding:
             const response = await this.callFoundryAPI(input);
 
             // Format and display the response
-            let formattedResponse = this.escapeHtml(response).replace(/\n/g, '<br>');
-            formattedResponse = `<p>${formattedResponse}</p>`;
+            let formattedResponse = this.formatAssistantResponse(response);
 
             // Add learn more links
             if (links && links.length > 0 && categories && categories.length > 0) {
@@ -1030,7 +1028,17 @@ IMPORTANT: Follow these guidelines when responding:
             model: this.config.deployment,
             input: input,
             instructions: this.systemPrompt,
-            store: true
+            store: true,
+            tools: [
+                {
+                    type: 'mcp',
+                    server_label: 'microsoft_learn',
+                    server_description: 'Microsoft Learn MCP server for searching and fetching Microsoft documentation, and provide links to relevant pages that you find.',
+                    server_url: 'https://learn.microsoft.com/api/mcp',
+                    require_approval: 'never'
+                }
+            ],
+            tool_choice: 'auto'
         };
 
         // Include previous response ID for conversation continuity
@@ -1097,6 +1105,39 @@ IMPORTANT: Follow these guidelines when responding:
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    formatAssistantResponse(text) {
+        const escapedText = this.escapeHtml(text);
+        const markdownLinks = [];
+        const withMarkdownPlaceholders = escapedText.replace(
+            /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+            (_, label, url) => {
+                const placeholder = `__MARKDOWN_LINK_${markdownLinks.length}__`;
+                markdownLinks.push(
+                    `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+                );
+                return placeholder;
+            }
+        );
+
+        const withAutoLinkedUrls = withMarkdownPlaceholders.replace(
+            /(^|[\s(>])((?:https?:\/\/)[^\s<)]+)/g,
+            (_, prefix, url) => {
+                const trailingPunctuationMatch = url.match(/[.,!?;:]+$/);
+                const trailingPunctuation = trailingPunctuationMatch ? trailingPunctuationMatch[0] : '';
+                const cleanUrl = trailingPunctuation ? url.slice(0, -trailingPunctuation.length) : url;
+
+                return `${prefix}<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
+            }
+        );
+
+        const withLinks = withAutoLinkedUrls.replace(
+            /__MARKDOWN_LINK_(\d+)__/g,
+            (_, index) => markdownLinks[Number(index)]
+        );
+
+        return `<p>${withLinks.replace(/\n/g, '<br>')}</p>`;
     }
 
     async animateTyping(element, htmlContent, speed = 10) {
