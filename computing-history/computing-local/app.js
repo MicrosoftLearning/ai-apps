@@ -565,8 +565,8 @@ async function handleSend() {
 
     // 3. Text Only Response (Language model, eBay, or Bing search)
     const lowerText = text.toLowerCase();
-    const isEbay = lowerText.includes('ebay') || lowerText.includes('for sale') || lowerText.includes('buy');
-    const isBing = lowerText.includes('bing') || lowerText.includes('search') || lowerText.includes('find');
+    const isEbay = hasBoundaryKeyword(lowerText, ['ebay', 'for sale', 'buy']);
+    const isBing = hasBoundaryKeyword(lowerText, ['bing', 'search', 'find']);
 
     const keywords = extractKeywords(text);
     if (!keywords) {
@@ -638,6 +638,25 @@ function extractKeywords(text) {
 
     // Filter using global STOPWORDS
     return words.filter(w => !STOPWORDS.has(w) && w.length > 0).join(' ');
+}
+
+function hasBoundaryKeyword(text, keywords) {
+    return keywords.some(keyword => {
+        const pattern = keyword
+            .split(/\s+/)
+            .map(escapeRegex)
+            .join('\\s+');
+
+        const regex = new RegExp(
+            `(^\\s*${pattern}(?=$|\\s|[.?!:]))|([.?!:]\\s*${pattern}(?=$|\\s|[.?!:]))|( ${pattern}(?= ))|(\\b${pattern}(?=[.?!:]))`
+        );
+
+        return regex.test(text);
+    });
+}
+
+function escapeRegex(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
