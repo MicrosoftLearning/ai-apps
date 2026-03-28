@@ -1,3 +1,5 @@
+const CONTENT_FILTER_MESSAGE = "I'm sorry, I can't help with that because it triggered a content-safety filtering policy.\nI can only help with information about AI and computing.";
+
 class AskAnton {
     constructor() {
         this.conversationHistory = [];
@@ -1038,7 +1040,10 @@ IMPORTANT: Follow these guidelines when responding:
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
-            this.addMessage('assistant', 'Sorry, I encountered an error: ' + error.message);
+            const errorMessage = error.isContentFilter
+                ? error.message
+                : 'Sorry, I encountered an error: ' + error.message;
+            this.addMessage('assistant', errorMessage);
         } finally {
             this.isGenerating = false;
 
@@ -1085,6 +1090,12 @@ IMPORTANT: Follow these guidelines when responding:
 
         if (!response.ok) {
             const errorText = await response.text();
+            const contentFilterError = this.parseContentFilterError(errorText);
+
+            if (contentFilterError) {
+                throw contentFilterError;
+            }
+
             throw new Error(`API request failed: ${response.status} - ${errorText}`);
         }
 
@@ -1127,6 +1138,28 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         return responseText;
+    }
+
+    parseContentFilterError(errorText) {
+        try {
+            const parsedError = JSON.parse(errorText);
+            const errorDetails = parsedError?.error;
+            const contentFilters = errorDetails?.content_filters;
+            const hasBlockedContentFilter = Array.isArray(contentFilters)
+                && contentFilters.some(filter => filter?.blocked);
+            const mentionsPolicyBlock = typeof errorDetails?.message === 'string'
+                && errorDetails.message.includes('content management policy');
+
+            if (errorDetails?.code === 'content_filter' || hasBlockedContentFilter || mentionsPolicyBlock) {
+                const error = new Error(CONTENT_FILTER_MESSAGE);
+                error.isContentFilter = true;
+                return error;
+            }
+        } catch (parseError) {
+            return null;
+        }
+
+        return null;
     }
 
     escapeHtml(text) {

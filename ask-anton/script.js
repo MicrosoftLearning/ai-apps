@@ -620,7 +620,7 @@ IMPORTANT: Follow these guidelines when responding:
             }
 
             // Add moderation response
-            this.addMessage('assistant', "I'm sorry. I can't help with that. Please ask me about AI-related topics.");
+            this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI and computing.");
             return;
         }
 
