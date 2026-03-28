@@ -33,6 +33,58 @@ const CLASSES = [
     'Unknown' // 6
 ];
 
+const CLASS_INFO = {
+    0: [
+        'Developed by: Micro Instrumentation and Telemetry Systems (MITS)',
+        'Released: 1974',
+        'Processor: Intel 8080',
+        'Facts:',
+        '- It was the first commercially successful personal computer',
+        '- It had no built-in screen or video output, you used its front panel switches and lights to program it',
+        '- Its first programming language was BASIC, written by Paul Allen and Bill Gates before founding Microsoft'
+    ].join('\n'),
+    1: [
+        'Developed by: Commodore Business Machines',
+        'Released: 1982',
+        'Processor: MOS 6510',
+        'Facts:',
+        '- It was also known as the C64, and was an 8-bit home computer',
+        '- It consisted of a keyboard and CPU, and had to be connected to a TV for color video output',
+        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage',
+        '- It is one of the best-selling desktop computers of all time'
+    ].join('\n'),
+    2: [
+        'Developed by: Sinclair Research',
+        'Released: 1982',
+        'Processor: Z80A',
+        'Facts:',
+        '- It was an 8-bit home computer with color graphics',
+        '- Early models had a rubber keyboard, and it had to be connected to a TV for color video output',
+        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage',
+        '- It played a pivotal role in the history of personal computers and video games, especially in the United Kingdom'
+    ].join('\n'),
+    3: [
+        'Developed by: Apple Computer, Inc',
+        'Released: 1977',
+        'Processor: MOS 6502',
+        'Facts:',
+        '- It was designed by Steve Wozniac',
+        '- It could be connected to a TV or monitor for color video output',
+        '- It could be connected to external peripherals like tape recorders and floppy disk drives for data storage'
+    ].join('\n')
+};
+
+function buildClassInfoPrompt(classIndex) {
+    const className = CLASSES[classIndex];
+    const classInfo = CLASS_INFO[classIndex];
+
+    if (!className || !classInfo) {
+        return null;
+    }
+
+    return `Tell me about the ${className} computer based on the following information:\n---\n${classInfo}`;
+}
+
 /**
  * Initializes the application by loading both ML models in parallel
  */
@@ -809,13 +861,22 @@ async function performClassification(imgEl, userText = "") {
                 if ([0, 1, 2, 3].includes(classIndex)) {
                     showTyping();
                     try {
-                        const summary = await generateComputingInfo(topMatch.className);
+                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
+                        const infoPrompt = buildClassInfoPrompt(classIndex);
+                        const summary = await generateComputingInfo(infoPrompt || topMatch.className);
                         if (checkStopResponse()) {
                             removeTyping();
                             return;
                         }
                         if (summary) {
                             reply += `<br>${summary}`;
+                            conversationHistory.push({
+                                user: historyUserPrompt,
+                                assistant: truncateToFirstSentence(summary)
+                            });
+                            if (conversationHistory.length > 2) {
+                                conversationHistory.shift();
+                            }
                         }
                     } catch (e) {
                         console.warn("Info generation failed", e);
