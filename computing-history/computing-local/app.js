@@ -472,7 +472,7 @@ async function handleSend() {
         });
 
         if (containsInappropriate) {
-            addMessage("I'm sorry, I can't help with that. I can only help with information about the history of computing.", "bot");
+            addMessage("I'm sorry, I can't help with that because it triggered a content-safety filtering policy.\nI can only help with information about the history of computing.", "bot");
             return;
         }
 

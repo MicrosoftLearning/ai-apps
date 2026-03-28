@@ -1,5 +1,6 @@
 // Constants
 const DEFAULT_MODEL_INSTRUCTIONS = "You are a helpful AI agent that provides information and advice about the history of computing and historic computer restoration. Don't engage in discussions outside of this topic area. Always try to provide as much helpful information as you can based on your training data, and use web search as a tool to supplement your knowledge when needed, rather than relying on it for every question. Use web search if the user explicitly asks you to search for information or items for sale (for example, on eBay). If you do use web search, make sure to include the most relevant information from the search results in your response, not just the links. ";
+const CONTENT_FILTER_MESSAGE = "I'm sorry, I can't help with that because it triggered a content-safety filtering policy.\nI can only help with information about the history of computing.";
 
 // Global state
 let config = {
@@ -902,7 +903,9 @@ async function sendMessage() {
         displayMessage('assistant', response);
 
     } catch (error) {
-        const errorMsg = 'Sorry, there was an error processing your request: ' + error.message;
+        const errorMsg = error.isContentFilter
+            ? error.message
+            : 'Sorry, there was an error processing your request: ' + error.message;
 
         // Start speech synthesis immediately if needed (before displaying text)
         if (shouldUseSpeechOutput) {
@@ -983,6 +986,12 @@ async function callAzureOpenAI(useConciseInstruction = false) {
 
     if (!response.ok) {
         const errorText = await response.text();
+        const contentFilterError = parseContentFilterError(errorText);
+
+        if (contentFilterError) {
+            throw contentFilterError;
+        }
+
         throw new Error(`API request failed: ${response.status} - ${errorText}`);
     }
 
@@ -1025,6 +1034,28 @@ async function callAzureOpenAI(useConciseInstruction = false) {
     }
 
     return responseText;
+}
+
+function parseContentFilterError(errorText) {
+    try {
+        const parsedError = JSON.parse(errorText);
+        const errorDetails = parsedError?.error;
+        const contentFilters = errorDetails?.content_filters;
+        const hasBlockedContentFilter = Array.isArray(contentFilters)
+            && contentFilters.some(filter => filter?.blocked);
+        const mentionsPolicyBlock = typeof errorDetails?.message === 'string'
+            && errorDetails.message.includes('content management policy');
+
+        if (errorDetails?.code === 'content_filter' || hasBlockedContentFilter || mentionsPolicyBlock) {
+            const error = new Error(CONTENT_FILTER_MESSAGE);
+            error.isContentFilter = true;
+            return error;
+        }
+    } catch (parseError) {
+        return null;
+    }
+
+    return null;
 }
 
 function displayMessage(role, text, imageUrl = null) {
