@@ -655,10 +655,6 @@ function hasBoundaryKeyword(text, keywords) {
     });
 }
 
-function escapeRegex(text) {
-    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
  * Extracts the first sentence from a given text string
  * @param {string} text - The text to truncate
