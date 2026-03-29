@@ -6,7 +6,7 @@ Most of the apps (with two Azure-based exceptions) are designed to run locally i
 
 ## Apps
 
-- [Ask Anton (WebLLM-based AI agent)](./ask-anton/)
+- [Ask Anton (Browser-based AI agent)](./ask-anton/)
 - [Azk Anton (Microsoft Foundry-based AI Agent)](./ask-azure/)
 - [Computing History Agent (Azure-based and browser-based variants)](./computing-history/)
 - [Chat Playground](./chat-playground/)
