@@ -1141,8 +1141,6 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += userMessage + '\n';
-
         // Add context from index.json if available (truncate to prevent context overflow)
         if (context) {
             const maxContextLength = 400;
@@ -1151,7 +1149,7 @@ IMPORTANT: Follow these guidelines when responding:
                 : context;
             chatMLPrompt += 'Give a concise and factually accurate response based ONLY on the following information:\n---\n' + truncatedContext + '\n';
         }
-
+        chatMLPrompt += userMessage + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
