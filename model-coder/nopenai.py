@@ -315,9 +315,24 @@ def _validate_message_list(messages):
             raise ValueError("each message must be a dict")
         role = msg.get("role")
         if role not in allowed:
-            raise ValueError("message role must be one of developer, user, assistant")
+            raise ValueError("message role must be one of developer, system, user, assistant")
         if "content" not in msg:
             raise ValueError("each message must include content")
+        content = msg.get("content")
+        if isinstance(content, str):
+            continue
+        if not isinstance(content, list):
+            raise ValueError("message content must be a string or a list of content blocks")
+
+        for block in content:
+            if isinstance(block, str):
+                continue
+            if not isinstance(block, dict):
+                raise ValueError("content blocks must be strings or dicts")
+            if "type" not in block:
+                raise ValueError("content block dicts must include type")
+            if block.get("type") in {"input_text", "output_text", "text"} and not isinstance(block.get("text"), str):
+                raise ValueError("text content blocks must include a text string")
 
 
 def _validate_model_name(model: str):

@@ -1,4 +1,4 @@
-import "./llm.js";
+import "./llm.js?v=20260328-structured-input-fix";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");

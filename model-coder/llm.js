@@ -29,6 +29,71 @@ function roleToChatML(role) {
     return "user";
 }
 
+function isTextContentBlock(block) {
+    if (!block || typeof block !== "object") {
+        return false;
+    }
+
+    return ["input_text", "output_text", "text"].includes(String(block.type || ""));
+}
+
+function contentToText(content) {
+    if (typeof content === "string") {
+        return content;
+    }
+
+    if (Array.isArray(content)) {
+        return content
+            .map((block) => {
+                if (typeof block === "string") {
+                    return block;
+                }
+
+                if (isTextContentBlock(block)) {
+                    return String(block.text ?? "");
+                }
+
+                return "";
+            })
+            .filter((text) => text.length > 0)
+            .join("\n");
+    }
+
+    if (isTextContentBlock(content)) {
+        return String(content.text ?? "");
+    }
+
+    return String(content ?? "");
+}
+
+function validateMessageContent(content, label) {
+    if (typeof content === "string") {
+        return;
+    }
+
+    if (!Array.isArray(content)) {
+        throw new Error(`${label} content must be a string or an array of content blocks.`);
+    }
+
+    for (const block of content) {
+        if (typeof block === "string") {
+            continue;
+        }
+
+        if (!block || typeof block !== "object") {
+            throw new Error(`${label} content blocks must be strings or objects.`);
+        }
+
+        if (!("type" in block)) {
+            throw new Error(`${label} content block objects must include a type.`);
+        }
+
+        if (isTextContentBlock(block) && typeof block.text !== "string") {
+            throw new Error(`${label} text content blocks must include a text string.`);
+        }
+    }
+}
+
 function validateMessages(messages, label = "messages") {
     if (!Array.isArray(messages)) {
         throw new Error(`${label} must be an array.`);
@@ -42,9 +107,7 @@ function validateMessages(messages, label = "messages") {
         if (!allowedRoles.has(message.role)) {
             throw new Error("Message role must be developer, user, assistant, or system.");
         }
-        if (typeof message.content !== "string") {
-            throw new Error("Message content must be a string.");
-        }
+        validateMessageContent(message.content, label);
     }
 }
 
@@ -131,17 +194,17 @@ class ModelCoderLLM {
 
         return messages
             .filter((message) => message && message.role === "user")
-            .map((message) => String(message.content ?? ""));
+            .map((message) => contentToText(message.content));
     }
 
     _extractUserPromptsFromInput(input) {
         if (Array.isArray(input)) {
             return input
                 .filter((message) => message && String(message.role || "user") === "user")
-                .map((message) => String(message.content ?? ""));
+                .map((message) => contentToText(message.content));
         }
 
-        return [String(input ?? "")];
+        return [contentToText(input)];
     }
 
     _createSafeResponseStream(streamType, requestedRunId = null) {
@@ -275,7 +338,7 @@ class ModelCoderLLM {
         }
 
         if (this.wllama) {
-            await this.wllama.kvClear().catch(() => {});
+            await this.wllama.kvClear().catch(() => { });
         }
     }
 
@@ -291,7 +354,7 @@ class ModelCoderLLM {
             for (const methodName of ["dispose", "destroy", "unload", "unloadModel", "terminate", "exit"]) {
                 const method = current?.[methodName];
                 if (typeof method === "function") {
-                    await Promise.resolve(method.call(current)).catch(() => {});
+                    await Promise.resolve(method.call(current)).catch(() => { });
                 }
             }
         }
@@ -367,7 +430,7 @@ class ModelCoderLLM {
         let prompt = "";
         for (const message of messages) {
             const role = roleToChatML(message.role);
-            const content = String(message.content ?? "");
+            const content = contentToText(message.content);
             prompt += `<|im_start|>${role}\n${content}\n<|im_end|>\n\n`;
         }
         prompt += "<|im_start|>assistant\n";
@@ -388,18 +451,18 @@ class ModelCoderLLM {
             for (const message of input) {
                 messages.push({
                     role: String(message.role || "user"),
-                    content: String(message.content || "")
+                    content: contentToText(message.content)
                 });
             }
         } else {
-            messages.push({ role: "user", content: String(input || "") });
+            messages.push({ role: "user", content: contentToText(input) });
         }
 
         return messages;
     }
 
     async _complete(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
-        await this.wllama.kvClear().catch(() => {});
+        await this.wllama.kvClear().catch(() => { });
 
         let previousText = "";
         let fullText = "";
@@ -435,7 +498,7 @@ class ModelCoderLLM {
             previousText = fullText;
         }
 
-        await this.wllama.kvClear().catch(() => {});
+        await this.wllama.kvClear().catch(() => { });
         return fullText.trim();
     }
 
