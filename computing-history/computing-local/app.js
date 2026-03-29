@@ -82,7 +82,7 @@ function buildClassInfoPrompt(classIndex) {
         return null;
     }
 
-    return `Tell me about the ${className} computer based ONLY on the following information:\n---\n${classInfo}`;
+    return `Tell me about the ${className} computer using ONLY the following information:\n---\n${classInfo}`;
 }
 
 /**
