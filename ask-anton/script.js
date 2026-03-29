@@ -434,11 +434,52 @@ IMPORTANT: Follow these guidelines when responding:
         return false;
     }
 
+    normalizeSearchText(text) {
+        return text.toLowerCase().trim().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    getSearchIntentQuery(text) {
+        const trimmedText = text.trim();
+        const lowerText = trimmedText.toLowerCase();
+
+        if (lowerText.startsWith('search ')) {
+            return trimmedText.slice(7).trim();
+        }
+
+        if (lowerText.startsWith('find ')) {
+            return trimmedText.slice(5).trim();
+        }
+
+        return null;
+    }
+
+    extractBingSearchKeywords(text) {
+        const normalizedText = this.normalizeSearchText(text);
+        const words = normalizedText.split(' ').filter(Boolean);
+        const stopWords = new Set([
+            'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on',
+            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with'
+        ]);
+        const uniqueWords = [];
+        const seenWords = new Set();
+
+        words.forEach(word => {
+            if (word.length < 2 || stopWords.has(word) || seenWords.has(word)) {
+                return;
+            }
+
+            seenWords.add(word);
+            uniqueWords.push(word);
+        });
+
+        return uniqueWords.join(' ');
+    }
+
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
 
         // Normalize the question: remove punctuation, extra spaces
-        const normalizedQuestion = lowerQuestion.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const normalizedQuestion = this.normalizeSearchText(lowerQuestion);
         const words = normalizedQuestion.split(' ');
 
         // Extract all n-grams (trigrams, bigrams, unigrams)
@@ -649,6 +690,12 @@ IMPORTANT: Follow these guidelines when responding:
             }
         }
 
+        const searchQuery = this.getSearchIntentQuery(userMessage);
+        if (searchQuery) {
+            await this.respondWithSearchLink(userMessage, searchQuery, usedVoice);
+            return;
+        }
+
         // Search for relevant context
         const searchResult = this.searchContext(userMessage);
 
@@ -831,6 +878,97 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
+    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], placeholders = {}) {
+        let displayMessage = assistantMessage;
+
+        if (links && links.length > 0 && categories && categories.length > 0) {
+            displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
+        }
+
+        let formattedMessage = this.formatResponse(displayMessage);
+
+        if (links && links.length > 0 && categories && categories.length > 0) {
+            const linkHtml = links.map((link, index) => {
+                const categoryName = categories[Math.min(index, categories.length - 1)];
+                return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
+            }).join(' • ');
+            formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
+        }
+
+        Object.entries(placeholders).forEach(([placeholder, replacement]) => {
+            formattedMessage = formattedMessage.split(placeholder).join(replacement);
+        });
+
+        messageTextDiv.innerHTML = formattedMessage;
+    }
+
+    async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
+        const searchResult = this.searchContext(searchQuery);
+        const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
+        const encodedKeywords = encodeURIComponent(bingKeywords).replace(/%20/g, '+');
+        const bingUrl = `https://www.bing.com/search?q=site%3Alearn.microsoft.com+${encodedKeywords}`;
+        const historyAssistantMessage = `OK, I searched for "${bingKeywords}".\nHere's what I found.`;
+        const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
+
+        this.isGenerating = true;
+        this.stopRequested = false;
+        this.updateSendButton(true);
+
+        const responseMessage = this.addMessage('assistant', '', false);
+        const messageTextDiv = responseMessage.querySelector('.message-text');
+        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+
+        if (this.usingWllama) {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
+
+        try {
+            await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (usedVoiceInput) {
+                this.playRandomResponseAudio();
+            }
+
+            const animationCompleted = await this.animateTyping(
+                messageTextDiv,
+                historyAssistantMessage,
+                (partialMessage) => this.formatResponse(partialMessage),
+                25
+            );
+
+            if (!animationCompleted) {
+                return;
+            }
+
+            this.renderAssistantMessage(
+                messageTextDiv,
+                assistantMessage,
+                searchResult.categories,
+                searchResult.links,
+                { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
+            );
+
+            this.conversationHistory.push({
+                role: 'user',
+                content: userMessage
+            });
+            this.conversationHistory.push({
+                role: 'assistant',
+                content: historyAssistantMessage
+            });
+        } finally {
+            this.isGenerating = false;
+            this.stopRequested = false;
+            this.updateSendButton(false);
+
+            setTimeout(() => {
+                this.elements.searchStatus.textContent = '';
+            }, 2000);
+        }
+    }
+
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links } = searchResult;
 
@@ -861,26 +999,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Add learn more links
             if (links && links.length > 0 && categories && categories.length > 0) {
-                // Store original message without learn more for conversation history
-                const originalMessage = assistantMessage;
-
-                // Add placeholder for learn more section for display only
-                assistantMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
-
-                // Format the message
-                let formattedMessage = this.formatResponse(assistantMessage);
-
-                // Build HTML links with category names
-                const linkHtml = links.map((link, index) => {
-                    const categoryName = categories[Math.min(index, categories.length - 1)];
-                    return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
-                }).join(' • ');
-                formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
-
-                messageTextDiv.innerHTML = formattedMessage;
-
-                // Reset assistantMessage to original for conversation history
-                assistantMessage = originalMessage;
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links);
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
@@ -1168,28 +1287,23 @@ IMPORTANT: Follow these guidelines when responding:
         return div.innerHTML;
     }
 
-    async animateTyping(element, htmlContent, speed = 5) {
-        // Parse HTML to extract text while preserving structure
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-
-        // For simple animation, just show the content progressively
+    async animateTyping(element, text, formatter = null, speed = 5) {
         element.innerHTML = '';
-        const words = htmlContent.split(' ');
+        const segments = text.split(/(\s+)/).filter(segment => segment.length > 0);
+        let currentText = '';
 
-        for (let i = 0; i < words.length; i++) {
-            if (this.stopRequested) break;
+        for (const segment of segments) {
+            if (this.stopRequested) {
+                return false;
+            }
 
-            element.innerHTML = words.slice(0, i + 1).join(' ');
+            currentText += segment;
+            element.innerHTML = formatter ? formatter(currentText) : this.escapeHtml(currentText);
             this.scrollToBottom();
-
-            // Small delay between words
             await new Promise(resolve => setTimeout(resolve, speed));
         }
 
-        // Ensure final content is complete
-        element.innerHTML = htmlContent;
-        this.scrollToBottom();
+        return true;
     }
 
     scrollToBottom() {
