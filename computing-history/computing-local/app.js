@@ -39,38 +39,38 @@ const CLASS_INFO = {
         'Released: 1974',
         'Processor: Intel 8080',
         'Facts:',
-        '- It was the first commercially successful personal computer',
-        '- It had no built-in screen or video output, you used its front panel switches and lights to program it',
-        '- Its first programming language was BASIC, written by Paul Allen and Bill Gates before founding Microsoft'
+        '- It was the first commercially successful personal computer.',
+        '- It had no built-in screen or video output, you used its front panel switches and lights to program it.',
+        '- Its first programming language was BASIC, written by Paul Allen and Bill Gates before founding Microsoft.'
     ].join('\n'),
     1: [
         'Developed by: Commodore Business Machines',
         'Released: 1982',
         'Processor: MOS 6510',
         'Facts:',
-        '- It was also known as the C64, and was an 8-bit home computer',
-        '- It consisted of a keyboard and CPU, and had to be connected to a TV for color video output',
-        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage',
-        '- It is one of the best-selling desktop computers of all time'
+        '- It was also known as the C64, and was an 8-bit home computer.',
+        '- It consisted of a keyboard and CPU, and had to be connected to a TV for color video output.',
+        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage.',
+        '- It is one of the best-selling desktop computers of all time, with over 12 million units sold.'
     ].join('\n'),
     2: [
         'Developed by: Sinclair Research',
         'Released: 1982',
         'Processor: Z80A',
         'Facts:',
-        '- It was an 8-bit home computer with color graphics',
-        '- Early models had a rubber keyboard, and it had to be connected to a TV for color video output',
-        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage',
-        '- It played a pivotal role in the history of personal computers and video games, especially in the United Kingdom'
+        '- It was an 8-bit home computer with color graphics.',
+        '- Early models had a rubber keyboard, and it had to be connected to a TV for color video output.',
+        '- It used an external cassette tape recorder, and later an external floppy disk drive for data storage.',
+        '- It played a pivotal role in the history of personal computers and video games, especially in the United Kingdom.'
     ].join('\n'),
     3: [
         'Developed by: Apple Computer, Inc',
         'Released: 1977',
         'Processor: MOS 6502',
         'Facts:',
-        '- It was designed by Steve Wozniac',
-        '- It could be connected to a TV or monitor for color video output',
-        '- It could be connected to external peripherals like tape recorders and floppy disk drives for data storage'
+        '- It was designed by Steve Wozniac.',
+        '- It could be connected to a TV or monitor for color video output.',
+        '- It could be connected to external peripherals like tape recorders and floppy disk drives for data storage.'
     ].join('\n')
 };
 
