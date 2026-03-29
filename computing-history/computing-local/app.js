@@ -318,7 +318,20 @@ function hideLoadingOverlay() {
  * @param {string} sender - Either 'user' or 'bot'
  * @param {string|null} imageUrl - Optional image URL to display
  */
-function addMessage(text, sender, imageUrl = null) {
+function setBubbleContent(bubble, text) {
+    if (typeof DOMPurify !== 'undefined') {
+        bubble.innerHTML = DOMPurify.sanitize(text, {
+            ALLOWED_TAGS: ['b', 'i', 'br', 'small', 'a'],
+            ALLOWED_ATTR: ['href', 'target', 'style'],
+            ALLOW_DATA_ATTR: false
+        });
+    } else {
+        bubble.textContent = text;
+    }
+}
+
+function addMessage(text, sender, imageUrl = null, options = {}) {
+    const { deferCompletion = false } = options;
     const div = document.createElement('div');
     div.className = `message ${sender}`;
     div.setAttribute('role', 'article');
@@ -327,17 +340,7 @@ function addMessage(text, sender, imageUrl = null) {
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
 
-    // Sanitize text to prevent XSS attacks
-    if (typeof DOMPurify !== 'undefined') {
-        bubble.innerHTML = DOMPurify.sanitize(text, {
-            ALLOWED_TAGS: ['b', 'i', 'br', 'small', 'a'],
-            ALLOWED_ATTR: ['href', 'target', 'style'],
-            ALLOW_DATA_ATTR: false
-        });
-    } else {
-        // Fallback to textContent if DOMPurify not available to prevent XSS
-        bubble.textContent = text;
-    }
+    setBubbleContent(bubble, text);
 
     if (imageUrl) {
         const br = document.createElement('br');
@@ -361,13 +364,33 @@ function addMessage(text, sender, imageUrl = null) {
     scrollToBottom();
 
     // Text-to-Speech for bot responses when input was spoken
-    if (sender === 'bot' && isVoiceInput) {
+    if (sender === 'bot' && isVoiceInput && !deferCompletion) {
         speakText(bubble);
         isVoiceInput = false; // Reset after speaking
-    } else if (sender === 'bot') {
+    } else if (sender === 'bot' && !deferCompletion) {
         // If no speech, we can end the response state
         endResponse();
     }
+
+    return { message: div, bubble };
+}
+
+function getBoardIdentificationMessage(text) {
+    const lowerText = String(text || '').toLowerCase();
+
+    if (lowerText.includes('assy 250')) {
+        return 'The assembly number indicates that the board may have come from a Commodore 64.';
+    }
+
+    if (lowerText.includes('820-')) {
+        return 'The serial number is commonly found in Apple computers.';
+    }
+
+    if (lowerText.includes('z-80')) {
+        return 'The Zilog Z-80 processor is common in Sinclair computers, such as the ZX-80, ZX-81, and ZX Spectrum.';
+    }
+
+    return "I can't determine what kind of computer this came from.";
 }
 
 /**
@@ -789,14 +812,12 @@ async function performClassification(imgEl, userText = "") {
         // Class 5: Printed Circuit Board - Show prediction + OCR
         if (classIndex === 5) {
             const confidence = (topMatch.probability * 100).toFixed(1);
-            let reply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+            const reply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.<br><small>Scanning for text...</small>`;
 
             // Perform OCR using the same approach as info-extractor
-            showTyping();
+            startResponse();
+            const { bubble } = addMessage(reply, "bot", null, { deferCompletion: true });
             try {
-                addMessage(reply, "bot");
-                addMessage("Scanning for text...", "bot");
-
                 console.log('Starting OCR for image');
 
                 // Initialize Tesseract with progress tracking (same as info-extractor)
@@ -823,9 +844,11 @@ async function performClassification(imgEl, userText = "") {
 
                 // Use the extracted text
                 const rawText = data.text || '';
+                let finalReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
 
                 if (!rawText || rawText.trim().length === 0) {
-                    addMessage("I couldn't extract any text from the board.", "bot");
+                    finalReply += `<br><br>I couldn't extract any text from the board.`;
+                    finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
                 } else {
                     // Clean the text - preserve hyphens, underscores, dots for part numbers
                     const cleanText = rawText
@@ -840,15 +863,38 @@ async function performClassification(imgEl, userText = "") {
 
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
-                        addMessage(`The following details are printed on the board:<br><br><i>${cleanText}</i>`, "bot");
+                        finalReply += `<br><br>The following details are printed on the board:<br><br><i>${cleanText}</i>`;
+                        finalReply += `<br><br>${getBoardIdentificationMessage(cleanText)}`;
                     } else {
-                        addMessage("I couldn't extract any text from the board.", "bot");
+                        finalReply += `<br><br>I couldn't extract any text from the board.`;
+                        finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
                     }
+                }
+
+                setBubbleContent(bubble, finalReply);
+                scrollToBottom();
+
+                if (isVoiceInput) {
+                    speakText(bubble);
+                    isVoiceInput = false;
+                } else {
+                    endResponse();
                 }
             } catch (e) {
                 console.error("OCR Failed", e);
                 removeTyping();
-                addMessage("I couldn't extract any text from the board.", "bot");
+                if (!checkStopResponse()) {
+                    const fallbackReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
+                    setBubbleContent(bubble, fallbackReply);
+                    scrollToBottom();
+
+                    if (isVoiceInput) {
+                        speakText(bubble);
+                        isVoiceInput = false;
+                    } else {
+                        endResponse();
+                    }
+                }
             }
             return;
         }
