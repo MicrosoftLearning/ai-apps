@@ -170,23 +170,23 @@
                     title="Close" type="button">×</button>
             </div>
             <div class="modal-body" id="config-modal-description">
-                <p>Configure your Microsoft Foundry connection to enable AI-powered responses.</p>
-
+                <p>Start by creating a project and deploying a model in the (new) <a href="https://ai.azure.com"
+                        target="_blank" rel="noopener noreferrer">Foundry portal</a>. Then configure your Microsoft
+                    Foundry connection here to enable AI-powered responses:</p>
                 <div class="config-form">
                     <div class="form-group">
                         <label for="foundry-endpoint">Endpoint URL:</label>
                         <input type="url" id="foundry-endpoint"
                             placeholder="https://your-resource.services.ai.azure.com" autocomplete="off"
                             aria-describedby="endpoint-help">
-                        <small id="endpoint-help" class="form-help">Your Foundry endpoint. The app derives the Speech
-                            endpoint from this host automatically.</small>
+                        <small id="endpoint-help" class="form-help">Your Foundry project endpoint</small>
                     </div>
 
                     <div class="form-group">
                         <label for="foundry-key">API Key:</label>
                         <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
                             aria-describedby="key-help">
-                        <small id="key-help" class="form-help">Your Foundry API key</small>
+                        <small id="key-help" class="form-help">Your Foundry project API key</small>
                     </div>
 
                     <div class="form-group">

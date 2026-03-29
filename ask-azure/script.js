@@ -274,7 +274,7 @@ IMPORTANT: Follow these guidelines when responding:
 
     async startAzureSpeechRecognition() {
         if (!this.isConfigured) {
-            this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+            this.promptConfigureFoundry();
             return;
         }
 
@@ -841,7 +841,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Check if configured
         if (!this.isConfigured) {
-            this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+            this.promptConfigureFoundry();
             return;
         }
 
@@ -984,6 +984,11 @@ IMPORTANT: Follow these guidelines when responding:
         this.scrollToBottom();
 
         return messageDiv;
+    }
+
+    promptConfigureFoundry() {
+        this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+        this.elements.configBtn.focus();
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
