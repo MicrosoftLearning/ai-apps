@@ -117,6 +117,13 @@ function reverseWord(text) {
     return text.split('').reverse().join('');
 }
 
+function shiftWord(text, amount) {
+    return text
+        .split('')
+        .map(char => String.fromCharCode(char.charCodeAt(0) + amount))
+        .join('');
+}
+
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -126,12 +133,12 @@ async function loadInappropriateWords() {
         const response = await fetch('./moderation/mod.txt');
         if (!response.ok) throw new Error('Failed to load inappropriate words');
 
-        const reversedWordsText = await response.text();
-        inappropriateWords = reversedWordsText
+        const encodedWordsText = await response.text();
+        inappropriateWords = encodedWordsText
             .split(/\r?\n/)
             .map(word => word.trim())
             .filter(word => word.length > 0)
-            .map(word => reverseWord(word.toLowerCase()));
+            .map(word => shiftWord(reverseWord(word.toLowerCase()), 1));
 
         console.log('Loaded inappropriate words:', inappropriateWords.length);
     } catch (error) {

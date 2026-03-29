@@ -9,7 +9,7 @@ const WASM_PATHS = {
 const MODEL_REPO = "ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF";
 const MODEL_FILE = "smollm2-360m-instruct-q8_0.gguf";
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
-const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that.";
+const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
 
 function makeId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -17,6 +17,17 @@ function makeId(prefix) {
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function reverseWord(text) {
+    return text.split("").reverse().join("");
+}
+
+function shiftWord(text, amount) {
+    return text
+        .split("")
+        .map((char) => String.fromCharCode(char.charCodeAt(0) + amount))
+        .join("");
 }
 
 function roleToChatML(role) {
@@ -147,9 +158,8 @@ class ModelCoderLLM {
                 .map((line) => line.trim().toLowerCase())
                 .filter((line) => line.length > 0);
 
-            // List contains reversed words, so reverse each term for prompt matching.
             this.moderationTerms = lines
-                .map((line) => line.split("").reverse().join(""))
+                .map((line) => shiftWord(reverseWord(line), 1))
                 .filter((line) => line.length > 0);
 
             return this.moderationTerms;
@@ -162,9 +172,9 @@ class ModelCoderLLM {
         }
     }
 
-    async _hasReversedModerationMatch(userPrompts) {
-        const prompts = Array.isArray(userPrompts)
-            ? userPrompts.map((v) => String(v ?? "").toLowerCase())
+    async _hasReversedModerationMatch(candidatePrompts) {
+        const prompts = Array.isArray(candidatePrompts)
+            ? candidatePrompts.map((v) => String(v ?? "").toLowerCase())
             : [];
 
         if (prompts.length === 0) {
@@ -187,24 +197,34 @@ class ModelCoderLLM {
         return false;
     }
 
-    _extractUserPromptsFromMessages(messages) {
+    _extractModeratedPromptsFromMessages(messages) {
         if (!Array.isArray(messages)) {
             return [];
         }
 
         return messages
-            .filter((message) => message && message.role === "user")
+            .filter((message) => message && ["user", "system", "developer"].includes(String(message.role || "")))
             .map((message) => contentToText(message.content));
     }
 
-    _extractUserPromptsFromInput(input) {
-        if (Array.isArray(input)) {
-            return input
-                .filter((message) => message && String(message.role || "user") === "user")
-                .map((message) => contentToText(message.content));
+    _extractModeratedPromptsFromInput(input, instructions = "") {
+        const prompts = [];
+
+        if (instructions) {
+            prompts.push(String(instructions));
         }
 
-        return [contentToText(input)];
+        if (Array.isArray(input)) {
+            prompts.push(
+                ...input
+                    .filter((message) => message && ["user", "system", "developer"].includes(String(message.role || "user")))
+                    .map((message) => contentToText(message.content))
+            );
+            return prompts;
+        }
+
+        prompts.push(contentToText(input));
+        return prompts;
     }
 
     _createSafeResponseStream(streamType, requestedRunId = null) {
@@ -635,8 +655,8 @@ class ModelCoderLLM {
             const messages = Array.isArray(payload.messages) ? payload.messages : [];
             validateMessages(messages, "messages");
 
-            const chatUserPrompts = this._extractUserPromptsFromMessages(messages);
-            if (await this._hasReversedModerationMatch(chatUserPrompts)) {
+            const moderatedChatPrompts = this._extractModeratedPromptsFromMessages(messages);
+            if (await this._hasReversedModerationMatch(moderatedChatPrompts)) {
                 if (payload.stream) {
                     const streamMeta = this._createSafeResponseStream("chat", payload.run_id);
                     return {
@@ -683,8 +703,10 @@ class ModelCoderLLM {
         if (payload.type === "responses.create") {
             this._ensureClient(payload.model);
 
-            const responsesUserPrompts = this._extractUserPromptsFromInput(payload.input);
-            if (await this._hasReversedModerationMatch(responsesUserPrompts)) {
+            const normalizedInstructions = payload.instructions ?? payload.insructions;
+
+            const moderatedResponsePrompts = this._extractModeratedPromptsFromInput(payload.input, normalizedInstructions);
+            if (await this._hasReversedModerationMatch(moderatedResponsePrompts)) {
                 if (payload.stream) {
                     const streamMeta = this._createSafeResponseStream("responses", payload.run_id);
                     return {
@@ -697,7 +719,6 @@ class ModelCoderLLM {
                 return this._createSafeResponsesResponse();
             }
 
-            const normalizedInstructions = payload.instructions ?? payload.insructions;
             const messages = this._buildResponsesMessages(
                 payload.input,
                 normalizedInstructions,

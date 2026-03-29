@@ -117,6 +117,11 @@ body {
     gap: 8px;
 }
 
+.topbar-controls.ui-locked,
+.workspace.ui-locked {
+    opacity: 0.7;
+}
+
 #about-btn {
     font-weight: 800;
     font-size: 1.1rem;
@@ -407,7 +412,7 @@ body.dark-theme .modal-card:focus-visible {
     border-right-color: var(--line) !important;
 }
 
-#editor-container > * {
+#editor-container>* {
     height: 100%;
     min-height: 0;
 }
@@ -429,7 +434,7 @@ body.dark-theme .modal-card:focus-visible {
     color: var(--terminal-fg);
 }
 
-#terminal-container > * {
+#terminal-container>* {
     flex: 1 1 auto;
     height: 100%;
     min-height: 0;

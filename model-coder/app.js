@@ -1,4 +1,4 @@
-import "./llm.js?v=20260328-structured-input-fix";
+import "./llm.js?v=20260329-system-prompt-moderation";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
@@ -12,6 +12,7 @@ const templateSelect = document.getElementById("template-select");
 const resetLayoutBtn = document.getElementById("reset-layout-btn");
 const paneSplitter = document.getElementById("pane-splitter");
 const workspace = document.querySelector(".workspace");
+const topbarControls = document.querySelector(".topbar-controls");
 const aboutModalBackdrop = document.getElementById("about-modal-backdrop");
 const aboutModal = document.getElementById("about-modal");
 const aboutCloseBtn = document.getElementById("about-close-btn");
@@ -640,8 +641,49 @@ function setPill(el, text, mode = "") {
     }
 }
 
+function isAppReady() {
+    return state.pyReady && state.terminalReady && state.modelReady;
+}
+
 function updateRunState() {
-    runBtn.disabled = !state.pyReady || !state.terminalReady || !state.modelReady || state.running || state.sessionActive || state.switchingTemplate;
+    const appReady = isAppReady();
+
+    if (templateSelect) {
+        templateSelect.disabled = !appReady || state.switchingTemplate;
+    }
+
+    if (resetLayoutBtn) {
+        resetLayoutBtn.disabled = !appReady;
+    }
+
+    if (themeBtn) {
+        themeBtn.disabled = !appReady;
+    }
+
+    if (aboutBtn) {
+        aboutBtn.disabled = !appReady;
+    }
+
+    if (retryBtn) {
+        retryBtn.disabled = !state.pyReady || appReady || state.running || state.sessionActive;
+    }
+
+    if (topbarControls) {
+        topbarControls.classList.toggle("ui-locked", !appReady);
+    }
+
+    if (workspace) {
+        workspace.inert = !appReady;
+        workspace.classList.toggle("ui-locked", !appReady);
+        workspace.setAttribute("aria-busy", appReady ? "false" : "true");
+    }
+
+    if (paneSplitter) {
+        paneSplitter.setAttribute("aria-disabled", appReady ? "false" : "true");
+        paneSplitter.tabIndex = appReady ? 0 : -1;
+    }
+
+    runBtn.disabled = !appReady || state.running || state.sessionActive || state.switchingTemplate;
     if (stopBtn) {
         stopBtn.disabled = !(state.sessionActive || state.running);
     }
@@ -1353,6 +1395,7 @@ async function initializeModel() {
 async function initializeApp() {
     setPill(statusRuntime, "PyScript loading...");
     setPill(statusModel, "Model initializing...");
+    updateRunState();
 
     window.modelCoderSetStatusListener(({ kind, message }) => {
         if (kind === "ready") {

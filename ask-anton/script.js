@@ -84,17 +84,24 @@ IMPORTANT: Follow these guidelines when responding:
         return text.split('').reverse().join('');
     }
 
+    shiftWord(text, amount) {
+        return text
+            .split('')
+            .map(char => String.fromCharCode(char.charCodeAt(0) + amount))
+            .join('');
+    }
+
     async loadProhibitedWords() {
         try {
             const response = await fetch('moderation/mod.txt');
             if (!response.ok) throw new Error('Failed to load prohibited words');
 
-            const reversedWordsText = await response.text();
-            this.prohibitedWords = reversedWordsText
+            const encodedWordsText = await response.text();
+            this.prohibitedWords = encodedWordsText
                 .split(/\r?\n/)
                 .map(word => word.trim())
                 .filter(word => word.length > 0)
-                .map(word => this.reverseWord(word.toLowerCase()));
+                .map(word => this.shiftWord(this.reverseWord(word.toLowerCase()), 1));
 
             console.log('Loaded prohibited words:', this.prohibitedWords.length);
         } catch (error) {

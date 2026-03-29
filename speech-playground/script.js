@@ -24,11 +24,11 @@ class ChatPlayground {
         this.currentSystemMessage = "You are a helpful AI assistant that answers spoken questions with vocalized responses. IMPORTANT: Make your responses brief and to the point.";
         this.currentModelId = null;
         this.currentAbortController = null; // Track abort controller for wllama
-        
+
         // Track pending messages to display after speaking
         this.pendingUserMessage = null;
         this.pendingAssistantMessage = null;
-        
+
         // Track applied vs pending settings
         this.appliedModelId = null;
         this.appliedVoice = null;
@@ -112,6 +112,13 @@ class ChatPlayground {
         return text.split('').reverse().join('');
     }
 
+    shiftWord(text, amount) {
+        return text
+            .split('')
+            .map(char => String.fromCharCode(char.charCodeAt(0) + amount))
+            .join('');
+    }
+
     escapeRegex(text) {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -121,12 +128,12 @@ class ChatPlayground {
             const response = await fetch('moderation/mod.txt');
             if (!response.ok) throw new Error('Failed to load prohibited terms');
 
-            const reversedTermsText = await response.text();
-            this.prohibitedTerms = reversedTermsText
+            const encodedTermsText = await response.text();
+            this.prohibitedTerms = encodedTermsText
                 .split(/\r?\n/)
                 .map(term => term.trim())
                 .filter(term => term.length > 0)
-                .map(term => this.reverseWord(term.toLowerCase()));
+                .map(term => this.shiftWord(this.reverseWord(term.toLowerCase()), 1));
 
             console.log('Loaded prohibited terms:', this.prohibitedTerms.length);
         } catch (error) {
@@ -285,17 +292,17 @@ class ChatPlayground {
             if (this.pendingModelId === 'smollm2-cpu') {
                 // Clear chat when switching models
                 this.clearChat();
-                
+
                 // If wllama not loaded yet, load it
                 if (!this.wllamaLoaded) {
                     console.log('Loading wllama for the first time...');
-                    
+
                     // Disable UI during model loading
                     this.disallowInteraction();
-                    
+
                     // Show progress
                     this.showElement('progressContainer');
-                    
+
                     try {
                         await this.initializeWllama((loaded, total) => {
                             const percentage = Math.round((loaded / total) * 100);
@@ -308,13 +315,13 @@ class ChatPlayground {
                                 true
                             );
                         });
-                        
+
                         this.usingWllama = true;
                         this.wllamaLoaded = true;
                         this.webllmAvailable = false;
                         this.engine = null;
                         this.appliedModelId = 'smollm2-cpu';
-                        
+
                         this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_CHANGED);
                     } catch (error) {
                         console.error('Failed to load wllama:', error);
@@ -359,10 +366,10 @@ class ChatPlayground {
                 sanitizedMessage = sanitizedMessage.substring(0, 2000);
                 this.systemMessage.value = sanitizedMessage;
             }
-            
+
             // Remove control characters except newlines
             sanitizedMessage = sanitizedMessage.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-            
+
             this.appliedSystemMessage = sanitizedMessage;
             this.currentSystemMessage = sanitizedMessage + ' IMPORTANT: Make your responses brief and to the point.';
             this.showToast(ChatPlayground.MESSAGES.TOAST.INSTRUCTIONS_UPDATED);
@@ -513,7 +520,7 @@ class ChatPlayground {
                     option.textContent = `${voice.name} (${voice.lang})${localLabel}`;
                     voiceSelect.appendChild(option);
                 });
-                
+
                 // Restore the user's selection: prioritize currently selected, then applied, then first voice
                 if (currentlySelectedVoice && englishVoices.find(v => v.name === currentlySelectedVoice)) {
                     voiceSelect.value = currentlySelectedVoice;
@@ -557,7 +564,7 @@ class ChatPlayground {
         if (this.elements.startBtn) this.elements.startBtn.disabled = true;
         if (this.elements.applySettingsBtn) this.elements.applySettingsBtn.disabled = true;
         if (this.elements.resetSettingsBtn) this.elements.resetSettingsBtn.disabled = true;
-        
+
         // Disable preview button
         const previewBtn = document.getElementById('preview-voice-btn');
         if (previewBtn) previewBtn.disabled = true;
@@ -570,11 +577,11 @@ class ChatPlayground {
         if (this.elements.voiceSelect) this.elements.voiceSelect.disabled = false;
         if (this.elements.startBtn) this.elements.startBtn.disabled = false;
         if (this.elements.resetSettingsBtn) this.elements.resetSettingsBtn.disabled = false;
-        
+
         // Enable preview button
         const previewBtn = document.getElementById('preview-voice-btn');
         if (previewBtn && this.voicesAvailable) previewBtn.disabled = false;
-        
+
         // Apply button is only enabled if there are unapplied changes
         this.updateApplyButtonState();
     }
@@ -615,10 +622,10 @@ class ChatPlayground {
         this.recognition.onerror = (event) => {
             this.isListening = false;
             // Don't update button here - keep cancel visible during error handling
-            
+
             // Show error modal for any speech recognition error
             this.showSpeechErrorModal();
-            
+
             // Also log the error type for debugging
             console.error('Speech recognition error:', event.error);
         };
@@ -658,12 +665,12 @@ class ChatPlayground {
         if (cancelBtn) cancelBtn.style.display = 'inline-block';
         if (ccBtn) ccBtn.style.display = 'none';  // Hide during listening to prevent interference
         if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
-        
+
         // Reset captions to hidden at start of new conversation
         this.showCaptions = false;
         this.updateCCButton();
         this.updateMessageVisibility();
-        
+
         this.updateWelcomeState('Listening...', 'Speak now..');
 
         try {
@@ -691,16 +698,16 @@ class ChatPlayground {
             this.resetToWelcomeState();
             return;
         }
-        
+
         // Trim and enforce maximum length
         let sanitizedTranscript = transcript.trim();
         if (sanitizedTranscript.length > 1000) {
             sanitizedTranscript = sanitizedTranscript.substring(0, 1000);
         }
-        
+
         // Remove control characters except newlines
         sanitizedTranscript = sanitizedTranscript.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-        
+
         // Check if there's still valid content
         if (sanitizedTranscript.length === 0) {
             console.error('Transcript empty after sanitization');
@@ -715,7 +722,7 @@ class ChatPlayground {
             this.speakResponse(moderationResponse);
             return;
         }
-        
+
         // Update UI - show processing state
         const startBtn = document.getElementById('start-btn');
         const cancelBtn = document.getElementById('cancel-btn');
@@ -724,7 +731,7 @@ class ChatPlayground {
         if (startBtn) startBtn.style.display = 'none';
         if (cancelBtn) cancelBtn.style.display = 'inline-block';
         if (ccBtn) ccBtn.style.display = 'inline-block';  // Show CC button now that listening is done
-        
+
         this.updateWelcomeState('Processing...', 'This can take some time...');
 
         // Add user message to chat immediately (respecting current CC visibility)
@@ -744,7 +751,7 @@ class ChatPlayground {
             if (this.webllmAvailable && this.engine) {
                 // Use WebLLM
                 const messages = this.buildMessages(userMessage);
-                
+
                 // Use the chat completions API
                 const completion = await this.engine.chat.completions.create({
                     messages: messages,
@@ -754,11 +761,11 @@ class ChatPlayground {
                     repetition_penalty: this.config.modelParameters.repetition_penalty,
                     stream: true
                 });
-                
+
                 // Collect the streamed response
                 for await (const chunk of completion) {
                     if (!this.isGenerating) break;
-                    
+
                     const content = chunk.choices[0]?.delta?.content || '';
                     if (content) {
                         responseText += content;
@@ -810,17 +817,17 @@ class ChatPlayground {
     // Helper function to build ChatML formatted prompt for SmolLM2
     buildChatMLPrompt(userMessage) {
         let prompt = '';
-        
+
         // Get the last turn of conversation history (if exists)
         let previousUserMessage = '';
         let previousAssistantResponse = '';
-        
+
         if (this.conversationHistory.length >= 2) {
             // Get the last pair (user message and assistant response)
             previousAssistantResponse = this.conversationHistory[this.conversationHistory.length - 1].content;
             previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
         }
-        
+
         // Default format for speech-based interaction
         prompt = '<|im_start|>system\n';
         prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
@@ -828,17 +835,17 @@ class ChatPlayground {
         prompt += this.currentSystemMessage + '\n\n';
         prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
         prompt += '<|im_end|>\n\n';
-        
+
         // Add previous turn if exists
         if (previousUserMessage) {
             prompt += '<|im_start|>user\n' + previousUserMessage + '\n<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n' + previousAssistantResponse + '\n<|im_end|>\n\n';
         }
-        
+
         // Add current user message
         prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
         prompt += '<|im_start|>assistant\n';
-        
+
         return prompt;
     }
 
@@ -847,25 +854,25 @@ class ChatPlayground {
         if (!this.wllama) {
             return 'SmolLM2 is not initialized. Please wait for CPU mode to finish loading.';
         }
-        
+
         try {
             // Build the ChatML prompt
             const chatMLPrompt = this.buildChatMLPrompt(userMessage);
-            
+
             console.log('=== CHATML PROMPT FOR SMOLLM2 ===');
             console.log('Conversation history length:', this.conversationHistory.length);
             console.log('ChatML prompt:');
             console.log(chatMLPrompt);
             console.log('=== END CHATML PROMPT ===');
-            
+
             // Use wllama for generation
             let fullResponse = '';
-            
+
             // Use conservative parameters for wllama
             const wllamaTemp = 0.3;
             const wllamaTopP = 0.7;
             const wllamaPenalty = 1.1;
-            
+
             // Log sampling parameters for debugging
             console.log('SmolLM2 sampling parameters:', {
                 temp: wllamaTemp,
@@ -873,11 +880,11 @@ class ChatPlayground {
                 top_p: wllamaTopP,
                 penalty_repeat: wllamaPenalty
             });
-            
+
             // Create AbortController for this generation
             const controller = new AbortController();
             this.currentAbortController = controller;
-            
+
             // Clear KV cache before generation to ensure clean state
             try {
                 await this.wllama.kvClear();
@@ -885,7 +892,7 @@ class ChatPlayground {
             } catch (error) {
                 console.log('KV cache clear failed:', error.message);
             }
-            
+
             // Generate response (non-streaming for speech)
             fullResponse = await this.wllama.createCompletion(chatMLPrompt, {
                 nPredict: 200,  // Keep responses brief for speech
@@ -900,19 +907,19 @@ class ChatPlayground {
                 stopTokens: ['<|im_end|>', '<|im_start|>'],
                 abortSignal: controller.signal
             });
-            
+
             console.log('Wllama response received:', fullResponse);
-            
+
             // Clear abort controller on successful completion
             this.currentAbortController = null;
-            
+
             // Clear KV cache after successful generation
             console.log('Clearing KV cache after generation');
             await this.wllama.kvClear();
             console.log('KV cache cleared successfully');
-            
+
             return fullResponse.trim() || 'Sorry, I couldn\'t generate a response.';
-            
+
         } catch (error) {
             // Check if this was an abort (expected when user clicks cancel)
             if (error.name === 'AbortError' || error.message?.includes('abort')) {
@@ -947,12 +954,12 @@ class ChatPlayground {
         contentDiv.textContent = text;
 
         messageDiv.appendChild(contentDiv);
-        
+
         // Hide message by default if captions are off and we're in a conversation
         if (!this.showCaptions && (this.isListening || this.isGenerating || this.isSpeaking)) {
             messageDiv.classList.add('hidden');
         }
-        
+
         this.chatMessages.appendChild(messageDiv);
 
         // Scroll to bottom
@@ -1051,7 +1058,7 @@ class ChatPlayground {
         utterance.onerror = (event) => {
             const errorCode = event.error || 'unknown error';
             console.error('Voice preview error:', errorCode);
-            const errorMessage = isOnline 
+            const errorMessage = isOnline
                 ? `Online voice failed: ${errorCode}. Check internet connection or try a local voice.`
                 : `Voice preview failed: ${errorCode}. This voice may not be available.`;
             this.showToast(errorMessage);
@@ -1093,7 +1100,7 @@ class ChatPlayground {
         if (startBtn) startBtn.style.display = 'inline-block';
         if (cancelBtn) cancelBtn.style.display = 'none';
         if (ccBtn) ccBtn.style.display = 'none';
-        
+
         // Always show all messages when conversation ends, regardless of CC state
         if (this.chatMessages) {
             const messages = this.chatMessages.querySelectorAll('.message');
@@ -1101,11 +1108,11 @@ class ChatPlayground {
                 msg.classList.remove('hidden');
             });
         }
-        
+
         // Reset captions state to off for next conversation
         this.showCaptions = false;
         this.updateCCButton();
-        
+
         this.updateWelcomeState("Let's talk", 'Talk like you would to a person. The agent listens and responds.');
     }
 
@@ -1125,7 +1132,7 @@ class ChatPlayground {
     updateCCButton() {
         const ccBtn = document.getElementById('cc-btn');
         if (!ccBtn) return;
-        
+
         if (this.showCaptions) {
             ccBtn.innerHTML = '[<s>cc</s>]';
         } else {
@@ -1156,7 +1163,7 @@ class ChatPlayground {
     async initializeModel() {
         try {
             console.log('initializeModel called');
-            
+
             // Initialize system message settings
             const initialSystemMessage = 'You are a helpful AI assistant that answers spoken questions with vocalized responses.';
             if (this.systemMessage) {
@@ -1165,10 +1172,10 @@ class ChatPlayground {
             this.appliedSystemMessage = initialSystemMessage;
             this.pendingSystemMessage = initialSystemMessage;
             this.currentSystemMessage = initialSystemMessage + ' IMPORTANT: Make your responses brief and to the point.';
-            
+
             // Try to initialize WebLLM first, then fall back to wllama
             await this.initializeEngine();
-            
+
         } catch (error) {
             console.error('Error initializing models:', error);
             this.showToast(ChatPlayground.MESSAGES.TOAST.MODEL_LOAD_ERROR);
@@ -1185,7 +1192,7 @@ class ChatPlayground {
         } catch (error) {
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
-            
+
             try {
                 await this.initializeWllama();
                 console.log('Wllama initialized successfully as fallback');
@@ -1209,7 +1216,7 @@ class ChatPlayground {
 
     async initializeWebLLM() {
         console.log('initializeWebLLM called - starting model initialization');
-        
+
         // Check if WebLLM is available
         if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
             console.error('WebLLM not properly loaded');
@@ -1218,7 +1225,7 @@ class ChatPlayground {
 
         // Update model select with specific models
         const modelSelect = this.elements.modelSelect;
-        
+
         if (modelSelect) {
             modelSelect.innerHTML = '';
 
@@ -1227,7 +1234,7 @@ class ChatPlayground {
             phiOption.value = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
             phiOption.textContent = 'Phi-3-mini (GPU)';
             modelSelect.appendChild(phiOption);
-            
+
             // Add SmolLM2 CPU option
             const cpuOption = document.createElement('option');
             cpuOption.value = 'smollm2-cpu';
@@ -1241,13 +1248,13 @@ class ChatPlayground {
             modelSelect.value = targetModelId;
         }
         this.pendingModelId = targetModelId;
-        
+
         await this.loadModel(targetModelId);
     }
 
     async initializeWllama(progressCallback) {
         console.log('Initializing wllama...');
-        
+
         const updateProgress = progressCallback || ((loaded, total) => {
             const percentage = Math.round((loaded / total) * 100);
             this.updateProgress(
@@ -1259,19 +1266,19 @@ class ChatPlayground {
                 true
             );
         });
-        
+
         this.showElement('progressContainer');
         updateProgress(0, 100);
-        
+
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
             'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
-        
+
         // Initialize wllama with CDN-hosted WASM files
         this.wllama = new Wllama(CONFIG_PATHS);
-        
+
         // Load SmolLM2 model from HuggingFace
         await this.wllama.loadModelFromHF(
             'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
@@ -1284,33 +1291,33 @@ class ChatPlayground {
                 }
             }
         );
-        
+
         console.log('Wllama initialized successfully');
         this.wllamaLoaded = true;
-        
+
         // Update model select if not already populated
         const modelSelect = this.elements.modelSelect;
         if (modelSelect && modelSelect.options.length === 0) {
             modelSelect.innerHTML = '';
-            
+
             // Add Phi-3 option (but disabled if WebLLM failed)
             const phiOption = document.createElement('option');
             phiOption.value = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
             phiOption.textContent = 'Phi-3-mini (GPU)';
             phiOption.disabled = !this.webllmAvailable;
             modelSelect.appendChild(phiOption);
-            
+
             // Add SmolLM2 CPU option (selected by default)
             const cpuOption = document.createElement('option');
             cpuOption.value = 'smollm2-cpu';
             cpuOption.textContent = 'SmolLM2 (CPU)';
             cpuOption.selected = true;
             modelSelect.appendChild(cpuOption);
-            
+
             this.pendingModelId = 'smollm2-cpu';
             this.appliedModelId = 'smollm2-cpu';
         }
-        
+
         this.updateProgress(
             'progressContainer',
             'progressFill',
@@ -1368,7 +1375,7 @@ class ChatPlayground {
                 await this.initializeWllama();
                 this.usingWllama = true;
                 this.wllamaLoaded = true;
-                
+
                 // Update dropdown - disable Phi-3 option and select SmolLM2
                 const modelSelect = this.elements.modelSelect;
                 if (modelSelect) {
@@ -1382,7 +1389,7 @@ class ChatPlayground {
                     // Select SmolLM2
                     modelSelect.value = 'smollm2-cpu';
                 }
-                
+
                 this.appliedModelId = 'smollm2-cpu';
                 this.allowInteraction();
             } catch (wllamaError) {
@@ -1418,7 +1425,7 @@ class ChatPlayground {
 }
 
 // Global functions for UI interactions
-window.openAboutModal = function() {
+window.openAboutModal = function () {
     const modal = document.getElementById('about-modal');
     if (modal) {
         modal.style.display = 'flex';
@@ -1430,7 +1437,7 @@ window.openAboutModal = function() {
     }
 };
 
-window.closeAboutModal = function() {
+window.closeAboutModal = function () {
     const modal = document.getElementById('about-modal');
     if (modal) {
         modal.style.display = 'none';
@@ -1441,7 +1448,7 @@ window.closeAboutModal = function() {
     }
 };
 
-window.closeSpeechErrorModal = function() {
+window.closeSpeechErrorModal = function () {
     const modal = document.getElementById('speech-error-modal');
     if (modal) {
         modal.style.display = 'none';
@@ -1452,20 +1459,20 @@ window.closeSpeechErrorModal = function() {
     }
 };
 
-window.sendManualInput = function() {
+window.sendManualInput = function () {
     const input = document.getElementById('manual-input');
     if (input && input.value.trim()) {
         // Validate and sanitize input
         let text = input.value.trim();
-        
+
         // Enforce maximum length
         if (text.length > 1000) {
             text = text.substring(0, 1000);
         }
-        
+
         // Basic sanitization - remove control characters except newlines and tabs
         text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-        
+
         if (text.length > 0) {
             window.chatPlaygroundApp.handleSpokenInput(text);
             input.value = '';
@@ -1494,21 +1501,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.speechSynthesis) {
                 window.speechSynthesis.cancel();
             }
-            
+
             // Stop listening if recording
             if (window.chatPlaygroundApp.recognition) {
                 window.chatPlaygroundApp.recognition.stop();
             }
-            
+
             // Clear pending messages (they're already in chat or not yet added)
             window.chatPlaygroundApp.pendingUserMessage = null;
             window.chatPlaygroundApp.pendingAssistantMessage = null;
-            
+
             // Reset state
             window.chatPlaygroundApp.isListening = false;
             window.chatPlaygroundApp.isSpeaking = false;
             window.chatPlaygroundApp.isGenerating = false;
-            
+
             // Reset UI
             window.chatPlaygroundApp.resetToWelcomeState();
         });
@@ -1540,7 +1547,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.closeAboutModal();
             window.closeSpeechErrorModal();
         }
-        
+
         // Trap focus within modal when one is open
         if (window.currentModal && window.currentModal.style.display !== 'none' && e.key === 'Tab') {
             const focusableElements = window.currentModal.querySelectorAll(
@@ -1548,7 +1555,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             const firstElement = focusableElements[0];
             const lastElement = focusableElements[focusableElements.length - 1];
-            
+
             if (e.shiftKey) {
                 if (document.activeElement === firstElement) {
                     e.preventDefault();

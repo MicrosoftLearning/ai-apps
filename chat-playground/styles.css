@@ -122,7 +122,7 @@ header h1 {
     flex: 0 0 350px;
     background: white;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 20px;
     overflow-y: auto;
 }
@@ -248,6 +248,10 @@ header h1 {
     margin-bottom: 15px;
 }
 
+.guardrail-section {
+    margin-top: 14px;
+}
+
 .collapsible-btn {
     width: 100%;
     text-align: left;
@@ -306,7 +310,7 @@ header h1 {
     background: #0078d4;
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .parameter-slider::-moz-range-thumb {
@@ -316,7 +320,7 @@ header h1 {
     border-radius: 50%;
     cursor: pointer;
     border: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .parameter-slider::-webkit-slider-track {
@@ -478,7 +482,7 @@ header h1 {
     flex: 1;
     background: white;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
 }
@@ -793,7 +797,8 @@ header h1 {
     text-align: center;
 }
 
-.stop-btn, .attach-btn {
+.stop-btn,
+.attach-btn {
     background: none;
     border: none;
     padding: 4px 8px;
@@ -802,7 +807,8 @@ header h1 {
     margin-left: 8px;
 }
 
-.stop-btn:hover, .attach-btn:hover {
+.stop-btn:hover,
+.attach-btn:hover {
     background: #f5f5f5;
 }
 
@@ -835,9 +841,13 @@ header h1 {
 }
 
 @keyframes typing {
-    0%, 60%, 100% {
+
+    0%,
+    60%,
+    100% {
         opacity: 0.3;
     }
+
     30% {
         opacity: 1;
     }
@@ -849,13 +859,13 @@ header h1 {
         flex-direction: column;
         height: auto;
     }
-    
+
     .setup-panel {
         flex: none;
         order: 2;
         max-height: 400px;
     }
-    
+
     .chat-panel {
         order: 1;
         min-height: 500px;
@@ -878,6 +888,7 @@ header h1 {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -1068,11 +1079,11 @@ header h1 {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.toggle-switch input[type="checkbox"]:checked + .switch-label .switch-slider {
+.toggle-switch input[type="checkbox"]:checked+.switch-label .switch-slider {
     background: #0078d4;
 }
 
-.toggle-switch input[type="checkbox"]:checked + .switch-label .switch-slider::before {
+.toggle-switch input[type="checkbox"]:checked+.switch-label .switch-slider::before {
     transform: translateX(20px);
 }
 
@@ -1267,10 +1278,14 @@ header h1 {
 }
 
 @keyframes thinking {
-    0%, 80%, 100% {
+
+    0%,
+    80%,
+    100% {
         transform: scale(0.8);
         opacity: 0.5;
     }
+
     40% {
         transform: scale(1);
         opacity: 1;
@@ -1281,7 +1296,8 @@ header h1 {
     background-color: #f3f2f1;
 }
 
-.btn-secondary, .btn-primary {
+.btn-secondary,
+.btn-primary {
     padding: 8px 16px;
     border-radius: 2px;
     font-size: 14px;
@@ -1325,6 +1341,7 @@ header h1 {
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -1413,11 +1430,11 @@ header h1 {
     background: #e7d4f5;
 }
 
-.purple-toggle input[type="checkbox"]:checked + .switch-label .switch-slider {
+.purple-toggle input[type="checkbox"]:checked+.switch-label .switch-slider {
     background: #6c3fa5;
 }
 
-.purple-toggle input[type="checkbox"]:checked + .switch-label .switch-slider::before {
+.purple-toggle input[type="checkbox"]:checked+.switch-label .switch-slider::before {
     transform: translateX(20px);
 }
 
@@ -1472,16 +1489,20 @@ header h1 {
     from {
         transform: translateX(100%);
     }
+
     to {
         transform: translateX(0);
     }
 }
 
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: scale(1);
         opacity: 1;
     }
+
     50% {
         transform: scale(1.1);
         opacity: 0.8;
@@ -1651,7 +1672,7 @@ header h1 {
     border-top: 1px solid #e1e1e1;
 }
 
-.avatar-config > label {
+.avatar-config>label {
     display: block;
     font-weight: 500;
     margin-bottom: 12px;
@@ -1812,12 +1833,12 @@ body.dark-mode header h1 {
 
 body.dark-mode .setup-panel {
     background: #2d2d2d;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-mode .chat-panel {
     background: #2d2d2d;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-mode .chat-header h3 {
@@ -2111,7 +2132,7 @@ body.dark-mode .toggle-icon {
     color: #a855f7;
 }
 
-body.dark-mode .purple-toggle input[type="checkbox"]:checked + .switch-label .switch-slider {
+body.dark-mode .purple-toggle input[type="checkbox"]:checked+.switch-label .switch-slider {
     background: #8b5cf6;
 }
 
@@ -2375,7 +2396,7 @@ body.dark-mode .avatar-config {
     border-top-color: #444;
 }
 
-body.dark-mode .avatar-config > label {
+body.dark-mode .avatar-config>label {
     color: #e0e0e0;
 }
 
