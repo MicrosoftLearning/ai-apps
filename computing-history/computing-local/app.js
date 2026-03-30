@@ -592,7 +592,7 @@ async function handleSend() {
 
     if (isEbay) {
         addMessage(`Searching eBay for <b>"${keywords}"</b>...`, "bot");
-        const url = `https://www.ebay.com/sch/i.html?_nkw=${keywords.replace(/ /g, '+')}`;
+        const url = `https://www.bing.com/shop/topics?q=${keywords.replace(/ /g, '+')}`;
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
