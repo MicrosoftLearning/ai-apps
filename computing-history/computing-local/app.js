@@ -369,14 +369,14 @@ function getBoardIdentificationMessage(text) {
     }
 
     if (lowerText.includes('820-')) {
-        return 'The serial number is commonly found in Apple computers.';
+        return 'Serial numbers beginning 820- are commonly found in Apple computers.';
     }
 
     if (lowerText.includes('z-80')) {
         return 'The Zilog Z-80 processor is common in Sinclair computers, such as the ZX-80, ZX-81, and ZX Spectrum.';
     }
 
-    return "I can't determine what kind of computer this came from.";
+    return "However, I can't determine what kind of computer this came from.";
 }
 
 /**
@@ -652,7 +652,7 @@ async function handleSend() {
                 conversationHistory.shift();
             }
         } else {
-            addMessage(`I'm sorry. I don't know about that topic. Try uploading an image!`, "bot");
+            addMessage(`I'm sorry. I don't know about that topic.`, "bot");
         }
     } catch (e) {
         removeTyping();
@@ -867,7 +867,7 @@ async function performClassification(imgEl, userText = "") {
 
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
-                        finalReply += `<br><br>The following details are printed on the board:<br><br><i>${cleanText}</i>`;
+                        finalReply += `<br><br>There are details printed on the board.`;
                         finalReply += `<br><br>${getBoardIdentificationMessage(cleanText)}`;
                     } else {
                         finalReply += `<br><br>I couldn't extract any text from the board.`;
