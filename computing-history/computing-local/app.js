@@ -581,8 +581,14 @@ async function handleSend() {
 
     // 3. Text Only Response (Language model, eBay, or Bing search)
     const lowerText = text.toLowerCase();
-    const isEbay = hasBoundaryKeyword(lowerText, ['ebay', 'for sale', 'buy', 'purchase', 'shop']);
-    const isBing = hasBoundaryKeyword(lowerText, ['bing', 'search', 'find']);
+    const ebayTriggers = ['ebay', 'for sale', 'buy', 'purchase', 'shop'];
+    const bingTriggers = ['bing', 'search', 'find'];
+    const isEbay = hasBoundaryKeyword(lowerText, ebayTriggers);
+    const isBing = hasBoundaryKeyword(lowerText, bingTriggers);
+    const searchTriggerWordSet = new Set([
+        ...ebayTriggers.join(' ').split(/\s+/),
+        ...bingTriggers.join(' ').split(/\s+/)
+    ]);
 
     const keywords = extractKeywords(text);
     if (!keywords) {
@@ -591,24 +597,36 @@ async function handleSend() {
     }
 
     if (isEbay) {
-        addMessage(`Searching Bing Shopping for <b>"${keywords}"</b>...`, "bot");
-        const url = `https://www.bing.com/shop/topics?q=${keywords.replace(/ /g, '+')}`;
+        const searchKeywords = extractKeywords(text, searchTriggerWordSet);
+        if (!searchKeywords) {
+            addMessage("Please enter a more specific shopping query.", "bot");
+            return;
+        }
+
+        addMessage(`Searching Bing Shopping for <b>"${searchKeywords}"</b>...`, "bot");
+        const url = `https://www.bing.com/shop/topics?q=${searchKeywords.replace(/ /g, '+')}`;
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`, "bot");
             }
         }, 600);
         return;
     }
 
     if (isBing) {
-        addMessage(`Searching Bing for <b>"${keywords}"</b>...`, "bot");
-        const url = `https://www.bing.com/search?q=${keywords.replace(/ /g, '+')}`;
+        const searchKeywords = extractKeywords(text, searchTriggerWordSet);
+        if (!searchKeywords) {
+            addMessage("Please enter a more specific search query.", "bot");
+            return;
+        }
+
+        addMessage(`Searching Bing for <b>"${searchKeywords}"</b>...`, "bot");
+        const url = `https://www.bing.com/search?q=${searchKeywords.replace(/ /g, '+')}`;
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`, "bot");
             }
         }, 600);
         return;
@@ -648,12 +666,12 @@ async function handleSend() {
  * @param {string} text - The text to extract keywords from
  * @returns {string} Space-separated keywords
  */
-function extractKeywords(text) {
+function extractKeywords(text, excludedWords = null) {
     // Remove punctuation and split
     const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
 
     // Filter using global STOPWORDS
-    return words.filter(w => !STOPWORDS.has(w) && w.length > 0).join(' ');
+    return words.filter(w => !STOPWORDS.has(w) && w.length > 0 && !(excludedWords && excludedWords.has(w))).join(' ');
 }
 
 function hasBoundaryKeyword(text, keywords) {
