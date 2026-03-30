@@ -38,25 +38,25 @@ const CLASS_INFO = {
         'Developed by: Micro Instrumentation and Telemetry Systems (MITS)',
         'Released: 1974',
         'Processor: Intel 8080',
-        'Fact: The first commercially successful personal computer.'
+        'Fact: It was the first commercially successful personal computer.'
     ].join('\n'),
     1: [
         'Developed by: Commodore Business Machines',
         'Released: 1982',
         'Processor: MOS 6510',
-        'Fact: One of the best-selling desktop computers of all time, with over 12 million units sold.'
+        'Fact: It was one of the best-selling desktop computers of all time, with over 12 million units sold.'
     ].join('\n'),
     2: [
         'Developed by: Sinclair Research',
         'Released: 1982',
         'Processor: Zilog Z-80A',
-        'Fact: Played a pivotal role in the history of personal computers and video games, especially in the United Kingdom.'
+        'Fact: It played a pivotal role in the development of the computer games industry, especially in the United Kingdom.'
     ].join('\n'),
     3: [
         'Developed by: Apple Computer, Inc',
         'Released: 1977',
         'Processor: MOS 6502',
-        'Fact: One of the first personal computers to feature color graphics.'
+        'Fact: It was one of the first personal computers to feature color graphics.'
     ].join('\n')
 };
 
