@@ -581,7 +581,7 @@ async function handleSend() {
 
     // 3. Text Only Response (Language model, eBay, or Bing search)
     const lowerText = text.toLowerCase();
-    const isEbay = hasBoundaryKeyword(lowerText, ['ebay', 'for sale', 'buy']);
+    const isEbay = hasBoundaryKeyword(lowerText, ['ebay', 'for sale', 'buy', 'purchase', 'shop']);
     const isBing = hasBoundaryKeyword(lowerText, ['bing', 'search', 'find']);
 
     const keywords = extractKeywords(text);
@@ -596,7 +596,7 @@ async function handleSend() {
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #3d1b3a; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
             }
         }, 600);
         return;
@@ -608,7 +608,7 @@ async function handleSend() {
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #3d1b3a; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
             }
         }, 600);
         return;
