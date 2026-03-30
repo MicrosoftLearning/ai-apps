@@ -591,7 +591,7 @@ async function handleSend() {
     }
 
     if (isEbay) {
-        addMessage(`Searching eBay for <b>"${keywords}"</b>...`, "bot");
+        addMessage(`Searching Bing Shopping for <b>"${keywords}"</b>...`, "bot");
         const url = `https://www.bing.com/shop/topics?q=${keywords.replace(/ /g, '+')}`;
         // Brief delay for effect
         setTimeout(() => {
