@@ -596,7 +596,7 @@ async function handleSend() {
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Found it! <a href="${url}" target="_blank" style="color: #4ade80; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #3d1b3a; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
             }
         }, 600);
         return;
@@ -608,7 +608,7 @@ async function handleSend() {
         // Brief delay for effect
         setTimeout(() => {
             if (!checkStopResponse()) {
-                addMessage(`Found it! <a href="${url}" target="_blank" style="color: #4ade80; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
+                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #3d1b3a; text-decoration: underline;">Click here to see results for ${keywords}</a>`, "bot");
             }
         }, 600);
         return;
