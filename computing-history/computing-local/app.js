@@ -460,6 +460,13 @@ const STOPWORDS = new Set([
     'ebay', 'sale', 'buy', 'price', 'cost', 'need', 'one'
 ]);
 
+const SHOPPING_TRIGGERS = ['ebay', 'for sale', 'buy', 'purchase', 'shop'];
+const WEB_SEARCH_TRIGGERS = ['bing', 'search', 'find'];
+const SEARCH_TRIGGER_WORDS = new Set([
+    ...SHOPPING_TRIGGERS.join(' ').split(/\s+/),
+    ...WEB_SEARCH_TRIGGERS.join(' ').split(/\s+/)
+]);
+
 // Initialize
 // ...
 
@@ -579,56 +586,14 @@ async function handleSend() {
         return;
     }
 
-    // 3. Text Only Response (Language model, eBay, or Bing search)
-    const lowerText = text.toLowerCase();
-    const ebayTriggers = ['ebay', 'for sale', 'buy', 'purchase', 'shop'];
-    const bingTriggers = ['bing', 'search', 'find'];
-    const isEbay = hasBoundaryKeyword(lowerText, ebayTriggers);
-    const isBing = hasBoundaryKeyword(lowerText, bingTriggers);
-    const searchTriggerWordSet = new Set([
-        ...ebayTriggers.join(' ').split(/\s+/),
-        ...bingTriggers.join(' ').split(/\s+/)
-    ]);
+    // 3. Text Only Response (language model or search)
+    if (tryHandleSearchRequest(text)) {
+        return;
+    }
 
     const keywords = extractKeywords(text);
     if (!keywords) {
         addMessage("Please enter a more specific query.", "bot");
-        return;
-    }
-
-    if (isEbay) {
-        const searchKeywords = extractKeywords(text, searchTriggerWordSet);
-        if (!searchKeywords) {
-            addMessage("Please enter a more specific shopping query.", "bot");
-            return;
-        }
-
-        addMessage(`Searching Bing Shopping for <b>"${searchKeywords}"</b>...`, "bot");
-        const url = `https://www.bing.com/shop/topics?q=${searchKeywords.replace(/ /g, '+')}`;
-        // Brief delay for effect
-        setTimeout(() => {
-            if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`, "bot");
-            }
-        }, 600);
-        return;
-    }
-
-    if (isBing) {
-        const searchKeywords = extractKeywords(text, searchTriggerWordSet);
-        if (!searchKeywords) {
-            addMessage("Please enter a more specific search query.", "bot");
-            return;
-        }
-
-        addMessage(`Searching Bing for <b>"${searchKeywords}"</b>...`, "bot");
-        const url = `https://www.bing.com/search?q=${searchKeywords.replace(/ /g, '+')}`;
-        // Brief delay for effect
-        setTimeout(() => {
-            if (!checkStopResponse()) {
-                addMessage(`Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`, "bot");
-            }
-        }, 600);
         return;
     }
 
@@ -672,6 +637,69 @@ function extractKeywords(text, excludedWords = null) {
 
     // Filter using global STOPWORDS
     return words.filter(w => !STOPWORDS.has(w) && w.length > 0 && !(excludedWords && excludedWords.has(w))).join(' ');
+}
+
+function getSearchIntent(text) {
+    const lowerText = text.toLowerCase();
+
+    if (hasBoundaryKeyword(lowerText, SHOPPING_TRIGGERS)) {
+        return 'shopping';
+    }
+
+    if (hasBoundaryKeyword(lowerText, WEB_SEARCH_TRIGGERS)) {
+        return 'web';
+    }
+
+    return null;
+}
+
+function tryHandleSearchRequest(text, options = {}) {
+    const { queryOverride = null, prefixMessage = null } = options;
+    const searchIntent = getSearchIntent(text);
+
+    if (!searchIntent) {
+        return false;
+    }
+
+    const searchKeywords = queryOverride || extractKeywords(text, SEARCH_TRIGGER_WORDS);
+    if (!searchKeywords) {
+        addMessage(
+            searchIntent === 'shopping'
+                ? "Please enter a more specific shopping query."
+                : "Please enter a more specific search query.",
+            "bot"
+        );
+        return true;
+    }
+
+    if (prefixMessage) {
+        addMessage(prefixMessage, "bot");
+    }
+
+    const isShoppingSearch = searchIntent === 'shopping';
+    const url = isShoppingSearch
+        ? `https://www.bing.com/shop/topics?q=${searchKeywords.replace(/ /g, '+')}`
+        : `https://www.bing.com/search?q=${searchKeywords.replace(/ /g, '+')}`;
+
+    addMessage(
+        isShoppingSearch
+            ? `Searching Bing Shopping for <b>"${searchKeywords}"</b>...`
+            : `Searching Bing for <b>"${searchKeywords}"</b>...`,
+        "bot"
+    );
+
+    setTimeout(() => {
+        if (!checkStopResponse()) {
+            addMessage(
+                isShoppingSearch
+                    ? `Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`
+                    : `Here's what I found: <a href="${url}" target="_blank" style="color: #64185e; text-decoration: underline;">Click here to see results for ${searchKeywords}</a>`,
+                "bot"
+            );
+        }
+    }, 600);
+
+    return true;
 }
 
 function hasBoundaryKeyword(text, keywords) {
@@ -805,7 +833,6 @@ async function performClassification(imgEl, userText = "") {
 
         const topMatch = result[0];
         const classIndex = CLASSES.indexOf(topMatch.className);
-        const lowerText = userText.toLowerCase();
 
         // Class 6: Unknown - Simple "don't know" message
         if (classIndex === 6) {
@@ -912,55 +939,46 @@ async function performClassification(imgEl, userText = "") {
             reply += `<br><small>Second guess: ${result[1].className} (${(result[1].probability * 100).toFixed(1)}%)</small>`;
         }
 
-        // Check if user wants eBay search
-        const isEbay = lowerText.includes('ebay') || lowerText.includes('for sale') || lowerText.includes('buy');
-
         // Classes 0, 1, 2, 3, 4: eBay search or information
         if ([0, 1, 2, 3, 4].includes(classIndex)) {
-            if (isEbay) {
-                // eBay search
-                addMessage(reply, "bot");
-                addMessage(`Searching eBay for <b>"${topMatch.className}"</b>...`, "bot");
-                const url = `https://www.ebay.com/sch/i.html?_nkw=${topMatch.className.replace(/ /g, '+')}`;
-                setTimeout(() => {
-                    if (!checkStopResponse()) {
-                        addMessage(`Found it! <a href="${url}" target="_blank" style="color: #4ade80; text-decoration: underline;">Click here to search eBay for ${topMatch.className}</a>`, "bot");
-                    }
-                }, 600);
+            if (tryHandleSearchRequest(userText, {
+                queryOverride: topMatch.className,
+                prefixMessage: reply
+            })) {
                 return;
-            } else {
-                // AI-generated info for classes 0, 1, 2, 3
-                if ([0, 1, 2, 3].includes(classIndex)) {
-                    showTyping();
-                    try {
-                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
-                        const infoPrompt = buildClassInfoPrompt(classIndex);
-                        const summary = await generateComputingInfo(infoPrompt || topMatch.className);
-                        if (checkStopResponse()) {
-                            removeTyping();
-                            return;
-                        }
-                        if (summary) {
-                            reply += `<br>${summary}`;
-                            conversationHistory.push({
-                                user: historyUserPrompt,
-                                assistant: truncateToFirstSentence(summary)
-                            });
-                            if (conversationHistory.length > 2) {
-                                conversationHistory.shift();
-                            }
-                        }
-                    } catch (e) {
-                        console.warn("Info generation failed", e);
-                    } finally {
-                        removeTyping();
-                    }
-                }
+            }
 
-                // Class 4: Computer - Add uncertainty message
-                if (classIndex === 4) {
-                    reply += `<br><br>Unfortunately, I'm not sure what kind of computer this is.`;
+            // AI-generated info for classes 0, 1, 2, 3
+            if ([0, 1, 2, 3].includes(classIndex)) {
+                showTyping();
+                try {
+                    const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
+                    const infoPrompt = buildClassInfoPrompt(classIndex);
+                    const summary = await generateComputingInfo(infoPrompt || topMatch.className);
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
+                    if (summary) {
+                        reply += `<br>${summary}`;
+                        conversationHistory.push({
+                            user: historyUserPrompt,
+                            assistant: truncateToFirstSentence(summary)
+                        });
+                        if (conversationHistory.length > 2) {
+                            conversationHistory.shift();
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Info generation failed", e);
+                } finally {
+                    removeTyping();
                 }
+            }
+
+            // Class 4: Computer - Add uncertainty message
+            if (classIndex === 4) {
+                reply += `<br><br>Unfortunately, I'm not sure what kind of computer this is.`;
             }
         }
 

@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Serve computing-local",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"http.server",
+				"8000",
+				"--directory",
+				"computing-history/computing-local"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Serve computing-azure",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"http.server",
+				"8000",
+				"--directory",
+				"computing-history/computing-azure"
+			],
+			"isBackground": true
+		}
+	]
+}

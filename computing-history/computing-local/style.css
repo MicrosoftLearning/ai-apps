@@ -284,7 +284,10 @@ h1 {
 }
 
 .message-image {
-    max-width: 100%;
+    display: block;
+    max-width: 200px;
+    width: 100%;
+    height: auto;
     border-radius: 12px;
     margin-top: 0.5rem;
     border: 1px solid #dee2e6;

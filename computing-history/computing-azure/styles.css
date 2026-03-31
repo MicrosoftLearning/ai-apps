@@ -321,7 +321,9 @@ h1 {
 
 .message-content img {
     max-width: 200px;
-    border-radius: 8px;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
     margin-bottom: 8px;
     display: block;
 }
