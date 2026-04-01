@@ -1782,6 +1782,14 @@ class ChatPlayground {
         const trimmedText = text.trimEnd();
         if (!trimmedText) return '';
 
+        // Keep structured multi-line outputs (lists, bullets, etc.) untouched.
+        // Sentence heuristics are unreliable for numbered entries like "1.".
+        const lines = trimmedText.split(/\r?\n/).filter(line => line.trim().length > 0);
+        const hasListLikeLine = lines.some(line => /^\s*(?:[-*]|\d+[.)])\s+/.test(line));
+        if (hasListLikeLine) {
+            return trimmedText;
+        }
+
         // If the response already ends with sentence-final punctuation, keep it as-is
         if (/[.!?]["')\]]*$/.test(trimmedText)) {
             return trimmedText;
@@ -1790,7 +1798,8 @@ class ChatPlayground {
         // Find the last complete sentence boundary and remove trailing partial sentence
         const match = trimmedText.match(/([.!?]["')\]]*)(?![\s\S]*[.!?]["')\]]*)/);
         if (!match) {
-            return '';
+            // If no sentence boundary exists, preserve the response instead of dropping it.
+            return trimmedText;
         }
 
         const sentenceEndIndex = match.index + match[0].length;
