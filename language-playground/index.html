@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Playground</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='86'>📑</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/compromise@14.13.0/builds/compromise.js"
+        integrity="sha384-+5ns6/Vxm/ovzP+Ud/k9WEWFl+7K59k9YHeQxugSW1wEtZcbN6+kwCmfq+fqPpeX"
+        crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div class="app-shell">
+        <a href="#source-text" class="skip-link">Skip to text input</a>
+        <header class="topbar">
+            <h1>Language Playground</h1>
+            <div class="theme-toggle-wrap" role="group" aria-label="Theme controls">
+                <span aria-hidden="true">☀</span>
+                <label class="switch" for="theme-toggle" title="Theme">
+                    <input type="checkbox" id="theme-toggle" aria-label="Toggle dark mode">
+                    <span class="slider"></span>
+                </label>
+                <span aria-hidden="true">☾</span>
+            </div>
+        </header>
+
+        <main class="playground" role="main" aria-label="Language and PII analyzer">
+            <section class="left-pane" aria-label="Source text panel">
+                <label for="analyzer-select" class="field-label">Analyzer</label>
+                <select id="analyzer-select" title="Choose analyzer" aria-label="Choose analyzer">
+                    <option value="language">Language detection</option>
+                    <option value="pii">Text PII extraction</option>
+                </select>
+
+                <div class="editor-box">
+                    <div class="editor-toolbar">
+                        <div class="toolbar-left">
+                            <span class="toolbar-label">Input text</span>
+                            <select id="sample-select" class="sample-select" title="Select a sample"
+                                aria-label="Select sample text">
+                                <option value="">Select a sample</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-actions">
+                            <button id="attach-btn" class="icon-btn" title="Attach .txt file (max 10 KB)"
+                                aria-label="Attach text file">📎</button>
+                            <button id="detect-btn" class="primary-btn" title="Analyze text" aria-label="Analyze text"
+                                disabled>Detect</button>
+                        </div>
+                    </div>
+
+                    <textarea id="source-text" rows="18" placeholder="Type or attach a text file for analysis"
+                        aria-label="Text to analyze"></textarea>
+                    <input id="file-input" type="file" accept=".txt,text/plain" hidden aria-hidden="true" tabindex="-1">
+                </div>
+                <p id="file-status" class="hint" aria-live="polite"></p>
+            </section>
+
+            <section class="right-pane" aria-label="Analysis results panel">
+                <div id="placeholder" class="placeholder" role="status" aria-live="polite">
+                    <div class="doc-icon" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" width="48" height="48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M18 6H38L50 18V56C50 57.1 49.1 58 48 58H18C16.9 58 16 57.1 16 56V8C16 6.9 16.9 6 18 6Z"
+                                stroke="currentColor" stroke-width="3" />
+                            <path d="M38 6V18H50" stroke="currentColor" stroke-width="3" />
+                            <path d="M23 29H43M23 37H43M23 45H36" stroke="currentColor" stroke-width="3"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <p id="placeholder-text">Add text or a file to detect language</p>
+                    <p id="placeholder-subtext" class="placeholder-subtext">Type in text, select a sample, or upload a
+                        text file to get started.</p>
+                </div>
+
+                <div id="results" class="results" hidden></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="aria-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
