@@ -35,7 +35,7 @@
         ],
         pii: [
             { label: "Contact note", text: "John Smith can be reached at john.smith@contoso.com or +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
-            { label: "Customer form", text: "Customer Feedback Form\nDate: 4/1/2026\nCustomer: Mario Gizzi\nEmail: mario@adventure-works.com\nPhone: 555 123 0987\nRating: 5\nComment: Thanks for the great service. Thanks for the great service. I received my delivery at 1482 Westward Way, Seattle. Everything looks great!" }
+            { label: "Customer form", text: "Customer Feedback Form\nDate: 4/1/2026\nCustomer: Mario Gizzi\nEmail: mario@adventure-works.com\nPhone: 555 123 0987\nRating: 5\nComment: Thanks for the great service. I received my delivery at 1482 Westward Way, Seattle. Everything looks great!" }
         ]
     };
 
