@@ -449,7 +449,7 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.userInput.disabled = true;
         this.elements.sendBtn.disabled = true;
         this.elements.micBtn.disabled = true;
-        this.elements.userInput.placeholder = 'Loading CPU model...';
+        this.elements.userInput.placeholder = 'Loading model...';
     }
 
     enableInput() {
