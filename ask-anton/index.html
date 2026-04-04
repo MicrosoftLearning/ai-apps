@@ -5,9 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ask Anton - AI Learning Assistant</title>
+    <script src="coi-serviceworker.js"></script>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js"></script>
 </head>
 
 <body>
@@ -139,7 +141,7 @@
         </div>
 
         <footer role="contentinfo">
-            <p>Powered by WebLLM (Phi-3) + wllama (SmolLM2) • GPU mode for speed, CPU mode for compatibility</p>
+            <p>Powered by Microsoft Phi-3 on WebLLM (CPU-mode fallback to SmolLM2 on wllama)</p>
         </footer>
     </div>
 
@@ -165,7 +167,8 @@
                     <li><strong>CPU Mode:</strong> Fallback mode using wllama with SmolLM2 (works on all browsers)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
-                    <li><strong>Voice Input:</strong> Use your microphone to ask questions naturally</li>
+                    <li><strong>Voice Input:</strong> Intelligent speech recognition - uses browser's Web Speech API for
+                        best results, with automatic fallback to offline Vosk if unavailable</li>
                 </ul>
 
                 <h3>How It Works</h3>

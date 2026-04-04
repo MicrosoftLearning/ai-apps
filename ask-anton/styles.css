@@ -605,6 +605,23 @@ header h1 {
     transform: translateY(0);
 }
 
+.mic-btn.active {
+    background: linear-gradient(135deg, #d13438, #ff6b6b);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(209, 52, 56, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 0 10px rgba(209, 52, 56, 0);
+    }
+}
+
 .mic-icon {
     display: block;
     line-height: 1;

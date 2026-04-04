@@ -19,6 +19,25 @@ class AskAnton {
         this.modalFocusTrapHandler = null;
         this.usedVoiceInput = false;
 
+        // Vosk speech recognition (lazy-loaded fallback)
+        this.voskModel = null;
+        this.voskRecognizer = null;
+        this.voskLoaded = false;
+        this.voskLoadingFailed = false;
+        this.isRecording = false;
+        this.mediaStream = null;
+        this.audioContext = null;
+        this.processorNode = null;
+        this.sourceNode = null;
+        this.speechModelUrl = '/speech-model/speech-model.tar.gz';
+        this.silenceTimer = null;
+        this.noSpeechTimer = null;
+        this.lastSpeechTime = null;
+        this.hasSpeech = false;
+        this.silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
+        this.noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
+        this.usingWebSpeech = true; // Try Web Speech API first
+
         this.elements = {
             progressSection: document.getElementById('progress-section'),
             progressFill: document.getElementById('progress-fill'),
@@ -61,12 +80,16 @@ IMPORTANT: Follow these guidelines when responding:
         this.initialize();
     }
 
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
     async initialize() {
         try {
             // Load prohibited words used by content moderation
             await this.loadProhibitedWords();
 
-            // Load the index
+            // Load the index (no longer loading Vosk upfront)
             await this.loadIndex();
 
             // Try to initialize WebLLM first, fall back to wllama if needed
@@ -80,6 +103,10 @@ IMPORTANT: Follow these guidelines when responding:
             this.showError('Failed to initialize. Please refresh the page.');
         }
     }
+
+    // ============================================================================
+    // UTILITY METHODS
+    // ============================================================================
 
     reverseWord(text) {
         return text.split('').reverse().join('');
@@ -141,6 +168,88 @@ IMPORTANT: Follow these guidelines when responding:
             throw error;
         }
     }
+
+    async loadVoskModel() {
+        if (this.voskLoaded || this.voskLoadingFailed) {
+            return this.voskLoaded;
+        }
+
+        try {
+            console.log('Loading Vosk speech model from', this.speechModelUrl);
+
+            if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+                console.warn('Vosk library not loaded');
+                this.voskLoadingFailed = true;
+                return false;
+            }
+
+            const loadingMsg = this.addSystemMessage('Loading offline speech model... This may take a moment.');
+            this.disableInput();
+            this.elements.micBtn.disabled = true;
+
+            this.voskModel = await Vosk.createModel(this.speechModelUrl);
+            this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
+
+            // Set up recognizer event handlers
+            this.voskRecognizer.on("result", (message) => {
+                const result = message.result;
+                if (result && result.text) {
+                    // Clear no-speech timer since we got speech
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    // Append the recognized text to the input
+                    const currentText = this.elements.userInput.value;
+                    this.elements.userInput.value = currentText + (currentText ? " " : "") + result.text;
+                    this.autoResizeTextarea();
+                    this.hasSpeech = true;
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskRecognizer.on("partialresult", (message) => {
+                // Reset silence timer on partial results too
+                const result = message.result;
+                if (result && result.partial && result.partial.trim()) {
+                    // Clear no-speech timer on partial results
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskLoaded = true;
+            console.log('Vosk speech model loaded successfully');
+
+            // Update the loading message
+            const msgP = loadingMsg.querySelector('p');
+            if (msgP) {
+                msgP.textContent = 'Offline speech model ready! Please try your voice input again.';
+            }
+
+            this.enableInput();
+            this.elements.micBtn.disabled = false;
+            return true;
+        } catch (error) {
+            console.error('Error loading Vosk model:', error);
+            this.voskLoadingFailed = true;
+            this.addSystemMessage('Failed to load offline speech model. Voice input is unavailable.');
+            this.enableInput();
+            this.elements.micBtn.disabled = false;
+            return false;
+        }
+    }
+
+    // ============================================================================
+    // LLM ENGINE INITIALIZATION (WebLLM & Wllama)
+    // ============================================================================
 
     checkWebGPUSupport() {
         // Check if WebGPU is available in the browser
@@ -224,35 +333,63 @@ IMPORTANT: Follow these guidelines when responding:
                 'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
             };
 
-            // Initialize wllama with CDN-hosted WASM files
-            this.wllama = new Wllama(CONFIG_PATHS);
+            // Try multithreaded (4 threads) first if cross-origin isolated, fall back to single-threaded
+            const useMultiThread = window.crossOriginIsolated === true;
+            const preferredThreads = useMultiThread ? 4 : 1;
+            console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
 
-            // Load model from HuggingFace with optimized settings
-            await this.wllama.loadModelFromHF(
-                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                'smollm2-360m-instruct-q8_0.gguf',
-                {
-                    n_ctx: 512,      // Smaller context for faster processing
-                    n_threads: 1,     // Single thread can be more stable
-                    progressCallback: ({ loaded, total }) => {
-                        const percentage = Math.max(15, Math.round((loaded / total) * 85) + 15);
-                        const progress = loaded / total;
+            const modelConfig = {
+                n_ctx: 512,      // Smaller context for faster processing
+                n_threads: preferredThreads,
+                progressCallback: ({ loaded, total }) => {
+                    const percentage = Math.max(15, Math.round((loaded / total) * 85) + 15);
+                    const progress = loaded / total;
 
-                        if (!isLazyLoad) {
-                            this.updateProgress(
-                                percentage,
-                                `Loading model: ${Math.round((loaded / total) * 100)}%`
-                            );
-                        } else {
-                            console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
-                            // Call the progress callback for lazy loading
-                            if (progressCallback) {
-                                progressCallback(progress);
-                            }
+                    if (!isLazyLoad) {
+                        this.updateProgress(
+                            percentage,
+                            `Loading model: ${Math.round((loaded / total) * 100)}%`
+                        );
+                    } else {
+                        console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
+                        // Call the progress callback for lazy loading
+                        if (progressCallback) {
+                            progressCallback(progress);
                         }
                     }
                 }
-            );
+            };
+
+            try {
+                // Initialize wllama with CDN-hosted WASM files
+                this.wllama = new Wllama(CONFIG_PATHS);
+
+                // Load model from HuggingFace with optimized settings
+                await this.wllama.loadModelFromHF(
+                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                    'smollm2-360m-instruct-q8_0.gguf',
+                    modelConfig
+                );
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+            } catch (multiErr) {
+                if (preferredThreads > 1) {
+                    console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+
+                    // Retry with single thread
+                    this.wllama = new Wllama(CONFIG_PATHS);
+                    await this.wllama.loadModelFromHF(
+                        'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                        'smollm2-360m-instruct-q8_0.gguf',
+                        {
+                            ...modelConfig,
+                            n_threads: 1
+                        }
+                    );
+                    console.log('Wllama initialized successfully with 1 thread (fallback)');
+                } else {
+                    throw multiErr;
+                }
+            }
 
             if (!isLazyLoad) {
                 this.updateProgress(100, 'Ready to chat! (CPU mode)');
@@ -276,6 +413,10 @@ IMPORTANT: Follow these guidelines when responding:
             throw error;
         }
     }
+
+    // ============================================================================
+    // UI STATE MANAGEMENT
+    // ============================================================================
 
     updateProgress(percentage, text) {
         this.elements.progressFill.style.width = `${percentage}%`;
@@ -315,6 +456,10 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.userInput.placeholder = 'Ask a question about AI...';
         this.elements.userInput.focus();
     }
+
+    // ============================================================================
+    // EVENT LISTENERS
+    // ============================================================================
 
     setupEventListeners() {
         // Send button click
@@ -452,6 +597,10 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
+    // ============================================================================
+    // CONTENT MODERATION & TEXT PROCESSING
+    // ============================================================================
+
     autoResizeTextarea() {
         const textarea = this.elements.userInput;
         textarea.style.height = 'auto';
@@ -515,6 +664,10 @@ IMPORTANT: Follow these guidelines when responding:
 
         return uniqueWords.join(' ');
     }
+
+    // ============================================================================
+    // SEARCH & CONTEXT RETRIEVAL
+    // ============================================================================
 
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
@@ -669,6 +822,10 @@ IMPORTANT: Follow these guidelines when responding:
             documents: documents
         };
     }
+
+    // ============================================================================
+    // MESSAGE HANDLING & RESPONSE GENERATION
+    // ============================================================================
 
     async sendMessage() {
         const userMessage = this.elements.userInput.value.trim();
@@ -875,6 +1032,10 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    // ============================================================================
+    // MESSAGE UI RENDERING
+    // ============================================================================
+
     addSystemMessage(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'system-message';
@@ -1079,6 +1240,10 @@ IMPORTANT: Follow these guidelines when responding:
             }, 2000);
         }
     }
+
+    // ============================================================================
+    // LLM RESPONSE GENERATION (WebLLM & Wllama)
+    // ============================================================================
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage;
@@ -1355,6 +1520,58 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
 
+    // ============================================================================
+    // SPEECH RECOGNITION HELPER METHODS
+    // ============================================================================
+
+    setMicButtonState(isActive, label = null) {
+        if (isActive) {
+            this.elements.micBtn.style.opacity = '0.6';
+            this.elements.micBtn.classList.add('active');
+            this.elements.micBtn.title = label || 'Listening...';
+            this.elements.micBtn.setAttribute('aria-label', label || 'Listening to your voice input');
+        } else {
+            this.elements.micBtn.style.opacity = '1';
+            this.elements.micBtn.classList.remove('active');
+            this.elements.micBtn.title = label || 'Voice input';
+            this.elements.micBtn.setAttribute('aria-label', label || 'Voice input');
+        }
+    }
+
+    clearSpeechTimers() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+        if (this.noSpeechTimer) {
+            clearTimeout(this.noSpeechTimer);
+            this.noSpeechTimer = null;
+        }
+    }
+
+    cleanupAudioResources() {
+        if (this.processorNode) {
+            this.processorNode.disconnect();
+            this.processorNode = null;
+        }
+        if (this.sourceNode) {
+            this.sourceNode.disconnect();
+            this.sourceNode = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+    }
+
+    // ============================================================================
+    // AUDIO PLAYBACK
+    // ============================================================================
+
     playRandomResponseAudio() {
         // Randomly select one of the 7 audio files
         const audioNumber = Math.floor(Math.random() * 7) + 1;
@@ -1373,58 +1590,243 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
-    handleMicClick() {
-        // Check if Speech Recognition is available
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // ============================================================================
+    // SPEECH RECOGNITION - WEB SPEECH API & VOSK
+    // ============================================================================
 
-        if (!SpeechRecognition) {
-            this.addMessage('assistant', 'Speech input is not available in this browser.');
+    async handleMicClick() {
+        // Try Web Speech API first
+        if (this.usingWebSpeech) {
+            const webSpeechWorked = await this.tryWebSpeech();
+            if (!webSpeechWorked) {
+                // Web Speech failed, switch to Vosk
+                console.log('Web Speech API not available, loading Vosk fallback...');
+                this.usingWebSpeech = false;
+
+                // Load Vosk model if not already loaded
+                if (!this.voskLoaded) {
+                    const loaded = await this.loadVoskModel();
+                    if (!loaded) {
+                        return; // Vosk failed to load
+                    }
+                }
+
+                // Now try Vosk
+                await this.startVoskRecording();
+            }
+        } else {
+            // Already using Vosk
+            if (this.isRecording) {
+                this.stopVoskRecording(true);
+            } else {
+                await this.startVoskRecording();
+            }
+        }
+    }
+
+    async tryWebSpeech() {
+        return new Promise((resolve) => {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                resolve(false);
+                return;
+            }
+
+            try {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                let hasResolved = false;
+                let noSpeechTimer = null;
+
+                // Set active state
+                this.setMicButtonState(true);
+
+                // Start no-speech timeout
+                noSpeechTimer = setTimeout(() => {
+                    if (!hasResolved) {
+                        console.log('No speech detected in 5 seconds, cancelling...');
+                        recognition.stop();
+                        if (!hasResolved) {
+                            hasResolved = true;
+                            this.setMicButtonState(false);
+                            this.addMessage('assistant', 'No speech detected. Please try again.');
+                            resolve(true); // Don't fallback, just inform user
+                        }
+                    }
+                }, this.noSpeechTimeout);
+
+                recognition.onresult = (event) => {
+                    // Clear no-speech timer since we got speech
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    const transcript = event.results[0][0].transcript;
+                    this.elements.userInput.value = transcript;
+                    this.autoResizeTextarea();
+                    this.usedVoiceInput = true;
+                    this.sendMessage();
+
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        resolve(true);
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+
+                    // Clear no-speech timer
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    // Reset visual state
+                    this.setMicButtonState(false);
+
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        // If it's a permission error, don't fallback
+                        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                            this.addMessage('assistant', 'Microphone access was denied.');
+                            resolve(true); // Don't fallback, user denied permission
+                        } else {
+                            // Any other error (network, no-speech, etc.) triggers fallback
+                            resolve(false); // Fallback to Vosk
+                        }
+                    }
+                };
+
+                recognition.onend = () => {
+                    // Clear no-speech timer
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    this.setMicButtonState(false);
+                };
+
+                recognition.start();
+                console.log('Web Speech recognition started');
+                // Don't resolve here - wait for result or error
+            } catch (error) {
+                console.error('Error starting Web Speech recognition:', error);
+                this.setMicButtonState(false);
+                resolve(false);
+            }
+        });
+    }
+
+    resetSilenceTimer() {
+        // Clear existing timer
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+        }
+
+        // Set new timer to auto-stop after silence
+        if (this.isRecording) {
+            this.silenceTimer = setTimeout(() => {
+                if (this.isRecording && this.hasSpeech) {
+                    console.log('Silence detected, auto-stopping...');
+                    this.stopVoskRecording(false);
+                }
+            }, this.silenceTimeout);
+        }
+    }
+
+    async startVoskRecording() {
+        if (!this.voskRecognizer) {
+            this.addMessage('assistant', 'Speech input is not available.');
             return;
         }
 
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'en-US';
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-
-        // Visual feedback - button appears active while listening
-        this.elements.micBtn.style.opacity = '0.6';
-        this.elements.micBtn.title = 'Listening...';
-        this.elements.micBtn.setAttribute('aria-label', 'Listening to your voice input');
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            this.elements.userInput.value = transcript;
-            this.autoResizeTextarea();
-            this.usedVoiceInput = true;
-            this.sendMessage();
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            this.addMessage('assistant', 'Speech input is not available.');
-            this.elements.micBtn.style.opacity = '1';
-            this.elements.micBtn.title = 'Voice input';
-            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
-        };
-
-        recognition.onend = () => {
-            this.elements.micBtn.style.opacity = '1';
-            this.elements.micBtn.title = 'Voice input';
-            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
-        };
-
         try {
-            recognition.start();
-            console.log('Speech recognition started');
+            // Request microphone access
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    channelCount: 1,
+                    sampleRate: 16000
+                }
+            });
+
+            // Create audio context
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+            this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+            // Process audio data
+            this.processorNode.onaudioprocess = (event) => {
+                try {
+                    if (this.isRecording && this.voskRecognizer) {
+                        this.voskRecognizer.acceptWaveform(event.inputBuffer);
+                    }
+                } catch (e) {
+                    console.error('Audio processing error:', e);
+                }
+            };
+
+            this.sourceNode.connect(this.processorNode);
+            this.processorNode.connect(this.audioContext.destination);
+
+            this.isRecording = true;
+            this.usedVoiceInput = true;
+            this.hasSpeech = false;
+            this.lastSpeechTime = Date.now();
+
+            // Start silence detection timer
+            this.resetSilenceTimer();
+
+            // Start no-speech timeout
+            this.noSpeechTimer = setTimeout(() => {
+                if (this.isRecording && !this.hasSpeech) {
+                    console.log('No speech detected in 5 seconds, cancelling...');
+                    this.stopVoskRecording(true);
+                    this.addMessage('assistant', 'No speech detected. Please try again.');
+                }
+            }, this.noSpeechTimeout);
+
+            // Set active state
+            this.setMicButtonState(true);
+
+            console.log('Vosk recording started');
         } catch (error) {
-            console.error('Error starting speech recognition:', error);
-            this.addMessage('assistant', 'Speech input is not available.');
-            this.elements.micBtn.style.opacity = '1';
-            this.elements.micBtn.title = 'Voice input';
-            this.elements.micBtn.setAttribute('aria-label', 'Voice input');
+            console.error('Microphone access denied:', error);
+            this.addMessage('assistant', 'Microphone access was denied. Please allow microphone access to use voice input.');
         }
     }
+
+    stopVoskRecording(isCancelled = false) {
+        this.isRecording = false;
+
+        // Clear all timers
+        this.clearSpeechTimers();
+
+        // Clean up audio resources
+        this.cleanupAudioResources();
+
+        // Reset button state
+        this.setMicButtonState(false);
+
+        console.log('Vosk recording stopped');
+
+        // Auto-send the message if there's text and it wasn't manually cancelled
+        if (!isCancelled && this.elements.userInput.value.trim()) {
+            this.sendMessage();
+        }
+    }
+
+    // ============================================================================
+    // UI CONTROLS & MODAL MANAGEMENT
+    // ============================================================================
 
     restartConversation() {
         if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
