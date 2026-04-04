@@ -798,7 +798,7 @@ IMPORTANT: Follow these guidelines when responding:
             if (aiConceptsCategory && aiConceptsCategory.documents.length > 0) {
                 const fallbackDoc = aiConceptsCategory.documents[0];
                 return {
-                    context: `[${aiConceptsCategory.category}]\n${fallbackDoc.content}`,
+                    context: fallbackDoc.content,
                     categories: [aiConceptsCategory.category],
                     links: [aiConceptsCategory.link],
                     documents: [fallbackDoc]
@@ -809,7 +809,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build context from all matched documents - use full content, no summarization
         const contextParts = matches.map(match => {
-            return `[${match.category} - ${match.document.title}]\n${match.document.content}`;
+            return match.document.content;
         });
 
         const categories = [...new Set(matches.map(m => m.category))];
