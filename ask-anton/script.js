@@ -13,6 +13,7 @@ class AskAnton {
         this.currentAbortController = null;
         this.webGPUAvailable = false;
         this.usingWllama = false;
+        this.isLoadingModel = false;
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
@@ -141,12 +142,30 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    checkWebGPUSupport() {
+        // Check if WebGPU is available in the browser
+        if (!navigator.gpu) {
+            console.log('WebGPU not supported in this browser');
+            return false;
+        }
+        return true;
+    }
+
     async initializeEngine() {
+        // Check for WebGPU support before attempting to load WebLLM
+        const hasWebGPU = this.checkWebGPUSupport();
+
+        if (!hasWebGPU) {
+            console.log('WebGPU not available, using wllama (CPU mode)');
+            await this.initializeWllama();
+            return;
+        }
+
         // Try WebLLM first (faster with GPU)
         try {
             await this.initializeWebLLM();
         } catch (error) {
-            console.log('WebLLM not available, falling back to wllama');
+            console.log('WebLLM initialization failed, falling back to wllama');
             await this.initializeWllama();
         }
     }
@@ -280,6 +299,21 @@ IMPORTANT: Follow these guidelines when responding:
     showError(message) {
         this.elements.progressText.textContent = message;
         this.elements.progressFill.style.backgroundColor = '#dc3545';
+    }
+
+    disableInput() {
+        this.elements.userInput.disabled = true;
+        this.elements.sendBtn.disabled = true;
+        this.elements.micBtn.disabled = true;
+        this.elements.userInput.placeholder = 'Loading CPU model...';
+    }
+
+    enableInput() {
+        this.elements.userInput.disabled = false;
+        this.elements.sendBtn.disabled = false;
+        this.elements.micBtn.disabled = false;
+        this.elements.userInput.placeholder = 'Ask a question about AI...';
+        this.elements.userInput.focus();
     }
 
     setupEventListeners() {
@@ -640,7 +674,7 @@ IMPORTANT: Follow these guidelines when responding:
         const userMessage = this.elements.userInput.value.trim();
 
         // Validate input
-        if (!userMessage || this.isGenerating) return;
+        if (!userMessage || this.isGenerating || this.isLoadingModel) return;
 
         // Limit message length to prevent abuse
         const MAX_MESSAGE_LENGTH = 1000;
@@ -751,6 +785,8 @@ IMPORTANT: Follow these guidelines when responding:
 
         // If switching to wllama and it's not loaded yet, show loading message
         if (this.usingWllama && !this.wllama) {
+            this.isLoadingModel = true;
+            this.disableInput();
             const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0%');
             const loadingMsgElement = loadingMsg.querySelector('p');
 
@@ -766,6 +802,8 @@ IMPORTANT: Follow these guidelines when responding:
                 if (loadingMsgElement) {
                     loadingMsgElement.textContent = `Switched to ${mode} mode`;
                 }
+                this.isLoadingModel = false;
+                this.enableInput();
             }).catch(error => {
                 console.error('Failed to load wllama:', error);
                 if (loadingMsgElement) {
@@ -773,6 +811,8 @@ IMPORTANT: Follow these guidelines when responding:
                 }
                 this.usingWllama = false;
                 this.updateModeToggle();
+                this.isLoadingModel = false;
+                this.enableInput();
             });
         } else {
             const mode = this.usingWllama ? 'CPU' : 'GPU';
@@ -1147,7 +1187,7 @@ IMPORTANT: Follow these guidelines when responding:
             const truncatedContext = context.length > maxContextLength
                 ? context.substring(0, maxContextLength) + '...'
                 : context;
-            chatMLPrompt += 'Give a concise and factually accurate response based ONLY on the following information:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Respond by summarizing the following information:\n---\n' + truncatedContext + '\n';
         }
         chatMLPrompt += userMessage + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
