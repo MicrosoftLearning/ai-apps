@@ -29,7 +29,7 @@ class AskAnton {
         this.audioContext = null;
         this.processorNode = null;
         this.sourceNode = null;
-        this.speechModelUrl = '/speech-model/speech-model.tar.gz';
+        this.speechModelUrl = '../speech-model/speech-model.tar.gz';
         this.silenceTimer = null;
         this.noSpeechTimer = null;
         this.lastSpeechTime = null;
