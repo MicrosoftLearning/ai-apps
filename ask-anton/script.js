@@ -29,7 +29,10 @@ class AskAnton {
         this.audioContext = null;
         this.processorNode = null;
         this.sourceNode = null;
-        this.speechModelUrl = '../speech-model/speech-model.tar.gz';
+        // Calculate speech model path relative to the base path
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+        this.speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
         this.silenceTimer = null;
         this.noSpeechTimer = null;
         this.lastSpeechTime = null;
