@@ -1108,9 +1108,44 @@ class ChatPlayground {
         }
     }
 
+    checkWebGPUSupport() {
+        // Check if WebGPU is available in the browser
+        if (!navigator.gpu) {
+            console.log('WebGPU not supported in this browser');
+            return false;
+        }
+        return true;
+    }
+
     async initializeEngine() {
+        // Check for WebGPU support before attempting to load WebLLM
+        const hasWebGPU = this.checkWebGPUSupport();
+
+        if (!hasWebGPU) {
+            console.log('WebGPU not available, using wllama (CPU mode)');
+            this.webllmAvailable = false;
+            try {
+                await this.initializeWllama();
+                console.log('Wllama initialized successfully');
+                this.usingWllama = true;
+                this.wllamaLoaded = true;
+
+                // Set SmolLM2 default parameters
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+            } catch (wllamaError) {
+                console.error('Wllama initialization failed:', wllamaError);
+                this.updateProgress(0, 'AI models unavailable. Please check your internet connection and refresh the page.', true);
+                setTimeout(() => {
+                    this.enableUI();
+                }, 2000);
+            }
+            return;
+        }
+
+        // Try WebLLM first (faster with GPU)
         try {
-            console.log('Attempting to initialize WebLLM first...');
+            console.log('Attempting to initialize WebLLM with WebGPU...');
             await this.initializeWebLLM();
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
@@ -1236,21 +1271,49 @@ class ChatPlayground {
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
 
-        // Initialize wllama with CDN-hosted WASM files
-        this.wllama = new Wllama(CONFIG_PATHS);
+        // Try multithreaded (4 threads) first if cross-origin isolated, fall back to single-threaded
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? 4 : 1;
+        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
 
-        // Load SmolLM2 model from HuggingFace
-        await this.wllama.loadModelFromHF(
-            'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-            'smollm2-360m-instruct-q8_0.gguf',
-            {
-                n_ctx: 2048,
-                n_threads: navigator.hardwareConcurrency || 4,
-                progressCallback: ({ loaded, total }) => {
-                    updateProgress(loaded, total);
-                }
+        const modelConfig = {
+            n_ctx: 2048,
+            n_threads: preferredThreads,
+            progressCallback: ({ loaded, total }) => {
+                updateProgress(loaded, total);
             }
-        );
+        };
+
+        try {
+            // Initialize wllama with CDN-hosted WASM files
+            this.wllama = new Wllama(CONFIG_PATHS);
+
+            // Load SmolLM2 model from HuggingFace
+            await this.wllama.loadModelFromHF(
+                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                'smollm2-360m-instruct-q8_0.gguf',
+                modelConfig
+            );
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+        } catch (multiErr) {
+            if (preferredThreads > 1) {
+                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+
+                // Retry with single thread
+                this.wllama = new Wllama(CONFIG_PATHS);
+                await this.wllama.loadModelFromHF(
+                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                    'smollm2-360m-instruct-q8_0.gguf',
+                    {
+                        ...modelConfig,
+                        n_threads: 1
+                    }
+                );
+                console.log('Wllama initialized successfully with 1 thread (fallback)');
+            } else {
+                throw multiErr;
+            }
+        }
 
         console.log('Wllama initialized successfully');
         this.wllamaLoaded = true;
