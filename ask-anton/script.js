@@ -1230,7 +1230,13 @@ IMPORTANT: Follow these guidelines when responding:
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
-            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+
+            // Suggest switching to CPU mode if currently in GPU mode
+            if (!this.usingWllama) {
+                this.addMessage('assistant', 'Sorry, I encountered an error in GPU mode. Try switching to CPU mode using the toggle at the top, then ask your question again.');
+            } else {
+                this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+            }
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
