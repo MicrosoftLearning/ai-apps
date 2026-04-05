@@ -19,6 +19,31 @@ let wllamaReady = false; // Track if wllama is initialized
 let mobilenetReady = false; // Track if MobileNet is initialized
 let conversationHistory = []; // Track conversation for context
 let inappropriateWords = []; // Loaded from moderation file
+
+// Vosk speech recognition (lazy-loaded fallback)
+let voskModel = null;
+let voskRecognizer = null;
+let voskLoaded = false;
+let voskLoadingFailed = false;
+let isRecording = false;
+let mediaStream = null;
+let audioContext = null;
+let processorNode = null;
+let sourceNode = null;
+let silenceTimer = null;
+let noSpeechTimer = null;
+let lastSpeechTime = null;
+let hasSpeech = false;
+const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
+const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
+let usingWebSpeech = true; // Try Web Speech API first
+
+// Calculate speech model path relative to the base path
+const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+this.speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+
+// Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
 const BASE_MODEL_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
 
@@ -96,6 +121,91 @@ async function init() {
             hideLoadingOverlay();
             addMessage(`Error loading models: ${e.message}. Some features may be unavailable.`, "bot");
         }, 2000);
+    }
+}
+
+/**
+ * Load Vosk speech model for offline speech recognition (lazy-loaded fallback)
+ * @returns {Promise<boolean>} True if loaded successfully, false otherwise
+ */
+async function loadVoskModel() {
+    if (voskLoaded || voskLoadingFailed) {
+        return voskLoaded;
+    }
+
+    try {
+        console.log('Loading Vosk speech model from', speechModelUrl);
+
+        if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+            console.warn('Vosk library not loaded');
+            voskLoadingFailed = true;
+            return false;
+        }
+
+        const loadingMsg = addMessage('Loading offline speech model... This may take a moment.', 'bot');
+        sendBtn.disabled = true;
+        textInput.disabled = true;
+        micBtn.disabled = true;
+
+        voskModel = await Vosk.createModel(speechModelUrl);
+        voskRecognizer = new voskModel.KaldiRecognizer(16000);
+
+        // Set up recognizer event handlers
+        voskRecognizer.on("result", (message) => {
+            const result = message.result;
+            if (result && result.text) {
+                // Clear no-speech timer since we got speech
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                // Append the recognized text to the input
+                const currentText = textInput.value;
+                textInput.value = currentText + (currentText ? " " : "") + result.text;
+                hasSpeech = true;
+                lastSpeechTime = Date.now();
+                resetSilenceTimer();
+            }
+        });
+
+        voskRecognizer.on("partialresult", (message) => {
+            // Reset silence timer on partial results too
+            const result = message.result;
+            if (result && result.partial && result.partial.trim()) {
+                // Clear no-speech timer on partial results
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                lastSpeechTime = Date.now();
+                resetSilenceTimer();
+            }
+        });
+
+        voskLoaded = true;
+        console.log('Vosk speech model loaded successfully');
+
+        // Update the loading message
+        const msgBubble = loadingMsg.bubble;
+        if (msgBubble) {
+            setBubbleContent(msgBubble, 'Offline speech model ready! Please try your voice input again.');
+        }
+
+        sendBtn.disabled = false;
+        textInput.disabled = false;
+        micBtn.disabled = false;
+
+        return true;
+    } catch (error) {
+        console.error('Failed to load Vosk model:', error);
+        voskLoadingFailed = true;
+        addMessage('Sorry, offline speech recognition could not be loaded.', 'bot');
+        sendBtn.disabled = false;
+        textInput.disabled = false;
+        micBtn.disabled = false;
+        return false;
     }
 }
 
@@ -1190,41 +1300,275 @@ if (closeAboutBtn) {
 micBtn.addEventListener('click', handleVoiceInput);
 
 /**
- * Handles voice input using Web Speech API
+ * Handles voice input - tries Web Speech API first, falls back to Vosk if needed
  */
-function handleVoiceInput() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+async function handleVoiceInput() {
+    // Try Web Speech API first
+    if (usingWebSpeech) {
+        const webSpeechWorked = await tryWebSpeech();
+        if (!webSpeechWorked) {
+            // Web Speech failed, switch to Vosk
+            console.log('Web Speech API not available, loading Vosk fallback...');
+            usingWebSpeech = false;
 
-    if (!SpeechRecognition) {
-        addMessage("Sorry! Speech input is not currently available.", "bot");
+            // Load Vosk model if not already loaded
+            if (!voskLoaded) {
+                const loaded = await loadVoskModel();
+                if (!loaded) {
+                    return; // Vosk failed to load
+                }
+            }
+
+            // Now try Vosk
+            await startVoskRecording();
+        }
+    } else {
+        // Already using Vosk
+        if (isRecording) {
+            stopVoskRecording(true);
+        } else {
+            await startVoskRecording();
+        }
+    }
+}
+
+/**
+ * Tries to use Web Speech API for voice input
+ * @returns {Promise<boolean>} True if Web Speech worked, false if should fallback to Vosk
+ */
+async function tryWebSpeech() {
+    return new Promise((resolve) => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
+            resolve(false);
+            return;
+        }
+
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            let hasResolved = false;
+            let noSpeechTimer = null;
+
+            // Set active state
+            micBtn.classList.add('listening');
+
+            // Start no-speech timeout
+            noSpeechTimer = setTimeout(() => {
+                if (!hasResolved) {
+                    console.log('No speech detected in 5 seconds, cancelling...');
+                    recognition.stop();
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        micBtn.classList.remove('listening');
+                        addMessage('No speech detected. Please try again.', 'bot');
+                        resolve(true); // Don't fallback, just inform user
+                    }
+                }
+            }, noSpeechTimeout);
+
+            recognition.onresult = (event) => {
+                // Clear no-speech timer since we got speech
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                const transcript = event.results[0][0].transcript;
+                textInput.value = transcript;
+                isVoiceInput = true;
+                handleSend();
+
+                if (!hasResolved) {
+                    hasResolved = true;
+                    resolve(true);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+
+                // Clear no-speech timer
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                // Reset visual state
+                micBtn.classList.remove('listening');
+
+                if (!hasResolved) {
+                    hasResolved = true;
+                    // If it's a permission error, don't fallback
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        addMessage('Microphone access was denied.', 'bot');
+                        resolve(true); // Don't fallback, user denied permission
+                    } else {
+                        // Any other error (network, no-speech, etc.) triggers fallback
+                        resolve(false); // Fallback to Vosk
+                    }
+                }
+            };
+
+            recognition.onend = () => {
+                // Clear no-speech timer
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                micBtn.classList.remove('listening');
+            };
+
+            recognition.start();
+            console.log('Web Speech recognition started');
+            // Don't resolve here - wait for result or error
+        } catch (error) {
+            console.error('Error starting Web Speech recognition:', error);
+            micBtn.classList.remove('listening');
+            resolve(false);
+        }
+    });
+}
+
+/**
+ * Reset the silence detection timer
+ */
+function resetSilenceTimer() {
+    // Clear existing timer
+    if (silenceTimer) {
+        clearTimeout(silenceTimer);
+    }
+
+    // Set new timer to auto-stop after silence
+    if (isRecording) {
+        silenceTimer = setTimeout(() => {
+            if (isRecording && hasSpeech) {
+                console.log('Silence detected, auto-stopping...');
+                stopVoskRecording(false);
+            }
+        }, silenceTimeout);
+    }
+}
+
+/**
+ * Start Vosk offline speech recognition
+ */
+async function startVoskRecording() {
+    if (!voskRecognizer) {
+        addMessage('Speech input is not available.', 'bot');
         return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    try {
+        // Request microphone access
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                channelCount: 1,
+                sampleRate: 16000
+            }
+        });
 
-    micBtn.classList.add('listening');
+        // Create audio context
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        sourceNode = audioContext.createMediaStreamSource(mediaStream);
+        processorNode = audioContext.createScriptProcessor(4096, 1, 1);
 
-    recognition.start();
+        // Process audio data
+        processorNode.onaudioprocess = (event) => {
+            try {
+                if (isRecording && voskRecognizer) {
+                    voskRecognizer.acceptWaveform(event.inputBuffer);
+                }
+            } catch (e) {
+                console.error('Audio processing error:', e);
+            }
+        };
 
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        textInput.value = transcript;
+        sourceNode.connect(processorNode);
+        processorNode.connect(audioContext.destination);
+
+        isRecording = true;
         isVoiceInput = true;
+        hasSpeech = false;
+        lastSpeechTime = Date.now();
+
+        // Start silence detection timer
+        resetSilenceTimer();
+
+        // Start no-speech timeout
+        noSpeechTimer = setTimeout(() => {
+            if (isRecording && !hasSpeech) {
+                console.log('No speech detected in 5 seconds, cancelling...');
+                stopVoskRecording(true);
+                addMessage('No speech detected. Please try again.', 'bot');
+            }
+        }, noSpeechTimeout);
+
+        // Update mic button state
+        micBtn.classList.add('listening');
+
+        console.log('Vosk recording started');
+    } catch (error) {
+        console.error('Error starting Vosk recording:', error);
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            addMessage('Microphone access was denied.', 'bot');
+        } else {
+            addMessage('Could not access microphone.', 'bot');
+        }
+    }
+}
+
+/**
+ * Stop Vosk offline speech recognition
+ * @param {boolean} cancel - If true, don't send the recognized text
+ */
+function stopVoskRecording(cancel = false) {
+    if (!isRecording) return;
+
+    // Stop timers
+    if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+    }
+    if (noSpeechTimer) {
+        clearTimeout(noSpeechTimer);
+        noSpeechTimer = null;
+    }
+
+    // Stop audio processing
+    if (processorNode) {
+        processorNode.disconnect();
+        processorNode = null;
+    }
+    if (sourceNode) {
+        sourceNode.disconnect();
+        sourceNode = null;
+    }
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+
+    isRecording = false;
+    micBtn.classList.remove('listening');
+
+    // Get final results if not cancelled
+    if (!cancel && voskRecognizer && hasSpeech) {
         handleSend();
-    };
+    }
 
-    recognition.onerror = (event) => {
-        micBtn.classList.remove('listening');
-        addMessage("Sorry! Speech input is not currently available.", "bot");
-        console.error("Speech recognition error:", event.error);
-    };
-
-    recognition.onend = () => {
-        micBtn.classList.remove('listening');
-    };
+    console.log('Vosk recording stopped');
 }
 
 /**
