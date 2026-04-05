@@ -79,6 +79,31 @@ class ChatPlayground {
         this.showCaptions = false; // Track whether to show conversation text
         this.prohibitedTerms = []; // Content moderation terms loaded from file
 
+        // Vosk speech recognition (lazy-loaded fallback)
+        this.voskModel = null;
+        this.voskRecognizer = null;
+        this.voskLoaded = false;
+        this.voskLoadingFailed = false;
+        this.isRecording = false;
+        this.mediaStream = null;
+        this.audioContext = null;
+        this.processorNode = null;
+        this.sourceNode = null;
+        this.silenceTimer = null;
+        this.noSpeechTimer = null;
+        this.lastSpeechTime = null;
+        this.hasSpeech = false;
+        this.voskTranscript = ''; // Buffer for Vosk transcript
+        this.voskPartialTranscript = ''; // Buffer for partial results
+        this.silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
+        this.noSpeechTimeoutDuration = 5000; // Cancel after 5 seconds of no speech
+        this.usingWebSpeech = true; // Try Web Speech API first
+
+        // Calculate speech model path relative to the base path
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
+        this.speechModelUrl = `${parentPath}/speech-model/speech-model.tar.gz`;
+
         this.loadVoiceHealthCache();
 
         // Initialize DOM element registry
@@ -662,6 +687,9 @@ class ChatPlayground {
                 previewBtn.disabled = true;
             }
 
+            // Reset to Web Speech API for next time
+            this.usingWebSpeech = true;
+
             // Clear any messages that might have been added
             if (chatMessages) {
                 const messages = chatMessages.querySelectorAll('.message');
@@ -1092,6 +1120,27 @@ class ChatPlayground {
             voiceErrorModal.addEventListener('click', (e) => {
                 if (e.target === voiceErrorModal) {
                     this.closeVoiceInputErrorModal();
+                }
+            });
+        }
+
+        // Speech Model Modal event listeners
+        const speechModelModal = document.getElementById('speech-model-modal');
+        const speechModelCancelBtn = document.getElementById('speech-model-cancel');
+        const speechModelRetryBtn = document.getElementById('speech-model-retry');
+
+        if (speechModelCancelBtn) {
+            speechModelCancelBtn.addEventListener('click', () => this.cancelSpeechModelLoading());
+        }
+
+        if (speechModelRetryBtn) {
+            speechModelRetryBtn.addEventListener('click', () => this.retrySpeechInput());
+        }
+
+        if (speechModelModal) {
+            speechModelModal.addEventListener('click', (e) => {
+                if (e.target === speechModelModal) {
+                    // Don't close on overlay click - require explicit button click
                 }
             });
         }
@@ -2760,6 +2809,13 @@ class ChatPlayground {
         this.recognition.onerror = (event) => {
             this.isListening = false;
             console.error('Speech recognition error:', event.error);
+
+            // In voice mode, try Vosk failover for network errors or other failures
+            if (this.voiceMode && event.error !== 'aborted' && event.error !== 'not-allowed') {
+                this.handleSpeechRecognitionFailure(event.error);
+                return;
+            }
+
             this.resetVoiceUI();
 
             if (this.voiceMode && event.error !== 'aborted') {
@@ -2769,6 +2825,170 @@ class ChatPlayground {
 
             this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
         };
+    }
+
+    async handleSpeechRecognitionFailure(errorCode) {
+        // Permission denied - show error modal, don't fallback
+        if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+            this.resetVoiceUI();
+            this.openVoiceInputErrorModal(errorCode);
+            return;
+        }
+
+        // Try Vosk failover - STOP current interaction and switch to Vosk mode
+        console.log('Web Speech API failed, switching to Vosk mode...');
+        this.usingWebSpeech = false;
+
+        // Load Vosk model if not already loaded
+        if (!this.voskLoaded && !this.voskLoadingFailed) {
+            await this.loadVoskModel();
+            // Modal is now showing with Cancel/Retry buttons
+            // User will decide whether to retry or cancel
+        } else if (this.voskLoaded) {
+            // Vosk already loaded from a previous failover
+            // Show a simple message and let them retry manually
+            this.resetVoiceUI();
+            this.showToast('Switched to offline speech recognition. Click Start Session to continue.');
+        } else {
+            // Vosk failed to load previously
+            this.resetVoiceUI();
+            this.openVoiceInputErrorModal(errorCode);
+        }
+    }
+
+    async loadVoskModel() {
+        if (this.voskLoaded || this.voskLoadingFailed) {
+            return this.voskLoaded;
+        }
+
+        try {
+            console.log('Loading Vosk speech model from', this.speechModelUrl);
+
+            if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+                console.warn('Vosk library not loaded');
+                this.voskLoadingFailed = true;
+                return false;
+            }
+
+            // Show modal
+            this.openSpeechModelModal();
+
+            this.voskModel = await Vosk.createModel(this.speechModelUrl);
+            this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
+
+            // Set up recognizer event handlers
+            this.voskRecognizer.on("result", (message) => {
+                const result = message.result;
+                if (result && result.text) {
+                    // Clear no-speech timer since we got speech
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    // Append the recognized text to a temporary buffer
+                    if (!this.voskTranscript) {
+                        this.voskTranscript = '';
+                    }
+                    this.voskTranscript += (this.voskTranscript ? " " : "") + result.text;
+                    this.hasSpeech = true;
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskRecognizer.on("partialresult", (message) => {
+                // Reset silence timer on partial results too
+                const result = message.result;
+                if (result && result.partial && result.partial.trim()) {
+                    // Clear no-speech timer on partial results
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    // Mark that we have speech so auto-stop can work
+                    this.hasSpeech = true;
+                    // Store the partial transcript as fallback
+                    this.voskPartialTranscript = result.partial;
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskLoaded = true;
+            console.log('Vosk speech model loaded successfully');
+
+            // Update modal to show ready state
+            this.updateSpeechModelModal('Offline speech model ready!', true);
+
+            return true;
+        } catch (error) {
+            console.error('Failed to load Vosk model:', error);
+            this.voskLoadingFailed = true;
+            this.updateSpeechModelModal('Failed to load offline speech model. Voice input is unavailable.', false);
+            return false;
+        }
+    }
+
+    openSpeechModelModal() {
+        const modal = document.getElementById('speech-model-modal');
+        const status = document.getElementById('speech-model-status');
+        const progress = document.getElementById('speech-model-progress');
+        const retryBtn = document.getElementById('speech-model-retry');
+
+        if (!modal) return;
+
+        if (status) {
+            status.textContent = 'Loading offline speech model... This may take a moment.';
+        }
+
+        if (progress) {
+            progress.style.width = '50%'; // Indeterminate progress
+        }
+
+        if (retryBtn) {
+            retryBtn.disabled = true;
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    updateSpeechModelModal(message, enableRetry) {
+        const status = document.getElementById('speech-model-status');
+        const progress = document.getElementById('speech-model-progress');
+        const retryBtn = document.getElementById('speech-model-retry');
+
+        if (status) {
+            status.textContent = message;
+        }
+
+        if (progress) {
+            progress.style.width = enableRetry ? '100%' : '0%';
+        }
+
+        if (retryBtn) {
+            retryBtn.disabled = !enableRetry;
+        }
+    }
+
+    closeSpeechModelModal() {
+        const modal = document.getElementById('speech-model-modal');
+        if (!modal) return;
+        modal.style.display = 'none';
+    }
+
+    cancelSpeechModelLoading() {
+        this.closeSpeechModelModal();
+        // Return to ready state - user can click Start Session when ready
+        this.resetVoiceUI();
+    }
+
+    async retrySpeechInput() {
+        this.closeSpeechModelModal();
+
+        // Start a NEW interaction using Vosk
+        await this.startSpeechRecognition();
     }
 
     openVoiceInputErrorModal(errorCode = '') {
@@ -2819,26 +3039,35 @@ class ChatPlayground {
         this.handleSpokenInput(typedPrompt);
     }
 
-    startVoiceInput() {
-        if (!this.recognition) {
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_NOT_AVAILABLE);
+    async startVoiceInput() {
+        // If already listening, stop
+        if (this.isListening || this.isRecording) {
+            this.stopSpeechRecognition(true);
             return;
         }
 
-        if (this.isListening) {
-            try {
-                this.recognition.stop();
-            } catch (error) {
-                console.error('Error stopping speech recognition:', error);
-            }
-            return;
-        }
+        // Start speech recognition using the appropriate engine
+        await this.startSpeechRecognition();
+    }
 
-        // Update UI
+    async startSpeechRecognition() {
+        // Setup common listening UI
+        this.setupListeningUI();
+
+        // Use the appropriate speech recognition engine
+        if (this.usingWebSpeech) {
+            await this.startWebSpeechRecognition();
+        } else {
+            await this.startVoskRecognition();
+        }
+    }
+
+    setupListeningUI() {
         const startBtn = document.getElementById('voice-start-btn');
         const cancelBtn = document.getElementById('voice-cancel-btn');
         const ccBtn = document.getElementById('voice-cc-btn');
         const chatIcon = document.querySelector('.voice-chat-icon');
+        const voiceWelcome = document.getElementById('voice-welcome');
 
         if (startBtn) {
             startBtn.style.display = 'none';
@@ -2859,10 +3088,17 @@ class ChatPlayground {
         this.updateMessageVisibility();
 
         // Update welcome message
-        const voiceWelcome = document.getElementById('voice-welcome');
         if (voiceWelcome) {
             voiceWelcome.querySelector('h3').textContent = 'Listening...';
             voiceWelcome.querySelector('p').textContent = 'Speak now...';
+        }
+    }
+
+    async startWebSpeechRecognition() {
+        if (!this.recognition) {
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_NOT_AVAILABLE);
+            this.resetVoiceUI();
+            return;
         }
 
         try {
@@ -2883,7 +3119,200 @@ class ChatPlayground {
         }
     }
 
+    async startVoskRecognition() {
+        // Ensure Vosk is loaded
+        if (!this.voskLoaded) {
+            if (!this.voskLoadingFailed) {
+                const loaded = await this.loadVoskModel();
+                if (!loaded) {
+                    this.resetVoiceUI();
+                    this.showToast('Voice input is unavailable.');
+                    return;
+                }
+            } else {
+                this.resetVoiceUI();
+                this.showToast('Voice input is unavailable.');
+                return;
+            }
+        }
+
+        if (!this.voskRecognizer) {
+            this.showToast('Speech input is not available.');
+            this.resetVoiceUI();
+            return;
+        }
+
+        try {
+            // Request microphone access
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    channelCount: 1,
+                    sampleRate: 16000
+                }
+            });
+
+            // Create audio context
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+            this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+            // Process audio data
+            this.processorNode.onaudioprocess = (event) => {
+                try {
+                    if (this.isRecording && this.voskRecognizer) {
+                        this.voskRecognizer.acceptWaveform(event.inputBuffer);
+                    }
+                } catch (e) {
+                    console.error('Audio processing error:', e);
+                }
+            };
+
+            this.sourceNode.connect(this.processorNode);
+            this.processorNode.connect(this.audioContext.destination);
+
+            this.isRecording = true;
+            this.hasSpeech = false;
+            this.voskTranscript = '';
+            this.voskPartialTranscript = '';
+
+            // Start no-speech timeout
+            this.noSpeechTimer = setTimeout(() => {
+                if (this.isRecording && !this.hasSpeech) {
+                    console.log('No speech detected in 5 seconds, cancelling...');
+                    this.stopSpeechRecognition(true);
+                    this.showToast('No speech detected. Please try again.');
+                }
+            }, this.noSpeechTimeoutDuration);
+
+            // Start silence timer
+            this.resetSilenceTimer();
+
+        } catch (error) {
+            console.error('Error starting Vosk recording:', error);
+            this.isRecording = false;
+            this.resetVoiceUI();
+
+            if (error.name === 'NotAllowedError') {
+                this.showToast('Microphone access was denied.');
+            } else {
+                this.showToast('Error accessing microphone.');
+            }
+        }
+    }
+
+    stopSpeechRecognition(cancelled = false) {
+        // Stop Web Speech API if active
+        if (this.isListening && this.recognition) {
+            try {
+                this.recognition.stop();
+            } catch (error) {
+                console.error('Error stopping Web Speech recognition:', error);
+            }
+            this.isListening = false;
+        }
+
+        // Stop Vosk if active
+        if (this.isRecording) {
+            this.stopVoskRecording(cancelled);
+        }
+
+        // If cancelled and no transcript processing will happen, reset UI
+        if (cancelled && !this.isRecording) {
+            this.resetVoiceUI();
+        }
+    }
+
+    stopVoskRecording(cancelled = false) {
+        this.isRecording = false;
+
+        console.log('stopVoskRecording called:', { cancelled, hasSpeech: this.hasSpeech, transcript: this.voskTranscript, partial: this.voskPartialTranscript });
+
+        // Clear timers
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+        if (this.noSpeechTimer) {
+            clearTimeout(this.noSpeechTimer);
+            this.noSpeechTimer = null;
+        }
+
+        // Disconnect audio nodes first
+        if (this.processorNode) {
+            this.processorNode.disconnect();
+            this.processorNode = null;
+        }
+        if (this.sourceNode) {
+            this.sourceNode.disconnect();
+            this.sourceNode = null;
+        }
+
+        // Stop media stream
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+
+        // Process transcript if we have speech and not cancelled
+        if (!cancelled && this.hasSpeech) {
+            // Use final transcript if available, otherwise use partial as fallback
+            let transcript = this.voskTranscript.trim();
+            if (!transcript && this.voskPartialTranscript) {
+                transcript = this.voskPartialTranscript.trim();
+            }
+
+            this.voskTranscript = '';
+            this.voskPartialTranscript = '';
+
+            if (transcript) {
+                console.log('Processing transcript:', transcript);
+
+                // Close audio context AFTER we have the transcript, 
+                // with a small delay to ensure audio cleanup doesn't interfere
+                setTimeout(() => {
+                    if (this.audioContext) {
+                        this.audioContext.close();
+                        this.audioContext = null;
+                    }
+                }, 100);
+
+                this.handleSpokenInput(transcript);
+                return; // Don't reset UI yet, handleSpokenInput will handle it
+            }
+        }
+
+        // Close audio context if we're not processing transcript
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+
+        // Reset UI if cancelled or no speech
+        this.resetVoiceUI();
+    }
+
+    resetSilenceTimer() {
+        // Clear existing timer
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+        }
+
+        // Set new timer to auto-stop after silence
+        if (this.isRecording) {
+            this.silenceTimer = setTimeout(() => {
+                if (this.isRecording && this.hasSpeech) {
+                    console.log('Silence detected, auto-stopping...');
+                    this.stopSpeechRecognition(false);
+                }
+            }, this.silenceTimeout);
+        }
+    }
+
     handleSpokenInput(transcript) {
+        console.log('handleSpokenInput called:', transcript);
+
         // Validate and sanitize transcript
         if (!transcript || typeof transcript !== 'string') {
             console.error('Invalid transcript received');
@@ -2974,17 +3403,22 @@ class ChatPlayground {
     }
 
     async generateVoiceResponse(userMessage) {
+        console.log('generateVoiceResponse started for:', userMessage);
         this.isGenerating = true;
+
+        // Append instruction for concise response in voice mode
+        const voiceModeUserMessage = userMessage + '\nAnswer in a single, concise sentence.';
 
         try {
             let responseText = '';
 
             if (this.webllmAvailable && this.engine) {
                 // Use WebLLM
+                console.log('Using WebLLM for response generation');
                 const messages = [
                     { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
                     ...this.conversationHistory,
-                    { role: 'user', content: userMessage }
+                    { role: 'user', content: voiceModeUserMessage }
                 ];
 
                 const completion = await this.engine.chat.completions.create({
@@ -3004,9 +3438,11 @@ class ChatPlayground {
                         responseText += content;
                     }
                 }
+                console.log('WebLLM streaming complete, response length:', responseText.length);
             } else if (this.usingWllama && this.wllama) {
                 // Use wllama fallback
-                const prompt = this.buildPrompt(userMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
+                console.log('Using Wllama for response generation');
+                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
 
                 this.currentAbortController = new AbortController();
 
@@ -3021,15 +3457,20 @@ class ChatPlayground {
                 });
 
                 responseText = result.trim();
+                console.log('Wllama completion finished, response length:', responseText.length);
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }
+
+            console.log('Response generation complete, length:', responseText.length);
 
             // Add assistant message to chat (respecting current CC visibility)
             const assistantMessage = this.addMessage('assistant', responseText);
             if (assistantMessage && !this.showCaptions) {
                 assistantMessage.classList.add('hidden');
             }
+
+            console.log('Updating UI to Speaking state...');
 
             // Update UI to "Speaking" state
             const voiceWelcome = document.getElementById('voice-welcome');
@@ -3038,12 +3479,15 @@ class ChatPlayground {
             if (voiceWelcome) {
                 voiceWelcome.querySelector('h3').textContent = 'Speaking';
                 voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+                console.log('Updated voiceWelcome to Speaking');
             }
 
             // Start pulsing animation while speaking
             if (chatIcon) {
                 chatIcon.style.animation = 'pulse 1s infinite';
             }
+
+            console.log('About to call speakResponse...');
 
             // Speak the response
             this.speakResponse(responseText);
@@ -3053,60 +3497,92 @@ class ChatPlayground {
                 { role: 'user', content: userMessage },
                 { role: 'assistant', content: responseText }
             );
+
+            console.log('generateVoiceResponse completed successfully');
         } catch (error) {
             console.error('Error generating response:', error);
+            console.error('Error stack:', error.stack);
             this.showToast('Error generating response. Please try again.');
             this.resetVoiceUI();
         } finally {
             this.isGenerating = false;
+            console.log('generateVoiceResponse finally block, isGenerating set to false');
         }
     }
 
     speakResponse(text) {
+        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable });
+
         if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
+            console.log('TTS disabled or voices unavailable, skipping speech');
             this.onSpeechComplete();
             return;
         }
 
         if (!('speechSynthesis' in window)) {
+            console.log('speechSynthesis not available');
             this.onSpeechComplete();
             return;
         }
 
+        // Cancel any ongoing speech and wait a bit for cleanup
         speechSynthesis.cancel();
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        let selectedVoice = null;
+        // Small delay to let speechSynthesis cleanup complete
+        setTimeout(() => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            let selectedVoice = null;
 
-        if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-            const voices = speechSynthesis.getVoices();
-            selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
+            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                const voices = speechSynthesis.getVoices();
+                selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
             }
-        }
 
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        utterance.volume = 1;
+            utterance.rate = 1;
+            utterance.pitch = 1;
+            utterance.volume = 1;
 
-        this.isSpeaking = true;
+            this.isSpeaking = true;
 
-        utterance.onend = () => {
-            this.isSpeaking = false;
-            this.onSpeechComplete();
-        };
+            // Safety timeout in case onend never fires (estimate based on text length)
+            const estimatedDuration = (text.length / 15) * 1000 + 5000; // ~15 chars per second + 5 sec buffer
+            const safetyTimeout = setTimeout(() => {
+                console.warn('Speech synthesis timeout - forcing completion');
+                if (this.isSpeaking) {
+                    speechSynthesis.cancel();
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                }
+            }, estimatedDuration);
 
-        utterance.onerror = (event) => {
-            if (selectedVoice && this.shouldMarkVoiceAsFailed(event?.error)) {
-                this.updateVoiceHealthStatus(selectedVoice, false);
-                this.populateVoices();
-            }
-            this.isSpeaking = false;
-            this.onSpeechComplete();
-        };
+            utterance.onstart = () => {
+                console.log('TTS utterance started');
+            };
 
-        speechSynthesis.speak(utterance);
+            utterance.onend = () => {
+                console.log('TTS utterance ended normally');
+                clearTimeout(safetyTimeout);
+                this.isSpeaking = false;
+                this.onSpeechComplete();
+            };
+
+            utterance.onerror = (event) => {
+                console.error('TTS utterance error:', event);
+                clearTimeout(safetyTimeout);
+                if (selectedVoice && this.shouldMarkVoiceAsFailed(event?.error)) {
+                    this.updateVoiceHealthStatus(selectedVoice, false);
+                    this.populateVoices();
+                }
+                this.isSpeaking = false;
+                this.onSpeechComplete();
+            };
+
+            console.log('Speaking utterance...');
+            speechSynthesis.speak(utterance);
+        }, 50);
     }
 
     onSpeechComplete() {
@@ -3185,14 +3661,11 @@ class ChatPlayground {
     }
 
     cancelVoiceInteraction() {
-        // Stop speech recognition
-        if (this.recognition && this.isListening) {
-            try {
-                this.recognition.stop();
-            } catch (error) {
-                console.error('Error stopping recognition:', error);
-            }
-        }
+        // Stop speech recognition (unified method handles both engines)
+        this.stopSpeechRecognition(true);
+
+        // Close speech model modal if open
+        this.closeSpeechModelModal();
 
         // Stop speech synthesis
         if (speechSynthesis) {

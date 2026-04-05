@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js"></script>
 </head>
 
 <body>
@@ -427,6 +428,30 @@
                     aria-label="Cancel typing and close dialog">Cancel</button>
                 <button class="btn-primary" id="voice-input-error-submit" aria-label="Submit typed message"
                     disabled>Send typed message</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speech Model Loading Modal -->
+    <div class="modal-overlay" id="speech-model-modal" style="display: none;" role="dialog" aria-modal="true"
+        aria-labelledby="speech-model-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="speech-model-title">Loading Speech Model</h2>
+            </div>
+            <div class="modal-body">
+                <p id="speech-model-status">Initializing offline speech recognition... This may take a moment.</p>
+                <div class="progress-container" style="margin-top: 20px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="speech-model-progress" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="speech-model-cancel"
+                    aria-label="Cancel loading and close dialog">Cancel</button>
+                <button class="btn-primary" id="speech-model-retry" aria-label="Retry voice input"
+                    disabled>Retry</button>
             </div>
         </div>
     </div>
