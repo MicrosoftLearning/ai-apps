@@ -437,10 +437,11 @@
         aria-labelledby="speech-model-title">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="speech-model-title">Loading Speech Model</h2>
+                <h2 id="speech-model-title">Loading offline speech model</h2>
             </div>
             <div class="modal-body">
-                <p id="speech-model-status">Initializing offline speech recognition... This may take a moment.</p>
+                <p class="voice-fallback-description">A speech recognition error prevented voice input.</p>
+                <p id="speech-model-status">Initializing offline speech recognition mode... This may take a moment.</p>
                 <div class="progress-container" style="margin-top: 20px;">
                     <div class="progress-bar">
                         <div class="progress-fill" id="speech-model-progress" style="width: 0%;"></div>
