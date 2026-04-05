@@ -41,7 +41,7 @@ let usingWebSpeech = true; // Try Web Speech API first
 // Calculate speech model path relative to the base path
 const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
 const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
-this.speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
