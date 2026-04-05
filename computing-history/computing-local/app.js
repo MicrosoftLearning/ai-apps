@@ -40,7 +40,8 @@ let usingWebSpeech = true; // Try Web Speech API first
 
 // Calculate speech model path relative to the base path
 const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
 // Vision model paths
