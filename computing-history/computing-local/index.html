@@ -45,8 +45,8 @@
                 </div>
                 <div class="model-status" id="smollmStatus">
                     <span class="status-icon" aria-hidden="true">⏳</span>
-                    <span class="status-text">SmolLM2 (Text Generation)</span>
-                    <span class="status-progress" id="smollmProgress" aria-label="SmolLM2 loading progress">0%</span>
+                    <span class="status-text" id="smollmStatusText">Text Generation Model</span>
+                    <span class="status-progress" id="smollmProgress" aria-label="Text model loading progress">0%</span>
                 </div>
             </div>
         </div>
@@ -61,8 +61,17 @@
             <div class="chat-header">
                 <button class="view-instructions-btn" id="aboutBtn" title="About this app" aria-label="About this app"
                     tabindex="0">&#128712;</button>
-                <button class="view-instructions-btn" id="viewDetailsBtn" title="View app details"
-                    aria-label="View app details" tabindex="1">&#128195;</button>
+                <button class="view-instructions-btn" id="viewDetailsBtn" title="View agent configuration"
+                    aria-label="View agent configuration" tabindex="1">&#128195;</button>
+                <div class="mode-toggle-container" role="group" aria-labelledby="mode-toggle-label">
+                    <label class="mode-toggle-label" id="mode-toggle-label">
+                        <span class="toggle-icon" aria-hidden="true">&#128306;</span>
+                        <input type="checkbox" id="mode-toggle" class="mode-toggle-input" role="switch"
+                            aria-label="Toggle between GPU and CPU mode" aria-checked="false">
+                        <span class="mode-toggle-slider" aria-hidden="true"></span>
+                        <span class="mode-toggle-text" id="mode-toggle-text" aria-live="polite">GPU</span>
+                    </label>
+                </div>
                 <button class="restart-btn" id="restartBtn" title="Restart conversation"
                     aria-label="Restart conversation" tabindex="2">💬</button>
             </div>
@@ -106,7 +115,7 @@
                         <p>This app is an educational example designed to help you explore examples of AI capabilities,
                             including generative AI chat, image classification, and speech recognition.</p>
                         <p style="margin-top: 1em;">It runs AI models entirely in your browser using TensorFlow.js and
-                            Wllama, with no cloud services required.</p>
+                            WebLLM or Wllama, with no cloud services required.</p>
                     </div>
                     <div class="modal-section">
                         <h3>Guided Tour</h3>
@@ -128,7 +137,7 @@
                 <div class="modal-body">
                     <div class="modal-section">
                         <h3>Model</h3>
-                        <p class="modal-value">SMOLLM2 (running locally)</p>
+                        <p class="modal-value" id="modalModelName">Loading...</p>
                     </div>
                     <div class="modal-section">
                         <h3>Instructions</h3>
@@ -143,6 +152,7 @@
             </div>
         </div>
     </div>
+    <p class="model-footer">Powered by Microsoft Phi-3 (CPU fallback to SmolLM2)</p>
     <script type="module" src="app.js"></script>
 </body>
 

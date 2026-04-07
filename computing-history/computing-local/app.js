@@ -1,3 +1,4 @@
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
 import { Wllama } from '@wllama/wllama';
 
 const chatContainer = document.getElementById('chat-messages');
@@ -6,6 +7,8 @@ const sendBtn = document.getElementById('send-btn');
 const uploadBtn = document.getElementById('upload-btn');
 const imageUpload = document.getElementById('image-upload');
 const micBtn = document.getElementById('mic-btn');
+const modeToggle = document.getElementById('mode-toggle');
+const modeToggleText = document.getElementById('mode-toggle-text');
 
 // State
 let model = null;
@@ -14,11 +17,16 @@ let pendingFile = null;
 let isVoiceInput = false; // Tracks if current message was spoken
 let isResponding = false; // Tracks if bot is currently responding
 let shouldStopResponse = false; // Flag to cancel ongoing response
-let wllama = null; // Wllama instance for text generation
+let engine = null; // WebLLM engine for GPU mode
+let wllama = null; // Wllama instance for CPU mode
 let wllamaReady = false; // Track if wllama is initialized
 let mobilenetReady = false; // Track if MobileNet is initialized
 let conversationHistory = []; // Track conversation for context
 let inappropriateWords = []; // Loaded from moderation file
+let webGPUAvailable = false; // Track if WebGPU is available
+let usingWllama = false; // Track which engine is active
+let currentAbortController = null; // Track abort controller for wllama
+let currentStream = null; // Track current streaming completion
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -38,11 +46,9 @@ const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 
-// Calculate speech model path relative to the base path
-const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
-const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
-const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+// Calculate speech model path - relative to the computing-local folder
+// We need to go up 2 directories to reach the ai-apps root, then into speech-model
+const speechModelUrl = '../../speech-model/speech-model.tar.gz';
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
@@ -98,23 +104,50 @@ function buildClassInfoPrompt(classIndex) {
 }
 
 /**
- * Initializes the application by loading both ML models in parallel
+ * Checks if WebGPU is available in the browser
+ */
+function checkWebGPUSupport() {
+    if (!navigator.gpu) {
+        console.log('WebGPU not supported in this browser');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Initializes the application by loading ML models and AI engines
  */
 async function init() {
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
     updateLoadingStatus('smollm', 'loading', 'Loading...');
 
-    // Load both models in parallel
+    // Load MobileNet and moderation in parallel
     const mobilenetPromise = loadModel();
-    const wllamaPromise = initWllama();
     const moderationPromise = loadInappropriateWords();
 
     try {
-        await Promise.all([mobilenetPromise, wllamaPromise, moderationPromise]);
+        await Promise.all([mobilenetPromise, moderationPromise]);
+
+        // Check for WebGPU support
+        const hasWebGPU = checkWebGPUSupport();
+
+        if (!hasWebGPU) {
+            console.log('WebGPU not available, using wllama (CPU mode)');
+            await initWllama();
+        } else {
+            // Try WebLLM first (faster with GPU)
+            try {
+                await initializeWebLLM();
+            } catch (error) {
+                console.log('WebLLM initialization failed, falling back to wllama');
+                await initWllama();
+            }
+        }
 
         // Both models loaded successfully
         hideLoadingOverlay();
+        updateModeToggle();
     } catch (e) {
         console.error("Initialization error:", e);
         // Show error but still try to hide overlay after a delay
@@ -122,6 +155,37 @@ async function init() {
             hideLoadingOverlay();
             addMessage(`Error loading models: ${e.message}. Some features may be unavailable.`, "bot");
         }, 2000);
+    }
+}
+
+/**
+ * Initializes WebLLM for GPU mode
+ */
+async function initializeWebLLM() {
+    try {
+        updateModelName('Phi-3-mini (WebGPU)');
+        updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
+
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+
+        engine = await webllm.CreateMLCEngine(
+            targetModelId,
+            {
+                initProgressCallback: (progress) => {
+                    const percentage = Math.round(progress.progress * 100);
+                    updateLoadingStatus('smollm', 'loading', `${percentage}%`);
+                }
+            }
+        );
+
+        updateLoadingStatus('smollm', 'ready', '100%');
+        console.log('WebLLM engine initialized successfully');
+        webGPUAvailable = true;
+        usingWllama = false;
+
+    } catch (error) {
+        console.error('Failed to initialize WebLLM:', error);
+        throw error; // Re-throw to trigger fallback
     }
 }
 
@@ -291,13 +355,24 @@ async function loadModel() {
 }
 
 /**
- * Initializes the Wllama language model for text generation
+ * Initializes the Wllama language model for CPU mode text generation
  * @throws {Error} If Wllama initialization fails
  */
-async function initWllama() {
+async function initWllama(progressCallback = null) {
     try {
-        console.log("Initializing wllama...");
-        updateLoadingStatus('smollm', 'loading', '10%');
+        // Check if already initialized
+        if (wllama) {
+            console.log('Wllama already initialized');
+            return;
+        }
+
+        const isLazyLoad = webGPUAvailable; // If WebGPU is available, this is a lazy load
+
+        if (!isLazyLoad) {
+            console.log("Initializing wllama...");
+            updateModelName('SmolLM2-360M (CPU)');
+            updateLoadingStatus('smollm', 'loading', '10%');
+        }
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
@@ -305,11 +380,17 @@ async function initWllama() {
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
 
-        const progressCallback = ({ loaded, total }) => {
-            const progress = Math.round((loaded / total) * 100);
-            const adjustedProgress = Math.round(20 + (progress * 0.8)); // 20% to 100%
-            updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
-            console.log(`Loading wllama: ${progress}%`);
+        const internalProgressCallback = ({ loaded, total }) => {
+            const progress = loaded / total;
+            if (!isLazyLoad) {
+                const percentage = Math.round((progress * 100));
+                const adjustedProgress = Math.round(20 + (percentage * 0.8)); // 20% to 100%
+                updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
+                console.log(`Loading wllama: ${percentage}%`);
+            }
+            if (progressCallback) {
+                progressCallback(progress);
+            }
         };
 
         // Try multithreaded (4 threads) first, fall back to single-threaded
@@ -319,7 +400,9 @@ async function initWllama() {
 
         try {
             wllama = new Wllama(CONFIG_PATHS);
-            updateLoadingStatus('smollm', 'loading', '20%');
+            if (!isLazyLoad) {
+                updateLoadingStatus('smollm', 'loading', '20%');
+            }
 
             await wllama.loadModelFromHF(
                 'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
@@ -327,14 +410,16 @@ async function initWllama() {
                 {
                     n_ctx: 768,
                     n_threads: preferredThreads,
-                    progressCallback
+                    progressCallback: internalProgressCallback
                 }
             );
             console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
         } catch (multiErr) {
             if (preferredThreads > 1) {
                 console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                updateLoadingStatus('smollm', 'loading', '20%');
+                if (!isLazyLoad) {
+                    updateLoadingStatus('smollm', 'loading', '20%');
+                }
 
                 wllama = new Wllama(CONFIG_PATHS);
                 await wllama.loadModelFromHF(
@@ -343,7 +428,7 @@ async function initWllama() {
                     {
                         n_ctx: 768,
                         n_threads: 1,
-                        progressCallback
+                        progressCallback: internalProgressCallback
                     }
                 );
                 console.log("Wllama initialized successfully with 1 thread (fallback)");
@@ -353,12 +438,29 @@ async function initWllama() {
         }
 
         wllamaReady = true;
-        updateLoadingStatus('smollm', 'ready', '100%');
+        if (!isLazyLoad) {
+            updateLoadingStatus('smollm', 'ready', '100%');
+            webGPUAvailable = false;
+            usingWllama = true;
+        }
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
-        updateLoadingStatus('smollm', 'error', 'Failed');
+        if (!webGPUAvailable) {
+            updateLoadingStatus('smollm', 'error', 'Failed');
+        }
         wllamaReady = false;
         throw error;
+    }
+}
+
+/**
+ * Updates the model name in the loading status
+ * @param {string} modelName - The name of the model being loaded
+ */
+function updateModelName(modelName) {
+    const statusTextElement = document.getElementById('smollmStatusText');
+    if (statusTextElement) {
+        statusTextElement.textContent = modelName;
     }
 }
 
@@ -708,32 +810,79 @@ async function handleSend() {
         return;
     }
 
-    showTyping();
+    // For GPU mode with streaming, create message first
+    if (!usingWllama && webGPUAvailable && engine) {
+        const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+        startResponse();
 
-    try {
-        const summary = await generateComputingInfo(text);
-        removeTyping();
-
-        if (checkStopResponse()) return;
-
-        if (summary) {
-            addMessage(`${summary}`, "bot");
-            // Store in conversation history (truncated to first sentence)
-            conversationHistory.push({
-                user: truncateToFirstSentence(text),
-                assistant: truncateToFirstSentence(summary)
+        try {
+            const summary = await generateComputingInfo(text, (chunk) => {
+                if (bubble && chunk) {
+                    const currentText = bubble.textContent || '';
+                    setBubbleContent(bubble, currentText + chunk);
+                    scrollToBottom();
+                }
             });
-            // Keep only last 2 exchanges to avoid context overflow
-            if (conversationHistory.length > 2) {
-                conversationHistory.shift();
+
+            if (checkStopResponse()) {
+                removeTyping();
+                return;
             }
-        } else {
-            addMessage(`I'm sorry. I don't know about that topic.`, "bot");
+
+            if (summary) {
+                // Store in conversation history
+                conversationHistory.push({
+                    user: truncateToFirstSentence(text),
+                    assistant: truncateToFirstSentence(summary)
+                });
+                if (conversationHistory.length > 2) {
+                    conversationHistory.shift();
+                }
+
+                // Handle voice output if needed
+                if (isVoiceInput) {
+                    speakText(bubble);
+                    isVoiceInput = false;
+                } else {
+                    endResponse();
+                }
+            } else {
+                setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
+                endResponse();
+            }
+        } catch (e) {
+            if (checkStopResponse()) return;
+            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + e.message);
+            endResponse();
         }
-    } catch (e) {
-        removeTyping();
-        if (checkStopResponse()) return;
-        addMessage("Sorry, I had trouble searching via text. " + e.message, "bot");
+    } else {
+        // CPU mode without streaming - use existing approach
+        showTyping();
+
+        try {
+            const summary = await generateComputingInfo(text);
+            removeTyping();
+
+            if (checkStopResponse()) return;
+
+            if (summary) {
+                addMessage(`${summary}`, "bot");
+                // Store in conversation history
+                conversationHistory.push({
+                    user: truncateToFirstSentence(text),
+                    assistant: truncateToFirstSentence(summary)
+                });
+                if (conversationHistory.length > 2) {
+                    conversationHistory.shift();
+                }
+            } else {
+                addMessage(`I'm sorry. I don't know about that topic.`, "bot");
+            }
+        } catch (e) {
+            removeTyping();
+            if (checkStopResponse()) return;
+            addMessage("Sorry, I had trouble searching via text. " + e.message, "bot");
+        }
     }
 }
 
@@ -1061,29 +1210,76 @@ async function performClassification(imgEl, userText = "") {
 
             // AI-generated info for classes 0, 1, 2, 3
             if ([0, 1, 2, 3].includes(classIndex)) {
-                showTyping();
-                try {
-                    const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
-                    const infoPrompt = buildClassInfoPrompt(classIndex);
-                    const summary = await generateComputingInfo(infoPrompt || topMatch.className);
-                    if (checkStopResponse()) {
-                        removeTyping();
-                        return;
-                    }
-                    if (summary) {
-                        reply += `<br>${summary}`;
-                        conversationHistory.push({
-                            user: historyUserPrompt,
-                            assistant: truncateToFirstSentence(summary)
+                // For GPU mode with streaming, add message and stream into it
+                if (!usingWllama && webGPUAvailable && engine) {
+                    const { bubble } = addMessage(reply, "bot", null, { deferCompletion: true });
+                    startResponse();
+
+                    try {
+                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
+                        const infoPrompt = buildClassInfoPrompt(classIndex);
+
+                        let streamedText = '';
+                        const summary = await generateComputingInfo(infoPrompt || topMatch.className, (chunk) => {
+                            if (bubble && chunk) {
+                                streamedText += chunk;
+                                setBubbleContent(bubble, reply + `<br>` + streamedText);
+                                scrollToBottom();
+                            }
                         });
-                        if (conversationHistory.length > 2) {
-                            conversationHistory.shift();
+
+                        if (checkStopResponse()) {
+                            return;
                         }
+
+                        if (summary) {
+                            conversationHistory.push({
+                                user: historyUserPrompt,
+                                assistant: truncateToFirstSentence(summary)
+                            });
+                            if (conversationHistory.length > 2) {
+                                conversationHistory.shift();
+                            }
+                        }
+
+                        // Handle voice output if needed
+                        if (isVoiceInput) {
+                            speakText(bubble);
+                            isVoiceInput = false;
+                        } else {
+                            endResponse();
+                        }
+                    } catch (e) {
+                        console.warn("Info generation failed", e);
+                        endResponse();
                     }
-                } catch (e) {
-                    console.warn("Info generation failed", e);
-                } finally {
-                    removeTyping();
+                    return; // Exit early since we already added the message
+                } else {
+                    // CPU mode - use existing non-streaming approach
+                    showTyping();
+                    try {
+                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
+                        const infoPrompt = buildClassInfoPrompt(classIndex);
+                        const summary = await generateComputingInfo(infoPrompt || topMatch.className);
+                        if (checkStopResponse()) {
+                            removeTyping();
+                            return;
+                        }
+                        if (summary) {
+                            reply += `<br>${summary}`;
+                            conversationHistory.push({
+                                user: historyUserPrompt,
+                                assistant: truncateToFirstSentence(summary)
+                            });
+                            if (conversationHistory.length > 2) {
+                                conversationHistory.shift();
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Info generation failed", e);
+                    } finally {
+                        removeTyping();
+                    }
                 }
             }
 
@@ -1103,17 +1299,108 @@ async function performClassification(imgEl, userText = "") {
 }
 
 /**
- * Generates computing-related information using Wllama LLM
+ * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
+ * @param {Function} onChunk - Optional callback for streaming chunks (GPU mode only)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
-async function generateComputingInfo(query) {
-    // If wllama is not ready, return a fallback message
-    if (!wllamaReady || !wllama) {
-        console.warn("Wllama not ready, skipping generation");
+async function generateComputingInfo(query, onChunk = null) {
+    // Use WebLLM if available and enabled, otherwise use wllama
+    if (!usingWllama && webGPUAvailable && engine) {
+        return await generateWithWebLLM(query, onChunk);
+    } else if (wllamaReady && wllama) {
+        return await generateWithWllama(query);
+    } else {
+        console.warn("No AI engine ready, skipping generation");
         return null;
     }
+}
 
+/**
+ * Generates text using WebLLM (GPU mode) with streaming support
+ * @param {string} query - The query to generate information about
+ * @param {Function} onChunk - Optional callback for streaming chunks
+ */
+async function generateWithWebLLM(query, onChunk = null) {
+    try {
+        // Build messages array for WebLLM chat format
+        const messages = [
+            {
+                role: "system",
+                content: 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\nRules:\n- You may discuss computing and technology topics only\n- Respond with one or two clear sentences, using simple language\n- Focus on key facts and historical context\n- You must not provide assistance with activities that are illegal or may cause harm'
+            }
+        ];
+
+        // Include conversation history for context (last 2 exchanges)
+        if (conversationHistory.length > 0) {
+            conversationHistory.forEach(exchange => {
+                messages.push({ role: "user", content: exchange.user });
+                messages.push({ role: "assistant", content: exchange.assistant });
+            });
+        }
+
+        // Add current query
+        messages.push({
+            role: "user",
+            content: query + "\nProvide a concise and factually accurate response."
+        });
+
+        console.log('Generating info with WebLLM for:', query);
+
+        // Generate with streaming
+        let responseText = '';
+        currentStream = await engine.chat.completions.create({
+            messages,
+            temperature: 0.3,
+            top_p: 0.9,
+            max_tokens: 250,
+            stream: true
+        });
+
+        for await (const chunk of currentStream) {
+            if (shouldStopResponse) {
+                currentStream = null;
+                return null;
+            }
+            const delta = chunk.choices[0]?.delta?.content || '';
+            responseText += delta;
+
+            // Call the streaming callback if provided
+            if (onChunk && delta) {
+                onChunk(delta);
+            }
+        }
+
+        currentStream = null;
+
+        // Clean up the response
+        responseText = responseText.trim();
+
+        // Remove incomplete last sentence
+        if (responseText && !responseText.match(/[.!?]$/)) {
+            const lastCompleteMatch = responseText.match(/(.*[.!?])/);
+            if (lastCompleteMatch) {
+                responseText = lastCompleteMatch[1].trim();
+            }
+        }
+
+        if (!responseText || responseText.length < 10) {
+            return null;
+        }
+
+        return responseText;
+
+    } catch (error) {
+        console.error('Error generating info with WebLLM:', error);
+        currentStream = null;
+        return null;
+    }
+}
+
+/**
+ * Generates text using Wllama (CPU mode)
+ */
+async function generateWithWllama(query) {
     try {
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
@@ -1137,55 +1424,62 @@ async function generateComputingInfo(query) {
             });
         }
 
-        // Add current user query (full text, not keywords)
+        // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
         chatMLPrompt += query + '\n' + "Provide a concise and factually accurate response.\n";
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
-        console.log('Generating info for:', query);
+        console.log('Generating info with Wllama for:', query);
+
+        // Create AbortController for cancellation
+        currentAbortController = new AbortController();
 
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion(chatMLPrompt, {
-            nPredict: 250,  // Allow for more complete responses
+            nPredict: 250,
             sampling: {
-                temp: 0.3,  // Lower temperature for more factual, less creative responses
+                temp: 0.3,
                 top_k: 40,
                 top_p: 0.9,
                 penalty_repeat: 1.1
             },
             stopTokens: ['<|im_end|>', '<|im_start|>'],
-            stream: true
+            stream: true,
+            abortSignal: currentAbortController.signal
         });
 
         for await (const chunk of completion) {
+            if (shouldStopResponse) {
+                currentAbortController = null;
+                return null;
+            }
             if (chunk.currentText) {
                 responseText = chunk.currentText;
             }
         }
 
-        // Clear KV cache after generation to free memory
-        // Suppress munmap warnings - these are harmless WASM memory management messages
+        currentAbortController = null;
+
+        // Clear KV cache after generation
         try {
             await wllama.kvClear();
         } catch (error) {
-            // Silently ignore - kvClear can throw harmless warnings
+            // Silently ignore
         }
 
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence (doesn't end with . ? !)
+        // Remove incomplete last sentence
         if (responseText && !responseText.match(/[.!?]$/)) {
-            // Find the last complete sentence
             const lastCompleteMatch = responseText.match(/(.*[.!?])/);
             if (lastCompleteMatch) {
                 responseText = lastCompleteMatch[1].trim();
             }
         }
 
-        // If response is too short or empty, return null
         if (!responseText || responseText.length < 10) {
             return null;
         }
@@ -1193,12 +1487,16 @@ async function generateComputingInfo(query) {
         return responseText;
 
     } catch (error) {
-        console.error('Error generating info:', error);
-        // Clear cache on error (suppress warnings)
+        if (error.name === 'AbortError') {
+            console.log('Generation aborted by user');
+            return null;
+        }
+        console.error('Error generating info with Wllama:', error);
+        currentAbortController = null;
         try {
             await wllama.kvClear();
         } catch (e) {
-            // Silently ignore kvClear errors
+            // Silently ignore
         }
         return null;
     }
@@ -1299,6 +1597,106 @@ if (closeAboutBtn) {
 
 // Voice Input (Speech-to-Text)
 micBtn.addEventListener('click', handleVoiceInput);
+
+// Mode toggle
+if (modeToggle) {
+    modeToggle.addEventListener('change', toggleMode);
+}
+
+/**
+ * Toggles between GPU and CPU mode
+ */
+function toggleMode() {
+    if (!webGPUAvailable) {
+        // Show info that WebGPU is not available
+        addMessage('WebGPU is not available in your browser. The app is running in CPU mode using SmolLM2.', 'bot');
+        return;
+    }
+
+    usingWllama = !usingWllama;
+    updateModeToggle();
+
+    // If switching to wllama and it's not loaded yet, show loading message
+    if (usingWllama && !wllama) {
+        sendBtn.disabled = true;
+        textInput.disabled = true;
+        micBtn.disabled = true;
+        const loadingMsg = addMessage('Switching to CPU mode - loading model... 0%', 'bot');
+        const loadingBubble = loadingMsg.bubble;
+
+        // Lazy load wllama
+        initWllama((progress) => {
+            if (loadingBubble) {
+                const percentage = Math.round(progress * 100);
+                setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
+            }
+        }).then(() => {
+            const mode = usingWllama ? 'CPU' : 'GPU';
+            if (loadingBubble) {
+                setBubbleContent(loadingBubble, `Switched to ${mode} mode`);
+            }
+            sendBtn.disabled = false;
+            textInput.disabled = false;
+            micBtn.disabled = false;
+        }).catch(error => {
+            console.error('Failed to load wllama:', error);
+            if (loadingBubble) {
+                setBubbleContent(loadingBubble, 'Failed to load CPU mode. Reverting to GPU mode.');
+            }
+            usingWllama = false;
+            updateModeToggle();
+            sendBtn.disabled = false;
+            textInput.disabled = false;
+            micBtn.disabled = false;
+        });
+    } else {
+        const mode = usingWllama ? 'CPU' : 'GPU';
+        console.log(`Switched to ${mode} mode`);
+        addMessage(`Switched to ${mode} mode`, 'bot');
+    }
+}
+
+/**
+ * Updates the mode toggle UI
+ */
+function updateModeToggle() {
+    if (!modeToggle || !modeToggleText) return;
+
+    const isGpuMode = !usingWllama;
+
+    // Update checkbox state
+    modeToggle.checked = usingWllama;
+    modeToggle.setAttribute('aria-checked', usingWllama ? 'true' : 'false');
+
+    // Update text label
+    modeToggleText.textContent = isGpuMode ? 'GPU' : 'CPU';
+
+    // Update title and aria-label
+    const modeTitle = isGpuMode ?
+        'Currently using GPU (Phi-3). Click to switch to CPU mode (SmolLM2).' :
+        'Currently using CPU (SmolLM2). Click to switch to GPU mode (Phi-3).';
+    const ariaLabel = isGpuMode ?
+        'Toggle AI mode. Currently in GPU mode. Click to switch to CPU mode.' :
+        'Toggle AI mode. Currently in CPU mode. Click to switch to GPU mode.';
+
+    const toggleContainer = modeToggle.parentElement;
+    if (toggleContainer) {
+        toggleContainer.title = modeTitle;
+    }
+    modeToggle.setAttribute('aria-label', ariaLabel);
+
+    // Disable toggle if WebGPU not available
+    if (!webGPUAvailable) {
+        modeToggle.disabled = true;
+        modeToggle.checked = true; // CPU mode
+        modeToggle.setAttribute('aria-checked', 'true');
+        modeToggleText.textContent = 'CPU';
+        if (toggleContainer) {
+            toggleContainer.title = 'WebGPU not available - CPU mode only';
+        }
+        modeToggle.setAttribute('aria-label', 'AI mode set to CPU only. WebGPU not available.');
+    }
+}
 
 /**
  * Handles voice input - tries Web Speech API first, falls back to Vosk if needed
@@ -1616,6 +2014,17 @@ function handleStopResponse() {
     // Set flag to stop any ongoing text generation
     shouldStopResponse = true;
 
+    // Abort WebLLM streaming if active
+    if (currentStream) {
+        currentStream = null;
+    }
+
+    // Abort Wllama generation if active
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
+
     // Stop speech if playing
     if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
@@ -1648,16 +2057,19 @@ async function restartConversation() {
         // Clear conversation history (browser-side cache)
         conversationHistory = [];
 
-        // Clear model's KV cache to completely reset context
+        // Clear model's KV cache for Wllama
         if (wllama && wllamaReady) {
             try {
                 await wllama.kvClear();
-                console.log('Model KV cache cleared');
+                console.log('Wllama KV cache cleared');
             } catch (error) {
                 // Silently ignore - kvClear can throw harmless warnings
                 console.debug('KV cache clear warning (harmless):', error);
             }
         }
+
+        // Note: WebLLM doesn't maintain persistent state across messages in the same way,
+        // so we just clear the conversation history array
     }
 }
 
@@ -1685,6 +2097,18 @@ function closeAbout() {
 function showAppDetails() {
     const modal = document.getElementById('appDetailsModal');
     const closeBtn = document.getElementById('closeAppDetailsBtn');
+    const modelNameElement = document.getElementById('modalModelName');
+
+    // Update model name based on current mode
+    if (modelNameElement) {
+        if (!usingWllama && webGPUAvailable && engine) {
+            modelNameElement.textContent = 'Phi-3-mini-4k-instruct (WebGPU - running locally)';
+        } else if (wllamaReady && wllama) {
+            modelNameElement.textContent = 'SmolLM2-360M-Instruct (CPU - running locally)';
+        } else {
+            modelNameElement.textContent = 'Loading...';
+        }
+    }
 
     modal.style.display = 'flex';
 
