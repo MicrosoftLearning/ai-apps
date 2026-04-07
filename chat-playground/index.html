@@ -344,8 +344,9 @@
                             select your preferred mode.</li>
                         <li>Image analysis is based on MobileNetV3, which is a general-purpose image classification
                             model. It may not accurately identify all images or provide detailed descriptions.</li>
-                        <li>Voice mode depends on browser-support for speech recognition. Speech recognition fails with
-                            a network error in Microsoft Edge on ARM hardware.</li>
+                        <li>Voice mode depends on browser-support for speech recognition. A
+                            fallback offline speech-to-text model will be used in the event of a speech recognition
+                            failure.</li>
                         <li>Voice mode performance may vary based on the device's microphone quality and ambient noise
                             levels. For best results, use a good quality microphone in a quiet environment.</li>
                     </ul>
