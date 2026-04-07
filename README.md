@@ -53,7 +53,7 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.
-- [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
+- [Vosk Speech Recognition](https://github.com/alphacep/vosk-api) is used as a fallback speech-to-text solution when WebSpeech speech recognition is unavailable.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) and Language Playground to support named entity recognition.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
