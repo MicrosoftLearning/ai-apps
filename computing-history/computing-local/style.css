@@ -104,11 +104,12 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: #e9ecef;
-    min-height: 100vh;
+    height: 100vh;
     padding: 0;
     margin: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .container {
@@ -122,6 +123,7 @@ body {
     display: flex;
     flex-direction: column;
     flex: 1;
+    max-height: calc(100vh - 20px);
 }
 
 h1 {
@@ -167,7 +169,8 @@ h1 {
     display: flex;
     flex-direction: column;
     flex: 1;
-    min-height: 500px;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .chat-header {
@@ -300,6 +303,32 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar */
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #653a8a 100%);
+}
+
+/* Firefox Scrollbar */
+.chat-messages {
+    scrollbar-width: thin;
+    scrollbar-color: #667eea #f1f1f1;
 }
 
 .welcome-message {

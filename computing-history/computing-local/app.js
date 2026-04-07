@@ -46,9 +46,13 @@ const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 
-// Calculate speech model path - relative to the computing-local folder
-// We need to go up 2 directories to reach the ai-apps root, then into speech-model
-const speechModelUrl = '../../speech-model/speech-model.tar.gz';
+// Calculate speech model path dynamically based on current location
+// This works both locally and on GitHub Pages
+// From computing-local, go up 3 levels: computing-local -> computing-history -> ai-apps -> speech-model
+const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
+const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
@@ -212,7 +216,16 @@ async function loadVoskModel() {
         textInput.disabled = true;
         micBtn.disabled = true;
 
-        voskModel = await Vosk.createModel(speechModelUrl);
+        try {
+            voskModel = await Vosk.createModel(speechModelUrl);
+        } catch (modelError) {
+            // Remove the loading message since we failed
+            if (loadingMsg && loadingMsg.message) {
+                loadingMsg.message.remove();
+            }
+            throw modelError; // Re-throw to be caught by outer catch
+        }
+
         voskRecognizer = new voskModel.KaldiRecognizer(16000);
 
         // Set up recognizer event handlers
@@ -266,7 +279,7 @@ async function loadVoskModel() {
     } catch (error) {
         console.error('Failed to load Vosk model:', error);
         voskLoadingFailed = true;
-        addMessage('Sorry, offline speech recognition could not be loaded.', 'bot');
+        // Don't add another error message here - handleVoiceInput will inform the user
         sendBtn.disabled = false;
         textInput.disabled = false;
         micBtn.disabled = false;
@@ -597,6 +610,91 @@ function getBoardIdentificationMessage(text) {
  */
 function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+/**
+ * Animates typing text into a bubble character by character
+ * @param {HTMLElement} bubble - The bubble element to type into
+ * @param {string} text - The complete HTML text (including any starting text)
+ * @param {number} speed - Milliseconds per character (default: 20)
+ * @param {string} startingText - Text that's already displayed (won't be animated)
+ * @returns {Promise<void>} Resolves when animation completes or is stopped
+ */
+async function typeTextInBubble(bubble, text, speed = 20, startingText = '') {
+    return new Promise((resolve) => {
+        let currentIndex = 0;
+        let displayText = startingText;
+
+        // If starting text equals full text, nothing to type
+        if (startingText === text) {
+            resolve();
+            return;
+        }
+
+        // Parse only the new text that comes after startingText
+        const newText = text.substring(startingText.length);
+        const htmlChunks = [];
+        let inTag = false;
+        let currentChunk = '';
+
+        for (let i = 0; i < newText.length; i++) {
+            const char = newText[i];
+
+            if (char === '<') {
+                if (currentChunk && !inTag) {
+                    htmlChunks.push({ type: 'text', content: currentChunk });
+                    currentChunk = '';
+                }
+                inTag = true;
+                currentChunk += char;
+            } else if (char === '>') {
+                currentChunk += char;
+                if (inTag) {
+                    htmlChunks.push({ type: 'tag', content: currentChunk });
+                    currentChunk = '';
+                    inTag = false;
+                }
+            } else {
+                currentChunk += char;
+            }
+        }
+
+        if (currentChunk) {
+            htmlChunks.push({ type: inTag ? 'tag' : 'text', content: currentChunk });
+        }
+
+        const typeInterval = setInterval(() => {
+            if (checkStopResponse() || currentIndex >= htmlChunks.length) {
+                clearInterval(typeInterval);
+                setBubbleContent(bubble, text);
+                scrollToBottom();
+                resolve();
+                return;
+            }
+
+            const chunk = htmlChunks[currentIndex];
+
+            if (chunk.type === 'tag') {
+                // Add entire tag at once
+                displayText += chunk.content;
+                currentIndex++;
+            } else {
+                // Type out text character by character
+                if (!chunk.charIndex) chunk.charIndex = 0;
+
+                if (chunk.charIndex < chunk.content.length) {
+                    displayText += chunk.content[chunk.charIndex];
+                    chunk.charIndex++;
+                } else {
+                    currentIndex++;
+                }
+            }
+
+            setBubbleContent(bubble, displayText);
+            scrollToBottom();
+
+        }, speed);
+    });
 }
 
 /**
@@ -1135,11 +1233,13 @@ async function performClassification(imgEl, userText = "") {
 
                 // Use the extracted text
                 const rawText = data.text || '';
-                let finalReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+                const baseReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+                let ocrMessage = '';
+                let boardIdMessage = '';
 
                 if (!rawText || rawText.trim().length === 0) {
-                    finalReply += `<br><br>I couldn't extract any text from the board.`;
-                    finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
+                    ocrMessage = `I couldn't extract any text from the board.`;
+                    boardIdMessage = getBoardIdentificationMessage('');
                 } else {
                     // Clean the text - preserve hyphens, underscores, dots for part numbers
                     const cleanText = rawText
@@ -1154,16 +1254,21 @@ async function performClassification(imgEl, userText = "") {
 
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
-                        finalReply += `<br><br>There are details printed on the board.`;
-                        finalReply += `<br><br>${getBoardIdentificationMessage(cleanText)}`;
+                        ocrMessage = `There are details printed on the board.`;
+                        boardIdMessage = getBoardIdentificationMessage(cleanText);
                     } else {
-                        finalReply += `<br><br>I couldn't extract any text from the board.`;
-                        finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
+                        ocrMessage = `I couldn't extract any text from the board.`;
+                        boardIdMessage = getBoardIdentificationMessage('');
                     }
                 }
 
-                setBubbleContent(bubble, finalReply);
+                // Update bubble to show confidence message without scanning indicator
+                setBubbleContent(bubble, baseReply);
                 scrollToBottom();
+
+                // Type only the OCR results below the confidence message
+                const ocrResults = `<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
+                await typeTextInBubble(bubble, baseReply + ocrResults, 20, baseReply);
 
                 if (isVoiceInput) {
                     speakText(bubble);
@@ -1175,9 +1280,15 @@ async function performClassification(imgEl, userText = "") {
                 console.error("OCR Failed", e);
                 removeTyping();
                 if (!checkStopResponse()) {
-                    const fallbackReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
-                    setBubbleContent(bubble, fallbackReply);
+                    const baseReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+
+                    // Update bubble to show confidence message
+                    setBubbleContent(bubble, baseReply);
                     scrollToBottom();
+
+                    // Type only the error message and identification
+                    const errorResults = `<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
+                    await typeTextInBubble(bubble, baseReply + errorResults, 20, baseReply);
 
                     if (isVoiceInput) {
                         speakText(bubble);
@@ -1706,19 +1817,26 @@ async function handleVoiceInput() {
     if (usingWebSpeech) {
         const webSpeechWorked = await tryWebSpeech();
         if (!webSpeechWorked) {
-            // Web Speech failed, switch to Vosk
+            // Web Speech failed, try Vosk fallback
             console.log('Web Speech API not available, loading Vosk fallback...');
-            usingWebSpeech = false;
 
             // Load Vosk model if not already loaded
-            if (!voskLoaded) {
+            if (!voskLoaded && !voskLoadingFailed) {
                 const loaded = await loadVoskModel();
                 if (!loaded) {
-                    return; // Vosk failed to load
+                    // Vosk also failed - inform user and stay on Web Speech
+                    console.log('Vosk fallback unavailable, voice input disabled');
+                    addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model could not be loaded.', 'bot');
+                    return;
                 }
+            } else if (voskLoadingFailed) {
+                // Previously failed to load Vosk - inform user
+                addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model is not available.', 'bot');
+                return;
             }
 
-            // Now try Vosk
+            // Vosk loaded successfully, switch to it
+            usingWebSpeech = false;
             await startVoskRecording();
         }
     } else {
