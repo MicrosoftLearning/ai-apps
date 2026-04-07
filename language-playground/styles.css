@@ -88,10 +88,69 @@ body.dark {
     letter-spacing: -0.01em;
 }
 
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.model-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.model-status-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    min-width: 160px;
+    text-align: center;
+}
+
+.model-status-text.loading {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.model-status-text.ready {
+    /* Steady state - no animation */
+}
+
+/* Dark mode uses CSS variables, no overrides needed */
+
+.model-toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.model-label {
+    min-width: 35px;
+    text-align: center;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
 .theme-toggle-wrap {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     color: var(--accent);
     font-weight: 600;
 }
@@ -186,6 +245,11 @@ input:checked+.slider::before {
     font-size: 0.94rem;
 }
 
+#analyzer-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .editor-box {
     flex: 1;
     min-height: 0;
@@ -195,6 +259,11 @@ input:checked+.slider::before {
     border: 1px solid var(--line);
     border-radius: 7px;
     overflow: hidden;
+}
+
+.editor-box:has(#source-text:disabled) {
+    opacity: 0.6;
+    pointer-events: none;
 }
 
 .editor-toolbar {
@@ -365,6 +434,51 @@ body.dark #placeholder-text {
     line-height: 1.35;
 }
 
+.loading-state {
+    display: grid;
+    place-content: center;
+    min-height: 100%;
+    padding: 40px 20px;
+}
+
+.loading-dots {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+}
+
+.loading-dots span {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+
+    0%,
+    80%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    40% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
 .results {
     display: flex;
     flex-direction: column;
@@ -491,5 +605,16 @@ body.dark #placeholder-text {
 
     #placeholder-text {
         font-size: 1.45rem;
+    }
+
+    .toolbar-right {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-end;
+    }
+
+    .model-controls {
+        flex-direction: column;
+        gap: 8px;
     }
 }

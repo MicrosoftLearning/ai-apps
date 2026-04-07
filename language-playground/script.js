@@ -1,7 +1,17 @@
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import { Wllama } from '@wllama/wllama';
+
 (function () {
     "use strict";
 
     const MAX_FILE_SIZE = 10 * 1024;
+
+    // AI Model state
+    let engine = null; // WebLLM engine for GPU mode
+    let wllama = null; // Wllama instance for CPU mode
+    let webGPUAvailable = false; // Track if WebGPU is available
+    let usingWllama = false; // Track which engine is active
+    let aiModelReady = false; // Track if AI model is loaded
 
     const LANGUAGES = [
         { name: "English", code: "en", script: "latin", words: ["the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even", "new", "want", "because", "any", "these", "give", "day", "most", "us"] },
@@ -34,7 +44,7 @@
             { label: "Arabic paragraph", text: "انا اسكن في دبي واعمل في شركة برمجيات. في عطلة نهاية الاسبوع ازور عائلتي واقرا كتابا جديدا." }
         ],
         pii: [
-            { label: "Contact note", text: "John Smith can be reached at john.smith@contoso.com or +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
+            { label: "Contact note", text: "John Smith can be reached by email at john@contoso.com, or by phone on +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
             { label: "Customer form", text: "Customer Feedback Form\nDate: 4/1/2026\nCustomer: Mario Gizzi\nEmail: mario@adventure-works.com\nPhone: 555 123 0987\nRating: 5\nComment: Thanks for the great service. I received my delivery at 1482 Westward Way, Seattle. Everything looks great!" }
         ]
     };
@@ -52,150 +62,6 @@
         ar: ["مرحبا", "انا", "نحن", "العمل", "المدينة", "اليوم", "الكتاب", "الوقت"],
         ru: ["привет", "это", "город", "работа", "люди", "книга", "сегодня", "время"]
     };
-
-    const PERSON_HEADING_WORDS = new Set([
-        "address",
-        "billing",
-        "city",
-        "contact",
-        "customer",
-        "dear",
-        "delivery",
-        "email",
-        "hello",
-        "hey",
-        "hi",
-        "mailing",
-        "message",
-        "note",
-        "order",
-        "phone",
-        "record",
-        "regards",
-        "shipping",
-        "subject",
-        "thanks"
-    ]);
-
-    const PERSON_NON_NAME_WORDS = new Set([
-        "abbey",
-        "account",
-        "address",
-        "administrator",
-        "airport",
-        "arena",
-        "avenue",
-        "bar",
-        "bay",
-        "beach",
-        "billing",
-        "blvd",
-        "boulevard",
-        "bridge",
-        "cafe",
-        "castle",
-        "cathedral",
-        "center",
-        "centre",
-        "chapel",
-        "church",
-        "city",
-        "close",
-        "college",
-        "company",
-        "contact",
-        "corp",
-        "court",
-        "customer",
-        "delivery",
-        "drive",
-        "edinburgh",
-        "email",
-        "england",
-        "estate",
-        "february",
-        "garden",
-        "gardens",
-        "gate",
-        "group",
-        "grove",
-        "hall",
-        "harbor",
-        "harbour",
-        "hello",
-        "hey",
-        "hi",
-        "heights",
-        "hill",
-        "hospital",
-        "hotel",
-        "inc",
-        "island",
-        "january",
-        "july",
-        "june",
-        "lake",
-        "lane",
-        "limited",
-        "llc",
-        "london",
-        "ltd",
-        "mailing",
-        "mall",
-        "manager",
-        "manor",
-        "march",
-        "market",
-        "memorial",
-        "message",
-        "monument",
-        "motel",
-        "mountain",
-        "museum",
-        "note",
-        "october",
-        "order",
-        "park",
-        "phone",
-        "pier",
-        "place",
-        "plaza",
-        "record",
-        "regards",
-        "restaurant",
-        "river",
-        "road",
-        "scotland",
-        "september",
-        "services",
-        "shipping",
-        "shop",
-        "square",
-        "stadium",
-        "station",
-        "store",
-        "street",
-        "subject",
-        "sunday",
-        "systems",
-        "team",
-        "technologies",
-        "thanks",
-        "theater",
-        "theatre",
-        "thursday",
-        "tower",
-        "town",
-        "tuesday",
-        "uk",
-        "university",
-        "usa",
-        "valley",
-        "way",
-        "wednesday"
-    ]);
-
-    const PERSON_TITLES = /^(?:mr|mrs|ms|miss|dr|prof)\.?\s+/i;
 
     const NORMALIZED_LANGUAGES = LANGUAGES.map(function (language) {
         return {
@@ -227,7 +93,9 @@
         placeholderSubtext: document.getElementById("placeholder-subtext"),
         results: document.getElementById("results"),
         announcer: document.getElementById("aria-announcer"),
-        themeToggle: document.getElementById("theme-toggle")
+        themeToggle: document.getElementById("theme-toggle"),
+        modelStatus: document.getElementById("model-status"),
+        modelToggle: document.getElementById("model-toggle")
     };
 
     function announce(text) {
@@ -251,6 +119,14 @@
         elements.results.style.display = "flex";
     }
 
+    function showLoading() {
+        elements.placeholder.hidden = true;
+        elements.placeholder.style.display = "none";
+        elements.results.hidden = false;
+        elements.results.style.display = "flex";
+        elements.results.innerHTML = "<div class='loading-state'><div class='loading-dots'><span></span><span></span><span></span></div></div>";
+    }
+
     function clearResults() {
         elements.results.innerHTML = "";
     }
@@ -271,6 +147,250 @@
 
     function escapeRegExp(text) {
         return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    /**
+     * Updates the loading status for the AI model
+     */
+    function updateModelStatus(message, isLoading) {
+        if (!elements.modelStatus) return;
+
+        elements.modelStatus.textContent = message;
+        elements.modelStatus.className = 'model-status-text ' + (isLoading ? 'loading' : 'ready');
+    }
+
+    /**
+     * Disables all UI elements during model loading
+     */
+    function disableUI() {
+        elements.analyzerSelect.disabled = true;
+        elements.sourceText.disabled = true;
+        elements.sampleSelect.disabled = true;
+        elements.attachBtn.disabled = true;
+        elements.detectBtn.disabled = true;
+        if (elements.modelToggle) elements.modelToggle.disabled = true;
+    }
+
+    /**
+     * Enables all UI elements after model is loaded
+     */
+    function enableUI() {
+        elements.analyzerSelect.disabled = false;
+        elements.sourceText.disabled = false;
+        elements.sampleSelect.disabled = false;
+        elements.attachBtn.disabled = false;
+        updateDetectButton();
+        if (elements.modelToggle) elements.modelToggle.disabled = false;
+    }
+
+    /**
+     * Checks if WebGPU is available in the browser
+     */
+    function checkWebGPUSupport() {
+        if (!navigator.gpu) {
+            console.log('WebGPU not supported in this browser');
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Initializes WebLLM for GPU mode
+     */
+    async function initializeWebLLM() {
+        try {
+            updateModelStatus('Loading Phi-3-mini (GPU)...', true);
+
+            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+
+            engine = await webllm.CreateMLCEngine(
+                targetModelId,
+                {
+                    initProgressCallback: function (progress) {
+                        console.log('WebLLM progress object:', progress);
+
+                        // Use the text property if available for more detailed status
+                        if (progress.text) {
+                            updateModelStatus(progress.text, true);
+                        } else {
+                            const percentage = Math.round(progress.progress * 100);
+                            updateModelStatus('Loading Phi-3-mini: ' + percentage + '%', true);
+                        }
+                    }
+                }
+            );
+
+            updateModelStatus('Phi-3-mini (GPU) Ready', false);
+            console.log('WebLLM engine initialized successfully');
+            webGPUAvailable = true;
+            usingWllama = false;
+            aiModelReady = true;
+
+        } catch (error) {
+            console.error('Failed to initialize WebLLM:', error);
+            throw error; // Re-throw to trigger fallback
+        }
+    }
+
+    /**
+     * Initializes the Wllama language model for CPU mode text generation
+     */
+    async function initWllama() {
+        try {
+            if (wllama) {
+                console.log('Wllama already initialized');
+                return;
+            }
+
+            console.log("Initializing wllama...");
+            updateModelStatus('Loading SmolLM2 (CPU)...', true);
+
+            // Configure WASM paths for CDN
+            const CONFIG_PATHS = {
+                'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
+                'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+            };
+
+            const internalProgressCallback = ({ loaded, total }) => {
+                const progress = loaded / total;
+                const percentage = Math.round((progress * 100));
+                const statusText = 'Loading SmolLM2: ' + percentage + '%';
+                console.log('Wllama progress:', percentage + '%', 'loaded:', loaded, 'total:', total);
+                updateModelStatus(statusText, true);
+                // Force DOM update
+                if (elements.modelStatus) {
+                    elements.modelStatus.offsetHeight;
+                }
+            };
+
+            // Try multithreaded (4 threads) first, fall back to single-threaded
+            const useMultiThread = window.crossOriginIsolated === true;
+            const preferredThreads = useMultiThread ? 4 : 1;
+            console.log('Cross-origin isolated: ' + window.crossOriginIsolated + ', attempting ' + preferredThreads + ' thread(s)');
+
+            try {
+                wllama = new Wllama(CONFIG_PATHS);
+
+                await wllama.loadModelFromHF(
+                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                    'smollm2-360m-instruct-q8_0.gguf',
+                    {
+                        n_ctx: 768,
+                        n_threads: preferredThreads,
+                        progressCallback: internalProgressCallback
+                    }
+                );
+                console.log('Wllama initialized successfully with ' + preferredThreads + ' thread(s)');
+            } catch (multiErr) {
+                if (preferredThreads > 1) {
+                    console.warn('Multi-threaded init failed (' + multiErr.message + '), falling back to single thread');
+
+                    wllama = new Wllama(CONFIG_PATHS);
+                    await wllama.loadModelFromHF(
+                        'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
+                        'smollm2-360m-instruct-q8_0.gguf',
+                        {
+                            n_ctx: 768,
+                            n_threads: 1,
+                            progressCallback: internalProgressCallback
+                        }
+                    );
+                    console.log("Wllama initialized successfully with 1 thread (fallback)");
+                } else {
+                    throw multiErr;
+                }
+            }
+
+            updateModelStatus('SmolLM2 (CPU) Ready', false);
+            usingWllama = true;
+            aiModelReady = true;
+        } catch (error) {
+            console.error('Failed to initialize wllama:', error);
+            updateModelStatus('Model loading failed', false);
+            throw error;
+        }
+    }
+
+    /**
+     * Initializes AI models on page load
+     */
+    async function initAIModels() {
+        disableUI();
+
+        try {
+            // Check for WebGPU support
+            const hasWebGPU = checkWebGPUSupport();
+
+            if (!hasWebGPU) {
+                console.log('WebGPU not available, using wllama (CPU mode)');
+                if (elements.modelToggle) {
+                    elements.modelToggle.checked = false;
+                }
+                await initWllama();
+            } else {
+                // Try WebLLM first (faster with GPU)
+                try {
+                    if (elements.modelToggle) {
+                        elements.modelToggle.checked = true;
+                    }
+                    await initializeWebLLM();
+                } catch (error) {
+                    console.log('WebLLM initialization failed, falling back to wllama');
+                    if (elements.modelToggle) {
+                        elements.modelToggle.checked = false;
+                    }
+                    await initWllama();
+                }
+            }
+
+            enableUI();
+        } catch (error) {
+            console.error("AI model initialization error:", error);
+            updateModelStatus("Model loading failed", false);
+            showStatus("Error loading AI model: " + error.message + ". PII detection may be unavailable.", true);
+            enableUI();
+        }
+    }
+
+    /**
+     * Switches between GPU and CPU models
+     */
+    async function switchModel(useGPU) {
+        // Clear UI and reset state when switching models
+        resetUi();
+        disableUI();
+        aiModelReady = false;
+
+        try {
+            if (useGPU) {
+                // Load GPU model
+                if (engine) {
+                    console.log('WebLLM already loaded');
+                    updateModelStatus('Phi-3-mini (GPU) Ready', false);
+                    usingWllama = false;
+                    aiModelReady = true;
+                } else {
+                    await initializeWebLLM();
+                }
+            } else {
+                // Load CPU model
+                if (wllama) {
+                    console.log('Wllama already loaded');
+                    updateModelStatus('SmolLM2 (CPU) Ready', false);
+                    usingWllama = true;
+                    aiModelReady = true;
+                } else {
+                    await initWllama();
+                }
+                usingWllama = true;
+            }
+            enableUI();
+        } catch (error) {
+            console.error('Model switch failed:', error);
+            updateModelStatus('Model loading failed', false);
+            showStatus('Failed to load model: ' + error.message, true);
+            enableUI();
+        }
     }
 
     function stripDiacritics(text) {
@@ -450,243 +570,172 @@
         }
     }
 
-    function normalizePersonCandidate(value) {
-        return String(value || "")
-            .replace(PERSON_TITLES, "")
-            .replace(/^[\s,.:;!?()\[\]"'-]+|[\s,.:;!?()\[\]"'-]+$/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
-    }
-
-    function shouldKeepPersonCandidate(value) {
-        const normalized = normalizePersonCandidate(value);
-        const parts = normalized.split(/\s+/).filter(Boolean);
-        if (!parts.length || parts.length > 3) {
-            return false;
+    async function detectPii(text) {
+        if (!aiModelReady) {
+            throw new Error("AI model is not ready yet. Please wait for model initialization.");
         }
 
-        const lowered = parts.map(function (part) {
-            return part.toLowerCase();
-        });
-
-        if (parts.some(function (part) { return part.length < 2; })) {
-            return false;
-        }
-
-        if (PERSON_HEADING_WORDS.has(lowered[0]) || PERSON_HEADING_WORDS.has(lowered[1] || "")) {
-            return false;
-        }
-
-        if (lowered.some(function (part) { return PERSON_NON_NAME_WORDS.has(part); })) {
-            return false;
-        }
-
-        if (parts.length === 1) {
-            return /^[A-Z][A-Za-z'-]+$/.test(parts[0]);
-        }
-
-        return parts.every(function (part) {
-            return /^[A-Z][A-Za-z'-]+$/.test(part);
-        });
-    }
-
-    function addPersonCandidate(entities, value) {
-        const normalized = normalizePersonCandidate(value);
-        if (shouldKeepPersonCandidate(normalized)) {
-            addEntity(entities, normalized, "Person");
-        }
-    }
-
-    function collectMatchSpans(regex, text, type) {
-        const spans = [];
-        const globalRegex = new RegExp(regex.source, regex.flags);
-        let match;
-
-        while ((match = globalRegex.exec(text)) !== null) {
-            spans.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                value: match[0],
-                type: type
-            });
-
-            if (match.index === globalRegex.lastIndex) {
-                globalRegex.lastIndex += 1;
-            }
-        }
-
-        return spans;
-    }
-
-    function spansOverlap(left, right) {
-        return left.start < right.end && right.start < left.end;
-    }
-
-    function trimAddressOverlap(addressSpan, protectedSpans, text) {
-        let start = addressSpan.start;
-        let end = addressSpan.end;
-
-        protectedSpans.forEach(function (span) {
-            if (!spansOverlap({ start: start, end: end }, span)) {
-                return;
-            }
-
-            if (span.start <= start && span.end >= end) {
-                start = end;
-                return;
-            }
-
-            if (span.start <= start) {
-                start = span.end;
-                return;
-            }
-
-            if (span.end >= end) {
-                end = span.start;
-                return;
-            }
-
-            end = span.start;
-        });
-
-        if (start >= end) {
-            return "";
-        }
-
-        return text.slice(start, end)
-            .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
-            .trim();
-    }
-
-    function looksLikeAddress(value) {
-        if (value.length > 100) { return false; }
-        const hasStreetSuffix = /\b(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Court|Ct|Close|Place|Pl)\b/i.test(value);
-        const hasPostalShape = /^\d{1,5}\s+[^,.\n]+(?:,\s*[^,.\n]+){2,4}$/.test(value);
-        return /\b\d{1,5}\s+/.test(value)
-            && (hasStreetSuffix || hasPostalShape)
-            && value.length >= 10;
-    }
-
-    function filterRedundantEntities(entities) {
-        return entities.filter(function (entity, index, allEntities) {
-            if (entity.type !== "Address") {
-                return true;
-            }
-
-            return !allEntities.some(function (other, otherIndex) {
-                if (otherIndex === index || other.type !== "Address") {
-                    return false;
-                }
-
-                const currentValue = entity.value.trim();
-                const otherValue = other.value.trim();
-
-                if (currentValue === otherValue) {
-                    return otherIndex < index;
-                }
-
-                // If this address contains another address and starts earlier,
-                // prefer the cleaner nested address.
-                return currentValue.length > otherValue.length
-                    && currentValue.includes(otherValue)
-                    && currentValue.indexOf(otherValue) > 0;
-            });
-        });
-    }
-
-    function collectCapitalizedPeople(text, entities) {
-        const properCaseSequenceRegex = /\b([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){1,2})\b/g;
-        let match;
-
-        while ((match = properCaseSequenceRegex.exec(text)) !== null) {
-            const candidate = normalizePersonCandidate(match[1]);
-            const parts = candidate.split(/\s+/).filter(Boolean);
-            const beforeIndex = Math.max(0, match.index - 24);
-            const afterIndex = Math.min(text.length, match.index + match[0].length + 24);
-            const leftContext = text.slice(beforeIndex, match.index).toLowerCase();
-            const rightContext = text.slice(match.index + match[0].length, afterIndex).toLowerCase();
-
-            if (parts.length < 2) {
-                continue;
-            }
-
-            if (!shouldKeepPersonCandidate(candidate)) {
-                continue;
-            }
-
-            // Avoid obvious place/address patterns while still allowing narrative prose names.
-            if (/\b(?:street|road|avenue|boulevard|lane|drive|court|city|country|mount|lake)\b/.test(rightContext)) {
-                continue;
-            }
-
-            if (/\b(?:in|at|from|of|to|near)\s+$/.test(leftContext) && parts.length === 2) {
-                // Keep if the surrounding sentence looks person-oriented.
-                const combinedContext = leftContext + rightContext;
-                if (!/\b(?:said|wrote|called|emailed|asked|met|fan|works|lives|sailed|invented|painted|created|discovered|is|was)\b/.test(combinedContext)) {
-                    continue;
-                }
-            }
-
-            addPersonCandidate(entities, candidate);
-        }
-    }
-
-    function collectRegexPeople(text, entities) {
-        const patterns = [
-            /(?:^|[\r\n]+|[.!?]\s+)([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){1,2})(?=(?:\s+(?:can|called|emailed|asked|is|was|works|lives|from|at|reached|contacted|sent|wrote|phoned|said))|[,:]|\s*$)/gm,
-            /\b(?:i am|i'm|im|my name is|this is|name is|name:)[^\S\r\n]+([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){0,2})(?=(?:\s+(?:from|at|in|on|with|and|can|called|emailed|asked|is|was|works|lives|reached|contacted|sent|wrote|phoned))|[,.!:;)]|\s*$)/gim,
-            /\b(?:hello|hi|hey)[^\S\r\n]*,?[^\S\r\n]*(?:i am|i'm|im|this is)?[^\S\r\n]*([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){0,2})(?=(?:\s+(?:from|at|in|on|with|and|can|called|emailed|asked|is|was|works|lives|reached|contacted|sent|wrote|phoned))|[,.!:;)]|\s*$)/gim,
-            /\b(?:mr|mrs|ms|miss|dr|prof)\.?[^\S\r\n]+([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){0,2})(?=(?:\s+(?:can|called|emailed|asked|is|was|works|lives|from|at|reached|contacted|sent|wrote|phoned))|[,.!:;)]|\s*$)/gm,
-            /\b(?:contact|reach|reached|called by|emailed by|spoken with|met with)[^\S\r\n]+([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){0,2})(?=[,.!:;)]|\s|$)/gim,
-            /(?:^|[^A-Za-z])([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){1,2})(?=\s+(?:sailed|said|wrote|discovered|invented|led|found|founded|met|visited|traveled|travelled|built|created|won|lost|became|died|ruled|painted|composed|studied|explored|crossed)\b)/gm,
-            /(?:^|[^A-Za-z])([A-Z][A-Za-z'-]+(?:[^\S\r\n]+[A-Z][A-Za-z'-]+){1,2})(?=\s+(?:from|of)\s+[A-Z][A-Za-z'-]+)/gm
-        ];
-
-        patterns.forEach(function (pattern) {
-            let match;
-            while ((match = pattern.exec(text)) !== null) {
-                addPersonCandidate(entities, match[1]);
-            }
-        });
-    }
-
-    function detectPii(text) {
         const entities = [];
-        const emailRegex = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-        const phoneRegex = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)\d{3,4}[\s.-]?\d{3,4}\b/g;
-        const streetAddressRegex = /\b\d{1,5}\s+(?:[A-Za-z0-9'-]+\s+){0,5}(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Court|Ct|Close|Place|Pl)\b(?:,\s*(?:[A-Za-z0-9'-]+\s*){1,4}){0,4}/gi;
-        const mailingAddressRegex = /\b\d{1,5}\s+(?:[A-Za-z0-9'-]+\s+){0,4}[A-Za-z0-9'-]+(?:,\s*(?:[A-Za-z0-9'-]+\s*){1,4}){2,4}/gi;
-        const protectedSpans = [];
+        let aiResponse = "";
 
-        collectMatchSpans(emailRegex, text, "Email").forEach(function (span) {
-            protectedSpans.push(span);
-            addEntity(entities, span.value, "Email");
-        });
+        try {
+            // Generate prompt based on the model being used
+            let prompt;
+            if (usingWllama) {
+                // SmolLM2 prompt using ChatML format - kept concise for context limits
+                prompt = '<|im_start|>system\n';
+                prompt += 'Extract people\'s names, phone numbers, emails, and addresses from text. Find ALL instances. Use format: - TYPE: value where TYPE is PERSON, PHONE, EMAIL, or ADDRESS. Never invent values.\n';
+                prompt += '<|im_end|>\n\n';
 
-        collectMatchSpans(phoneRegex, text, "Phone").forEach(function (span) {
-            protectedSpans.push(span);
-            addEntity(entities, span.value, "Phone");
-        });
+                prompt += '<|im_start|>user\n';
+                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
+                prompt += 'Contact Sarah Johnson at sarah@company.com or 555-123-4567. Office: 123 Main St, Boston.\n';
+                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
+                prompt += '<|im_end|>\n\n';
 
-        [streetAddressRegex, mailingAddressRegex].forEach(function (addressRegex) {
-            collectMatchSpans(addressRegex, text, "Address").forEach(function (span) {
-                const trimmedAddress = trimAddressOverlap(span, protectedSpans, text);
-                if (trimmedAddress && looksLikeAddress(trimmedAddress)) {
-                    addEntity(entities, trimmedAddress, "Address");
+                prompt += '<|im_start|>assistant\n';
+                prompt += '- PERSON: Sarah Johnson\n';
+                prompt += '- EMAIL: sarah@company.com\n';
+                prompt += '- PHONE: 555 123 4567\n';
+                prompt += '- ADDRESS: 123 Main St, Boston\n';
+                prompt += '<|im_end|>\n\n';
+
+                prompt += '<|im_start|>user\n';
+                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
+                prompt += 'Customer: Lisa Chen called about a delivery to 12 Tree Ave, Toytown, WA. Call her back on 555 234 5678, or her cellphone (206 555-9999); or email her at lisa.chen@contoso.com.\n';
+                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
+                prompt += '<|im_end|>\n\n';
+
+                prompt += '<|im_start|>assistant\n';
+                prompt += '- PERSON: Lisa Chen\n';
+                prompt += '- ADDRESS: 12 Tree Ave, Toytown, WA\n';
+                prompt += '- PHONE: 555 234 5678\n';
+                prompt += '- PHONE: 206 555 9999\n';
+                prompt += '- EMAIL: lisa.chen@contoso.com\n';
+                prompt += '<|im_end|>\n\n';
+
+                prompt += '<|im_start|>user\n';
+                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
+                prompt += text + '\n';
+                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
+                prompt += '<|im_end|>\n\n';
+
+                prompt += '<|im_start|>assistant\n';
+            } else {
+                // Phi 3-mini prompt
+                prompt = "Extract people's names, telephone numbers, email addresses, and street addresses from the following text.\n\n";
+                prompt += "IMPORTANT RULES:\n";
+                prompt += "- Extract ONLY values that are ACTUALLY PRESENT in the text\n";
+                prompt += "- Find ALL instances of each type (there may be multiple names, multiple phone numbers, etc.)\n";
+                prompt += "- PII can appear anywhere - in sentences, forms, labels, or free-form text\n";
+                prompt += "- ALL telephone numbers (phone, cellphone, mobile, etc.) must be classified as PHONE\n";
+                prompt += "- Phone numbers can be in various formats: 555-123-4567, 555 123 0987, (555) 123-4567, etc.\n";
+                prompt += "- NEVER invent, guess, or make up values\n";
+                prompt += "- If a type is not found, do not list it at all\n";
+                prompt += "- You MUST use ONLY these 4 types - no other types are allowed\n\n";
+                prompt += "Return a bulleted list with each item in this format:\n";
+                prompt += "- TYPE: value\n\n";
+                prompt += "TYPE must be EXACTLY one of: PERSON, PHONE, EMAIL, ADDRESS\n";
+                prompt += "Do NOT use any other type names like CELLPHONE, MOBILE, etc.\n\n";
+                prompt += "Examples:\n\n";
+                prompt += "Input: Contact Sarah Johnson at sarah@email.com or call 555-123-4567.\n";
+                prompt += "Output:\n";
+                prompt += "- PERSON: Sarah Johnson\n";
+                prompt += "- EMAIL: sarah@email.com\n";
+                prompt += "- PHONE: 555-123-4567\n\n";
+                prompt += "Input: Phone: 555 123 0987\nCellphone: 543 123 8765\n";
+                prompt += "Output:\n";
+                prompt += "- PHONE: 555 123 0987\n";
+                prompt += "- PHONE: 543 123 8765\n\n";
+                prompt += "Input: I received a delivery at 100 Oak Street, Portland. Great service!\n";
+                prompt += "Output:\n";
+                prompt += "- ADDRESS: 100 Oak Street, Portland\n\n";
+                prompt += "Now extract from this text:\n" + text;
+            }
+
+            // Call the appropriate model
+            if (usingWllama) {
+                // Use Wllama (SmolLM2) with very low temperature to prevent hallucination
+                const response = await wllama.createCompletion(prompt, {
+                    nPredict: 512,
+                    sampling: {
+                        temp: 0.0,
+                        top_p: 0.9,
+                        penalty_repeat: 1.1
+                    },
+                    stopTokens: ['<|im_end|>', '<|im_start|>']
+                });
+                aiResponse = response;
+            } else {
+                // Use WebLLM (Phi 3-mini) with low temperature for factual extraction
+                const messages = [
+                    { role: "user", content: prompt }
+                ];
+                const response = await engine.chat.completions.create({
+                    messages: messages,
+                    temperature: 0.0,
+                    max_tokens: 512
+                });
+                aiResponse = response.choices[0].message.content;
+            }
+
+            console.log("AI Response:", aiResponse);
+
+            // Parse the AI response to extract PII terms
+            const lines = aiResponse.split('\n');
+            const typeMapping = {
+                'PERSON': 'Person',
+                'PHONE': 'Phone',
+                'EMAIL': 'Email',
+                'ADDRESS': 'Address'
+            };
+
+            lines.forEach(function (line) {
+                line = line.trim();
+                if (!line || line.length < 3) return;
+
+                // Remove bullet points and list markers
+                line = line.replace(/^[-*•]\s*/, '');
+
+                // Try to match format: "TYPE: value" or "TYPE (PERSON, PHONE, etc): value"
+                let match = line.match(/^(PERSON|PHONE|EMAIL|ADDRESS)\s*[:(]\s*(.+)$/i);
+                if (!match) {
+                    // Try alternative format: "value (TYPE)" or "value - TYPE"
+                    match = line.match(/^(.+?)\s*[-:(]\s*(PERSON|PHONE|EMAIL|ADDRESS)\s*[)]?$/i);
+                    if (match) {
+                        match = [match[0], match[2], match[1]];
+                    }
+                }
+
+                if (match) {
+                    const typeRaw = match[1].toUpperCase();
+                    let value = match[2].trim();
+
+                    // Clean up the value
+                    value = value.replace(/^[:\s)]+|[:\s)]+$/g, '').trim();
+
+                    if (value && typeRaw in typeMapping) {
+                        const type = typeMapping[typeRaw];
+                        addEntity(entities, value, type);
+                    }
                 }
             });
-        });
 
-        if (window.nlp && typeof window.nlp === "function") {
-            window.nlp(text).people().out("array").forEach(function (value) {
-                addPersonCandidate(entities, value);
-            });
+        } catch (error) {
+            console.error("Error during PII detection:", error);
+            throw new Error("Failed to detect PII using AI model: " + error.message);
         }
 
-        collectRegexPeople(text, entities);
-        collectCapitalizedPeople(text, entities);
-
-        const filteredEntities = filterRedundantEntities(entities);
+        // Remove duplicates
+        const uniqueEntities = [];
+        const seen = new Set();
+        entities.forEach(function (entity) {
+            const key = entity.type + '|' + entity.value.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueEntities.push(entity);
+            }
+        });
 
         const replacements = {
             Person: "[PERSON]",
@@ -695,7 +744,7 @@
             Address: "[ADDRESS]"
         };
 
-        const redactedText = filteredEntities
+        const redactedText = uniqueEntities
             .slice()
             .sort(function (left, right) { return right.value.length - left.value.length; })
             .reduce(function (current, entity) {
@@ -703,7 +752,7 @@
             }, text);
 
         return {
-            entities: filteredEntities,
+            entities: uniqueEntities,
             redactedText: redactedText
         };
     }
@@ -838,6 +887,8 @@
         elements.detectBtn.title = "Analyze text";
         elements.detectBtn.setAttribute("aria-label", "Analyze text");
         elements.sourceText.value = state.originalText;
+        clearResults();
+        updatePlaceholder();
         updateDetectButton();
         announce("Editing enabled");
     }
@@ -901,7 +952,7 @@
         reader.readAsText(file);
     }
 
-    function analyze() {
+    async function analyze() {
         const text = elements.sourceText.value.trim();
         if (!text) {
             showStatus("Add text before running detection.", true);
@@ -910,20 +961,35 @@
 
         state.originalText = text;
 
+        // Show loading state
+        showLoading();
+
         try {
             if (state.mode === "language") {
                 renderLanguage(detectLanguage(text));
                 announce("Detected language");
+                lockEditor();
             } else {
-                const result = detectPii(text);
+                // Disable button and show loading state for PII detection
+                elements.detectBtn.disabled = true;
+                elements.detectBtn.textContent = "Analyzing...";
+                showStatus("Detecting PII using AI model...", false);
+
+                const result = await detectPii(text);
                 elements.sourceText.value = result.redactedText;
                 renderPii(result);
                 announce("PII extraction complete");
+                showStatus("", false);
+                lockEditor();
+
+                elements.detectBtn.disabled = false;
             }
-            lockEditor();
         } catch (error) {
             console.error(error);
             renderError(error instanceof Error ? error.message : "Unexpected error while analyzing text.");
+            elements.detectBtn.disabled = false;
+            elements.detectBtn.textContent = "Detect";
+            showStatus(error.message || "Error during analysis", true);
         }
     }
 
@@ -942,6 +1008,9 @@
         updatePlaceholder();
         updateDetectButton();
 
+        // Initialize AI models for PII detection
+        initAIModels();
+
         elements.analyzerSelect.addEventListener("change", function () {
             state.mode = elements.analyzerSelect.value;
             populateSamples();
@@ -954,6 +1023,8 @@
                 return;
             }
             elements.sourceText.value = elements.sampleSelect.value;
+            clearResults();
+            updatePlaceholder();
             updateDetectButton();
         });
 
@@ -986,6 +1057,13 @@
             document.body.classList.toggle("dark", dark);
             localStorage.setItem("language-playground-theme", dark ? "dark" : "light");
         });
+
+        if (elements.modelToggle) {
+            elements.modelToggle.addEventListener("change", function () {
+                const useGPU = elements.modelToggle.checked;
+                switchModel(useGPU);
+            });
+        }
     }
 
     initialize();
