@@ -160,27 +160,37 @@ import { Wllama } from '@wllama/wllama';
     }
 
     /**
-     * Disables all UI elements during model loading
+     * Disables PII-related UI elements during model loading
+     * but keeps Language Detection features enabled
      */
     function disableUI() {
-        elements.analyzerSelect.disabled = true;
-        elements.sourceText.disabled = true;
-        elements.sampleSelect.disabled = true;
-        elements.attachBtn.disabled = true;
-        elements.detectBtn.disabled = true;
+        // Keep the analyzer dropdown enabled, but disable the PII option
+        const piiOption = elements.analyzerSelect.querySelector('option[value="pii"]');
+        if (piiOption) piiOption.disabled = true;
+
+        // Keep text input, sample select, attach button enabled for language detection
+        // elements.sourceText, elements.sampleSelect, elements.attachBtn remain enabled
+
+        // Disable GPU/CPU toggle until model loads
         if (elements.modelToggle) elements.modelToggle.disabled = true;
+
+        // Detect button state is managed by updateDetectButton()
+        updateDetectButton();
     }
 
     /**
-     * Enables all UI elements after model is loaded
+     * Enables PII-related UI elements after model is loaded
      */
     function enableUI() {
-        elements.analyzerSelect.disabled = false;
-        elements.sourceText.disabled = false;
-        elements.sampleSelect.disabled = false;
-        elements.attachBtn.disabled = false;
-        updateDetectButton();
+        // Enable the PII option in the analyzer dropdown
+        const piiOption = elements.analyzerSelect.querySelector('option[value="pii"]');
+        if (piiOption) piiOption.disabled = false;
+
+        // Enable GPU/CPU toggle now that model is loaded
         if (elements.modelToggle) elements.modelToggle.disabled = false;
+
+        // Other elements (text input, etc.) were never disabled
+        updateDetectButton();
     }
 
     /**
@@ -358,6 +368,13 @@ import { Wllama } from '@wllama/wllama';
     async function switchModel(useGPU) {
         // Clear UI and reset state when switching models
         resetUi();
+
+        // Switch to Language Detection mode and disable PII until new model loads
+        state.mode = "language";
+        elements.analyzerSelect.value = "language";
+        populateSamples();
+        updatePlaceholder();
+
         disableUI();
         aiModelReady = false;
 
@@ -1009,6 +1026,8 @@ import { Wllama } from '@wllama/wllama';
         updateDetectButton();
 
         // Initialize AI models for PII detection
+        // Language detection is enabled immediately, but PII extraction
+        // and GPU/CPU toggle are disabled until the model loads
         initAIModels();
 
         elements.analyzerSelect.addEventListener("change", function () {
