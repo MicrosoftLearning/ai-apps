@@ -439,6 +439,15 @@ body.dark #placeholder-text {
     place-content: center;
     min-height: 100%;
     padding: 40px 20px;
+    gap: 16px;
+}
+
+.loading-message {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text);
+    min-height: 28px;
 }
 
 .loading-dots {

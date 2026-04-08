@@ -12,6 +12,7 @@ import { Wllama } from '@wllama/wllama';
     let webGPUAvailable = false; // Track if WebGPU is available
     let usingWllama = false; // Track which engine is active
     let aiModelReady = false; // Track if AI model is loaded
+    let loadingTimers = []; // Track loading message timers
 
     const LANGUAGES = [
         { name: "English", code: "en", script: "latin", words: ["the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even", "new", "want", "because", "any", "these", "give", "day", "most", "us"] },
@@ -113,6 +114,7 @@ import { Wllama } from '@wllama/wllama';
     }
 
     function showResults() {
+        clearLoadingTimers();
         elements.placeholder.hidden = true;
         elements.placeholder.style.display = "none";
         elements.results.hidden = false;
@@ -124,7 +126,46 @@ import { Wllama } from '@wllama/wllama';
         elements.placeholder.style.display = "none";
         elements.results.hidden = false;
         elements.results.style.display = "flex";
-        elements.results.innerHTML = "<div class='loading-state'><div class='loading-dots'><span></span><span></span><span></span></div></div>";
+        elements.results.innerHTML = "<div class='loading-state'><div class='loading-message'></div><div class='loading-dots'><span></span><span></span><span></span></div></div>";
+        
+        // Clear any existing timers
+        clearLoadingTimers();
+        
+        // Set up progressive loading messages
+        const messageEl = elements.results.querySelector('.loading-message');
+        if (messageEl) {
+            // After 5 seconds: "Analyzing"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Analyzing";
+            }, 5000));
+            
+            // After 20 seconds: "Still analyzing"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Still analyzing";
+            }, 20000));
+            
+            // After 35 seconds: "Almost there"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Almost there";
+            }, 35000));
+            
+            // After 50 seconds: "Hold tight"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Hold tight";
+            }, 50000));
+
+            // After 65 seconds: "Nearly done"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Nearly done";
+            }, 65000));
+        }
+    }
+    
+    function clearLoadingTimers() {
+        loadingTimers.forEach(function(timer) {
+            clearTimeout(timer);
+        });
+        loadingTimers = [];
     }
 
     function clearResults() {
@@ -186,8 +227,8 @@ import { Wllama } from '@wllama/wllama';
         const piiOption = elements.analyzerSelect.querySelector('option[value="pii"]');
         if (piiOption) piiOption.disabled = false;
 
-        // Enable GPU/CPU toggle now that model is loaded
-        if (elements.modelToggle) elements.modelToggle.disabled = false;
+        // Enable GPU/CPU toggle now that model is loaded (only if WebGPU is available)
+        if (elements.modelToggle && webGPUAvailable) elements.modelToggle.disabled = false;
 
         // Other elements (text input, etc.) were never disabled
         updateDetectButton();
@@ -335,6 +376,12 @@ import { Wllama } from '@wllama/wllama';
                 console.log('WebGPU not available, using wllama (CPU mode)');
                 if (elements.modelToggle) {
                     elements.modelToggle.checked = false;
+                    elements.modelToggle.disabled = true;
+                    // Update tooltip to indicate GPU mode is unavailable
+                    const toggleLabel = elements.modelToggle.closest('.switch');
+                    if (toggleLabel) {
+                        toggleLabel.title = 'GPU mode unavailable (WebGPU not supported)';
+                    }
                 }
                 await initWllama();
             } else {
