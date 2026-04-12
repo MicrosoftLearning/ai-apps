@@ -4,6 +4,7 @@ const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
 const runBtn = document.getElementById("run-btn");
 const stopBtn = document.getElementById("stop-btn");
+const modeToggleBtn = document.getElementById("mode-toggle-btn");
 const retryBtn = document.getElementById("retry-btn");
 const themeBtn = document.getElementById("theme-btn");
 const aboutBtn = document.getElementById("about-btn");
@@ -41,9 +42,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -92,9 +93,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -135,9 +136,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -191,9 +192,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -241,9 +242,9 @@ def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -294,9 +295,9 @@ async def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize an async OpenAI client
         async_client = AsyncOpenAI(
@@ -345,9 +346,9 @@ async def main():
 
     try:
         # Configuration settings 
-        endpoint = "http://localwllama"
+        endpoint = "https://local/openai"
         key = "key123"
-        model_name = "smollm2"
+        model_name = "local-llm"
 
         # Initialize the OpenAI client
         async_client = AsyncOpenAI(
@@ -407,6 +408,9 @@ const state = {
     activeRunId: 0,
     aboutReturnFocus: null,
     switchingTemplate: false,
+    gpuModeAvailable: false,  // Track if GPU mode is available
+    currentlyUsingGPU: false,  // Track current mode
+    switchingMode: false,  // Track if we're switching modes
 };
 
 let modelResetInFlight = Promise.resolve();
@@ -666,6 +670,11 @@ function updateRunState() {
 
     if (retryBtn) {
         retryBtn.disabled = !state.pyReady || appReady || state.running || state.sessionActive;
+    }
+
+    if (modeToggleBtn) {
+        // Enable mode toggle only when app is ready, GPU is available, and not switching modes
+        modeToggleBtn.disabled = !appReady || !state.gpuModeAvailable || state.switchingMode || state.running || state.sessionActive;
     }
 
     if (topbarControls) {
@@ -929,7 +938,7 @@ function resetTerminalContainer() {
 }
 
 function requestModelSessionReset(options = {}) {
-    const { hard = false } = options;
+    const { hard = false, skipReinit = false } = options;
     const resetFnName = hard ? "modelCoderHardResetSession" : "modelCoderResetSession";
     const resetFn = window[resetFnName];
 
@@ -944,7 +953,13 @@ function requestModelSessionReset(options = {}) {
         .catch(() => {
             // Keep reset chain alive even if a previous reset failed.
         })
-        .then(() => resetFn());
+        .then(() => {
+            // Pass skipReinit option to hard reset
+            if (hard && skipReinit) {
+                return resetFn({ skipReinit: true });
+            }
+            return resetFn();
+        });
 
     return modelResetInFlight.catch((error) => {
         console.warn("Unable to reset model session.", error);
@@ -1118,7 +1133,28 @@ async function loadSelectedTemplate() {
     try {
         if (templateChanged) {
             clearTerminalOutput({ resetModel: false });
-            await requestModelSessionReset({ hard: true });
+
+            // In GPU mode (WebLLM/Phi-3), just clear conversation history (soft reset)
+            // In CPU mode (wllama/SmolLM2), reload the model (hard reset)
+            const isUsingCPUMode = typeof window.modelCoderIsUsingCPUMode === "function"
+                ? window.modelCoderIsUsingCPUMode()
+                : true; // Default to CPU mode behavior if function not available
+
+            console.log(`Template switching: ${isUsingCPUMode ? 'CPU mode - hard reset (reload model)' : 'GPU mode - soft reset (clear conversation only)'}`);
+
+            if (isUsingCPUMode) {
+                // Hard reset without auto-reinit, then reinitialize in CPU mode to preserve mode
+                await requestModelSessionReset({ hard: true, skipReinit: true });
+                if (typeof window.modelCoderInitWithMode === "function") {
+                    await window.modelCoderInitWithMode('cpu', 3);
+                } else {
+                    // Fallback if new function not available
+                    await window.modelCoderInit(3);
+                }
+            } else {
+                // GPU mode: just soft reset
+                await requestModelSessionReset({ hard: false });
+            }
         }
 
         const ok = setEditorCode(snippet);
@@ -1383,13 +1419,88 @@ async function initializeModel() {
     try {
         await window.modelCoderInit(3);
         state.modelReady = true;
-        setPill(statusModel, "Model ready: smollm2", "ready");
+
+        // Check if GPU mode is available and update state
+        if (typeof window.modelCoderIsUsingCPUMode === "function") {
+            const isUsingCPU = window.modelCoderIsUsingCPUMode();
+            state.currentlyUsingGPU = !isUsingCPU;
+
+            // If we got GPU mode, GPU is available
+            if (!isUsingCPU) {
+                state.gpuModeAvailable = true;
+            }
+        }
+
+        updateModeToggleButton();
+        // Status message is set by the status listener callback
     } catch (error) {
         setPill(statusModel, `Model failed: ${error.message}`, "error");
         retryBtn.hidden = false;
     }
 
     updateRunState();
+}
+
+function updateModeToggleButton() {
+    if (!modeToggleBtn) {
+        return;
+    }
+
+    // Update button text and state
+    if (state.currentlyUsingGPU) {
+        modeToggleBtn.textContent = "GPU";
+        modeToggleBtn.title = "Using GPU mode (Phi-3). Click to switch to CPU mode (SmolLM2)";
+        modeToggleBtn.setAttribute("aria-pressed", "true");
+    } else {
+        modeToggleBtn.textContent = "CPU";
+        modeToggleBtn.title = state.gpuModeAvailable
+            ? "Using CPU mode (SmolLM2). Click to switch to GPU mode (Phi-3)"
+            : "GPU mode not available";
+        modeToggleBtn.setAttribute("aria-pressed", "false");
+    }
+}
+
+async function toggleMode() {
+    if (!state.gpuModeAvailable || state.switchingMode || !state.modelReady) {
+        return;
+    }
+
+    state.switchingMode = true;
+    updateRunState();
+
+    try {
+        const targetMode = state.currentlyUsingGPU ? 'cpu' : 'gpu';
+        console.log(`[Mode Toggle] Switching from ${state.currentlyUsingGPU ? 'GPU' : 'CPU'} to ${targetMode.toUpperCase()} mode`);
+
+        // Clear terminal and reset model with hard reset but skip auto-reinit
+        clearTerminalOutput({ resetModel: false });
+        await requestModelSessionReset({ hard: true, skipReinit: true });
+
+        // Re-initialize with the target mode
+        if (typeof window.modelCoderInitWithMode === "function") {
+            console.log(`[Mode Toggle] Initializing with mode: ${targetMode}`);
+            await window.modelCoderInitWithMode(targetMode, 3);
+        } else {
+            // Fallback to regular init if new function not available
+            console.warn('[Mode Toggle] modelCoderInitWithMode not available, using regular init');
+            await window.modelCoderInit(3);
+        }
+
+        // Update state
+        if (typeof window.modelCoderIsUsingCPUMode === "function") {
+            const isUsingCPU = window.modelCoderIsUsingCPUMode();
+            state.currentlyUsingGPU = !isUsingCPU;
+            console.log(`[Mode Toggle] Successfully switched to ${state.currentlyUsingGPU ? 'GPU' : 'CPU'} mode`);
+        }
+
+        updateModeToggleButton();
+    } catch (error) {
+        console.error("[Mode Toggle] Failed to switch mode:", error);
+        setPill(statusModel, `Mode switch failed: ${error.message}`, "error");
+    } finally {
+        state.switchingMode = false;
+        updateRunState();
+    }
 }
 
 async function initializeApp() {
@@ -1431,6 +1542,9 @@ async function initializeApp() {
         });
     }
     retryBtn.addEventListener("click", initializeModel);
+    if (modeToggleBtn) {
+        modeToggleBtn.addEventListener("click", toggleMode);
+    }
     if (templateSelect) {
         templateSelect.addEventListener("change", () => {
             void loadSelectedTemplate();

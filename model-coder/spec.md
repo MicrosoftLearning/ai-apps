@@ -18,7 +18,7 @@ Users write Python code in a PyScript editor and execute it in a terminal pane. 
 - Streaming responses
 - Async usage with `AsyncOpenAI`
 
-The model runtime is local and in-browser via `wllama` with SmolLM2.
+The model runtime is local and in-browser with dual-mode support: WebLLM (Phi-3-mini) when WebGPU is available, falling back to wllama (SmolLM2) for CPU-only environments.
 
 ## Core Goals
 
@@ -34,7 +34,7 @@ The implementation is split across these files:
 - `index.html`: app shell, toolbar, editor/terminal containers, accessibility landmarks, About modal.
 - `styles.css`: responsive layout, light/dark themes, terminal/editor styling, focus-visible and a11y styles, modal styles.
 - `app.js`: UI controller, templates, run lifecycle, session cleanup, theme/splitter/accessibility behavior.
-- `llm.js`: local model lifecycle and request handling through `wllama`.
+- `llm.js`: local model lifecycle and request handling with dual-mode support (WebLLM for GPU, wllama for CPU).
 - `nopenai.py`: Python-side OpenAI-compatible wrapper and stream abstractions.
 - `coi-serviceworker.js`: COOP/COEP service-worker bootstrap for cross-origin isolation support on static hosting.
 

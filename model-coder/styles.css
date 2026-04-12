@@ -212,6 +212,28 @@ button.secondary:hover:not(:disabled) {
     background: var(--accent-strong);
 }
 
+/* Mode toggle button - visually distinct */
+#mode-toggle-btn {
+    min-width: 50px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+#mode-toggle-btn[aria-pressed="true"] {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent-strong);
+}
+
+#mode-toggle-btn[aria-pressed="false"]:not(:disabled) {
+    background: var(--dimmed-bg);
+    color: var(--text-color);
+}
+
+#mode-toggle-btn:disabled {
+    opacity: 0.4;
+}
+
 button:focus-visible {
     outline: 3px solid #ffffff;
     outline-offset: 2px;

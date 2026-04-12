@@ -1,3 +1,4 @@
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js";
 
 const WASM_PATHS = {
@@ -6,8 +7,9 @@ const WASM_PATHS = {
     "multi-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm"
 };
 
-const MODEL_REPO = "ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF";
-const MODEL_FILE = "smollm2-360m-instruct-q8_0.gguf";
+const SMOLLM2_REPO = "ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF";
+const SMOLLM2_FILE = "smollm2-360m-instruct-q8_0.gguf";
+const PHI3_MODEL_ID = "Phi-3-mini-4k-instruct-q4f16_1-MLC";
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
 const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
 
@@ -124,7 +126,10 @@ function validateMessages(messages, label = "messages") {
 
 class ModelCoderLLM {
     constructor() {
-        this.wllama = null;
+        this.engine = null;  // WebLLM engine for GPU mode
+        this.wllama = null;  // wllama engine for CPU mode
+        this.usingWllama = false;  // Track which engine is active
+        this.webllmAvailable = false;  // Track if WebLLM model successfully loaded
         this.isReady = false;
         this.isLoading = false;
         this.statusCallback = null;
@@ -345,6 +350,7 @@ class ModelCoderLLM {
     }
 
     async resetSession() {
+        console.log('[Model Reset] Soft reset - clearing conversation history only');
         this.sessionVersion += 1;
         this.streamSessions.clear();
         this.responsesById.clear();
@@ -357,29 +363,49 @@ class ModelCoderLLM {
             ]);
         }
 
-        if (this.wllama) {
+        // Clear KV cache for wllama if it's being used
+        if (this.wllama && this.usingWllama) {
             await this.wllama.kvClear().catch(() => { });
         }
+
+        // Note: WebLLM engine doesn't require explicit KV cache clearing
     }
 
-    async hardResetSession() {
+    async hardResetSession(options = {}) {
+        const { skipReinit = false } = options;
+        console.log('[Model Reset] Hard reset - reloading model');
         await this.resetSession();
 
-        const current = this.wllama;
+        const currentWllama = this.wllama;
+        const currentEngine = this.engine;
+
         this.wllama = null;
+        this.engine = null;
         this.isReady = false;
         this.isLoading = false;
+        this.usingWllama = false;
+        this.webllmAvailable = false;
 
-        if (current) {
+        // Clean up wllama
+        if (currentWllama) {
             for (const methodName of ["dispose", "destroy", "unload", "unloadModel", "terminate", "exit"]) {
-                const method = current?.[methodName];
+                const method = currentWllama?.[methodName];
                 if (typeof method === "function") {
-                    await Promise.resolve(method.call(current)).catch(() => { });
+                    await Promise.resolve(method.call(currentWllama)).catch(() => { });
                 }
             }
         }
 
-        await this.initialize(2);
+        // Clean up WebLLM engine
+        if (currentEngine) {
+            // WebLLM engine cleanup if needed
+            // Currently no explicit cleanup required for WebLLM
+        }
+
+        // Only reinitialize if not skipping (default behavior for backward compatibility)
+        if (!skipReinit) {
+            await this.initialize(2);
+        }
     }
 
     _status(kind, message) {
@@ -388,7 +414,18 @@ class ModelCoderLLM {
         }
     }
 
-    async initialize(maxRetries = 3) {
+    checkWebGPUSupport() {
+        // Check if WebGPU is available in the browser
+        if (!navigator.gpu) {
+            console.log('WebGPU not supported in this browser');
+            return false;
+        }
+        return true;
+    }
+
+    async initialize(maxRetries = 3, options = {}) {
+        const { forceCPU = false, forceGPU = false } = options;
+
         if (this.isReady) {
             return;
         }
@@ -398,15 +435,139 @@ class ModelCoderLLM {
         }
 
         this.isLoading = true;
+
+        // If forcing CPU mode, skip GPU check and go straight to wllama
+        if (forceCPU) {
+            console.log('Forcing CPU mode (wllama)');
+            this.webllmAvailable = false;
+            try {
+                await this._loadWllama(maxRetries);
+                this.usingWllama = true;
+                this.isReady = true;
+                this.isLoading = false;
+                return;
+            } catch (wllamaError) {
+                console.error('Wllama initialization failed:', wllamaError);
+                this.isLoading = false;
+                throw wllamaError;
+            }
+        }
+
+        // Check for WebGPU support before attempting to load WebLLM
+        const hasWebGPU = this.checkWebGPUSupport();
+
+        if (!hasWebGPU) {
+            if (forceGPU) {
+                this.isLoading = false;
+                throw new Error('GPU mode requested but WebGPU is not available');
+            }
+            console.log('WebGPU not available, using wllama (CPU mode)');
+            this.webllmAvailable = false;
+            try {
+                await this._loadWllama(maxRetries);
+                this.usingWllama = true;
+                this.isReady = true;
+                this.isLoading = false;
+                return;
+            } catch (wllamaError) {
+                console.error('Wllama initialization failed:', wllamaError);
+                this.isLoading = false;
+                throw wllamaError;
+            }
+        }
+
+        // Try WebLLM first (faster with GPU) unless forcing CPU
+        try {
+            console.log('Attempting to initialize WebLLM with WebGPU...');
+            await this._loadWebLLM();
+            console.log('WebLLM initialized successfully');
+            this.webllmAvailable = true;
+            this.usingWllama = false;
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        } catch (error) {
+            console.error('WebLLM initialization failed, loading wllama fallback:', error);
+            this.webllmAvailable = false;
+
+            if (forceGPU) {
+                this.isLoading = false;
+                throw new Error('GPU mode requested but WebLLM failed to initialize: ' + error.message);
+            }
+
+            try {
+                await this._loadWllama(maxRetries);
+                console.log('Wllama initialized successfully as fallback');
+                this.usingWllama = true;
+                this.isReady = true;
+                this.isLoading = false;
+                return;
+            } catch (wllamaError) {
+                console.error('Both WebLLM and wllama initialization failed:', wllamaError);
+                this.isLoading = false;
+                throw wllamaError;
+            }
+        }
+    }
+
+    async _loadWebLLM() {
+        console.log('_loadWebLLM called - starting model initialization');
+        this._status("loading", "Discovering available models...");
+
+        // Check if WebLLM is available
+        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+            console.error('WebLLM check failed');
+            throw new Error('WebLLM not properly loaded');
+        }
+
+        // Get available models from WebLLM
+        const models = webllm.prebuiltAppConfig.model_list;
+        console.log('All available models:', models.map(m => m.model_id));
+
+        // Filter for the specific Phi-3 model only
+        let availableModels = models.filter(model =>
+            model.model_id === PHI3_MODEL_ID
+        );
+
+        if (availableModels.length === 0) {
+            throw new Error('Phi-3-mini-4k-instruct model not found');
+        }
+
+        console.log('Available models for loading:', availableModels.map(m => m.model_id));
+        this._status("loading", "Loading WebLLM model (GPU mode)...");
+
+        // Try to load the model
+        try {
+            console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
+
+            this.engine = await webllm.CreateMLCEngine(
+                PHI3_MODEL_ID,
+                {
+                    initProgressCallback: (progress) => {
+                        console.log('Progress:', progress);
+                        const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
+                        const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
+                        this._status("loading", progressText);
+                    }
+                }
+            );
+
+            console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
+            this._status("ready", "Model ready: Phi-3 (GPU mode)");
+        } catch (modelError) {
+            console.error(`Failed to load ${PHI3_MODEL_ID}:`, modelError);
+            throw modelError;
+        }
+    }
+
+    async _loadWllama(maxRetries = 3) {
         let lastError = null;
 
         for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
             try {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
-                await this._loadModel();
-                this.isReady = true;
-                this._status("ready", "Model ready: smollm2");
-                this.isLoading = false;
+                await this._loadWllamaModel();
+                this._status("ready", "Model ready: SmolLM2 (CPU mode)");
                 return;
             } catch (error) {
                 lastError = error;
@@ -417,13 +578,12 @@ class ModelCoderLLM {
             }
         }
 
-        this.isLoading = false;
         throw lastError || new Error("Model initialization failed");
     }
 
-    async _loadModel() {
+    async _loadWllamaModel() {
         this.wllama = new Wllama(WASM_PATHS);
-        await this.wllama.loadModelFromHF(MODEL_REPO, MODEL_FILE, {
+        await this.wllama.loadModelFromHF(SMOLLM2_REPO, SMOLLM2_FILE, {
             n_ctx: 2048,
             n_threads: 1,
             progressCallback: ({ loaded, total }) => {
@@ -438,11 +598,11 @@ class ModelCoderLLM {
     }
 
     _ensureClient(model) {
-        if (!this.isReady || !this.wllama) {
+        if (!this.isReady || (!this.wllama && !this.engine)) {
             throw new Error("Model is not ready yet.");
         }
-        if (model !== "smollm2") {
-            throw new Error("The model parameter must be 'smollm2'.");
+        if (model !== "local-llm") {
+            throw new Error("The model parameter must be 'local-llm'.");
         }
     }
 
@@ -455,6 +615,30 @@ class ModelCoderLLM {
         }
         prompt += "<|im_start|>assistant\n";
         return prompt;
+    }
+
+    _translateToPhi3Prompt(messages) {
+        // For Phi-3, we just pass messages through without aggressive translation
+        // Phi-3 is capable enough to handle the requests as-is
+        // We only need to ensure consistent role mapping
+        console.log('[Phi-3] Original messages:', messages);
+
+        const translatedMessages = [];
+
+        for (const message of messages) {
+            const role = message.role;
+            const content = contentToText(message.content);
+
+            // Map developer/system to system, keep everything else as-is
+            if (role === "developer") {
+                translatedMessages.push({ role: "system", content });
+            } else {
+                translatedMessages.push({ role, content });
+            }
+        }
+
+        console.log('[Phi-3] Translated messages:', translatedMessages);
+        return translatedMessages;
     }
 
     _buildResponsesMessages(input, instructions, previousResponseId) {
@@ -481,7 +665,21 @@ class ModelCoderLLM {
         return messages;
     }
 
-    async _complete(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
+    async _complete(messagesOrPrompt, onDelta, expectedSessionVersion = this.sessionVersion) {
+        // Route to appropriate engine
+        if (this.usingWllama) {
+            // wllama expects ChatML prompt
+            const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt);
+            return await this._completeWithWllama(prompt, onDelta, expectedSessionVersion);
+        } else {
+            // WebLLM expects messages array
+            const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
+            return await this._completeWithWebLLM(messages, onDelta, expectedSessionVersion);
+        }
+    }
+
+    async _completeWithWllama(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
+        console.log('[wllama] Sending to SmolLM2 (ChatML):', prompt.substring(0, 200) + '...');
         await this.wllama.kvClear().catch(() => { });
 
         let previousText = "";
@@ -522,7 +720,51 @@ class ModelCoderLLM {
         return fullText.trim();
     }
 
-    async _createStreamSession(prompt, streamType = "responses", requestedRunId = null) {
+    async _completeWithWebLLM(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
+        // WebLLM expects messages array directly (not ChatML)
+        console.log('[WebLLM] Sending to Phi-3-mini:', messages);
+        let fullText = "";
+
+        const completion = await this.engine.chat.completions.create({
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 320,
+            stream: true
+        });
+
+        for await (const chunk of completion) {
+            if (expectedSessionVersion !== this.sessionVersion) {
+                break;
+            }
+
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) {
+                fullText += content;
+                if (typeof onDelta === "function") {
+                    onDelta(content);
+                }
+            }
+        }
+
+        return fullText.trim();
+    }
+
+    _parseChatMLToMessages(chatMLPrompt) {
+        // Simple parser to convert ChatML back to messages array
+        const messages = [];
+        const pattern = /<\|im_start\|>(system|user|assistant)\n([\s\S]*?)<\|im_end\|>/g;
+        let match;
+
+        while ((match = pattern.exec(chatMLPrompt)) !== null) {
+            const role = match[1];
+            const content = match[2].trim();
+            messages.push({ role, content });
+        }
+
+        return messages;
+    }
+
+    async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null) {
         const streamId = makeId("stream");
         const responseId = makeId("resp");
         const createdAtVersion = this.sessionVersion;
@@ -539,7 +781,7 @@ class ModelCoderLLM {
         this.streamSessions.set(streamId, session);
 
         let generationTask;
-        generationTask = this._complete(prompt, (delta) => {
+        generationTask = this._complete(messagesOrPrompt, (delta) => {
             if (createdAtVersion !== this.sessionVersion) {
                 return;
             }
@@ -652,7 +894,7 @@ class ModelCoderLLM {
 
         if (payload.type === "chat.completions.create") {
             this._ensureClient(payload.model);
-            const messages = Array.isArray(payload.messages) ? payload.messages : [];
+            let messages = Array.isArray(payload.messages) ? payload.messages : [];
             validateMessages(messages, "messages");
 
             const moderatedChatPrompts = this._extractModeratedPromptsFromMessages(messages);
@@ -669,10 +911,13 @@ class ModelCoderLLM {
                 return this._createSafeChatResponse();
             }
 
-            const prompt = this._toChatML(messages);
+            // Translate messages for Phi-3 when using WebLLM
+            if (!this.usingWllama) {
+                messages = this._translateToPhi3Prompt(messages);
+            }
 
             if (payload.stream) {
-                const streamMeta = await this._createStreamSession(prompt, "chat", payload.run_id);
+                const streamMeta = await this._createStreamSession(messages, "chat", payload.run_id);
                 return {
                     stream: true,
                     stream_id: streamMeta.stream_id,
@@ -680,7 +925,7 @@ class ModelCoderLLM {
                 };
             }
 
-            const outputText = await this._complete(prompt);
+            const outputText = await this._complete(messages);
             const responseId = makeId("chatcmpl");
             this.responsesById.set(responseId, outputText);
 
@@ -719,16 +964,20 @@ class ModelCoderLLM {
                 return this._createSafeResponsesResponse();
             }
 
-            const messages = this._buildResponsesMessages(
+            let messages = this._buildResponsesMessages(
                 payload.input,
                 normalizedInstructions,
                 payload.previous_response_id
             );
             validateMessages(messages, "input");
-            const prompt = this._toChatML(messages);
+
+            // Translate messages for Phi-3 when using WebLLM
+            if (!this.usingWllama) {
+                messages = this._translateToPhi3Prompt(messages);
+            }
 
             if (payload.stream) {
-                const streamMeta = await this._createStreamSession(prompt, "responses", payload.run_id);
+                const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id);
                 return {
                     stream: true,
                     stream_id: streamMeta.stream_id,
@@ -736,7 +985,7 @@ class ModelCoderLLM {
                 };
             }
 
-            const outputText = await this._complete(prompt);
+            const outputText = await this._complete(messages);
             const responseId = makeId("resp");
             this.responsesById.set(responseId, outputText);
 
@@ -773,8 +1022,19 @@ const modelCoderSetStatusListener = (callback) => {
     llmRuntime.setStatusCallback(callback);
 };
 
-const modelCoderInit = async (maxRetries = 3) => {
-    await llmRuntime.initialize(maxRetries);
+const modelCoderInit = async (maxRetries = 3, options = {}) => {
+    await llmRuntime.initialize(maxRetries, options);
+};
+
+const modelCoderInitWithMode = async (mode = 'auto', maxRetries = 3) => {
+    // mode can be 'auto', 'gpu', or 'cpu'
+    const options = {};
+    if (mode === 'gpu') {
+        options.forceGPU = true;
+    } else if (mode === 'cpu') {
+        options.forceCPU = true;
+    }
+    await llmRuntime.initialize(maxRetries, options);
 };
 
 const modelCoderSetActiveRunId = (runId) => {
@@ -791,8 +1051,8 @@ const modelCoderResetSession = async () => {
     await llmRuntime.resetSession();
 };
 
-const modelCoderHardResetSession = async () => {
-    await llmRuntime.hardResetSession();
+const modelCoderHardResetSession = async (options = {}) => {
+    await llmRuntime.hardResetSession(options);
 };
 
 const modelCoderNextStreamChunk = async (streamId, runId = null) => {
@@ -800,14 +1060,20 @@ const modelCoderNextStreamChunk = async (streamId, runId = null) => {
     return JSON.stringify(next);
 };
 
+const modelCoderIsUsingCPUMode = () => {
+    return llmRuntime.usingWllama;
+};
+
 const modelCoderBridge = {
     modelCoderSetStatusListener,
     modelCoderInit,
+    modelCoderInitWithMode,
     modelCoderSetActiveRunId,
     modelCoderRequest,
     modelCoderResetSession,
     modelCoderHardResetSession,
     modelCoderNextStreamChunk,
+    modelCoderIsUsingCPUMode,
 };
 
 function attachBridge(target) {
@@ -816,11 +1082,13 @@ function attachBridge(target) {
     }
     target.modelCoderSetStatusListener = modelCoderSetStatusListener;
     target.modelCoderInit = modelCoderInit;
+    target.modelCoderInitWithMode = modelCoderInitWithMode;
     target.modelCoderSetActiveRunId = modelCoderSetActiveRunId;
     target.modelCoderRequest = modelCoderRequest;
     target.modelCoderResetSession = modelCoderResetSession;
     target.modelCoderHardResetSession = modelCoderHardResetSession;
     target.modelCoderNextStreamChunk = modelCoderNextStreamChunk;
+    target.modelCoderIsUsingCPUMode = modelCoderIsUsingCPUMode;
     target.modelCoderBridge = modelCoderBridge;
 }
 

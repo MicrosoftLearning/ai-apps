@@ -12,7 +12,7 @@ This document describes the current implementation and gives a code-trace map fo
 - `app.js`
   - Main UI/runtime controller: template loading, run lifecycle, terminal runner creation, run-id sync, theme/modal behavior, and accessibility helpers.
 - `llm.js`
-  - Local model runtime wrapper over `wllama`: initialization, request translation to ChatML, streaming chunk queues, session reset/hard reset.
+  - Local model runtime wrapper supporting dual-mode operation: WebLLM (Phi-3-mini on GPU) with automatic fallback to wllama (SmolLM2 on CPU). Handles initialization, WebGPU detection, request translation to ChatML, streaming chunk queues, session reset/hard reset.
 - `nopenai.py`
   - Python OpenAI-compatible wrapper used inside PyScript execution, including sync/async APIs and bridge invocation logic.
 - `coi-serviceworker.js`
