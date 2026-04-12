@@ -1567,7 +1567,9 @@ class ChatPlayground {
             'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'how',
             'do', 'does', 'did', 'can', 'could', 'would', 'should', 'may', 'might',
             'this', 'these', 'those', 'i', 'you', 'we', 'they', 'my', 'your',
-            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their'
+            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their', 'tell',
+            'show', 'give', 'provide', 'explain', 'describe', 'define', 'what\'s',
+            'whats', 'which', 'who\'s', 'whos', 'how\'s', 'hows'
         ]);
 
         // Extract words, convert to lowercase, filter stopwords and short words
@@ -1580,6 +1582,11 @@ class ChatPlayground {
         return [...new Set(words)];
     }
 
+    // Strip punctuation from text, keeping only alphanumeric and whitespace
+    stripPunctuation(text) {
+        return text.replace(/[^a-z0-9\s]/g, ' ');
+    }
+
     // Extract relevant lines from file content based on keywords
     extractRelevantLines(fileContent, keywords) {
         if (!fileContent || !keywords || keywords.length === 0) {
@@ -1587,17 +1594,20 @@ class ChatPlayground {
         }
 
         const lines = fileContent.split('\n');
-        const matchingLines = [];
+        let bestLine = '';
+        let bestCount = 0;
 
         for (const line of lines) {
-            const lineLower = line.toLowerCase();
-            // Check if line contains any keyword
-            if (keywords.some(keyword => lineLower.includes(keyword))) {
-                matchingLines.push(line.trim());
+            // Strip punctuation and lowercase for comparison
+            const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+            const count = keywords.filter(keyword => lineWords.includes(keyword)).length;
+            if (count > bestCount) {
+                bestCount = count;
+                bestLine = line.trim();
             }
         }
 
-        return matchingLines.length > 0 ? matchingLines.join('\n') : '';
+        return bestLine;
     }
 
     async handleSendMessage() {
@@ -1702,11 +1712,21 @@ class ChatPlayground {
                 finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
             }
 
-            // If file is uploaded, prepend file content to user message
+            // If file is uploaded, extract the most relevant line and append to user message
+            this.fileContentUsedInPrompt = false;
             if (this.config.fileUpload.content) {
-                // For Phi-3 (WebLLM/GPU mode), use entire file content for best accuracy
-                console.log('Using entire file content for Phi-3 (WebLLM mode) - ' + this.config.fileUpload.content.split('\n').length + ' lines');
-                finalUserMessage = 'Use the following information to answer the question:\n\n' + this.config.fileUpload.content + '\n\nQuestion: ' + userMessage;
+                const keywords = this.extractKeywords(userMessage);
+                console.log('Extracted keywords from user prompt (Phi-3 GPU):', keywords);
+
+                const relevantLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
+
+                if (relevantLine) {
+                    console.log('Found most relevant line from file:', relevantLine);
+                    finalUserMessage += '\nRespond based only on the following information:\n' + relevantLine;
+                    this.fileContentUsedInPrompt = true;
+                } else {
+                    console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
+                }
             }
 
             messages.push({ role: "user", content: finalUserMessage });
@@ -1803,9 +1823,9 @@ class ChatPlayground {
             }
         }
 
-        // Append file attribution if a file is uploaded (for display only, after streaming completes)
+        // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
         let displayResponse = fullResponse;
-        if (hasStartedOutput && this.config.fileUpload.fileName && fullResponse.trim()) {
+        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
             const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
             displayResponse = fullResponse + attribution;
             // Update the typing content to include attribution
@@ -1818,9 +1838,9 @@ class ChatPlayground {
             thinkingIndicator.remove();
 
             if (fullResponse.trim()) {
-                // Append file attribution if a file is uploaded (for display only)
+                // Append file attribution if a file is uploaded and relevant content was used (for display only)
                 displayResponse = fullResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
 
@@ -2001,17 +2021,14 @@ class ChatPlayground {
         } else if (fileContent) {
             // Format for file grounding
             prompt = '<|im_start|>system\n';
-            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written, and answer questions based only on the information provided.\n\n';
-            prompt += 'Instructions:\n';
             prompt += this.currentSystemMessage + '\n\n';
-            prompt += 'IMPORTANT: You must answer the user\'s specific question concisely, based only on the following information.\n\n';
-            prompt += 'Information:\n';
-            prompt += fileContent + '\n\n';
-            prompt += 'Base your answer on the information above ONLY. Do NOT include any details that are not present in the information above.\n\n';
             prompt += '<|im_end|>\n\n';
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>user\n' + userMessage + '\n';
+            prompt += 'Respond ONLY by summarizing the following informatation as a single sentence:\n---\n';
+            prompt += fileContent + '\n\n';
+            prompt += '<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
 
         } else {
@@ -2030,7 +2047,8 @@ class ChatPlayground {
             }
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>user\n' + userMessage + '\n\n';
+            prompt += 'Respond concisely and accurately. IMPORTANT: Do not invent facts or make details up.\n<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
         }
 
@@ -2060,6 +2078,7 @@ class ChatPlayground {
         let fileContentForPrompt = '';
 
         // If file is uploaded, extract relevant lines
+        this.fileContentUsedInPrompt = false;
         if (this.config.fileUpload.content) {
             const keywords = this.extractKeywords(userMessage);
             console.log('Extracted keywords from user prompt (wllama):', keywords);
@@ -2067,11 +2086,11 @@ class ChatPlayground {
             const relevantLines = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
             if (relevantLines) {
-                console.log('Found relevant lines from file (' + relevantLines.split('\n').length + ' lines)');
+                console.log('Found relevant line from file:', relevantLines);
                 fileContentForPrompt = relevantLines;
+                this.fileContentUsedInPrompt = true;
             } else {
-                console.log('No relevant lines found in file for the given keywords');
-                fileContentForPrompt = this.config.fileUpload.content;
+                console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
             }
         }
 
@@ -2162,9 +2181,9 @@ class ChatPlayground {
                     return;
                 }
 
-                // Append file attribution if a file is uploaded
+                // Append file attribution if a file is uploaded and relevant content was used
                 let displayResponse = cleanedResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse = cleanedResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
 
@@ -2182,7 +2201,7 @@ class ChatPlayground {
             } else if (this.stopRequested && fullResponse.trim()) {
                 // Response was stopped - display it but don't add to history
                 let displayResponse = fullResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
                 displayResponse += '\n\n[Response stopped by user - not saved to history]';
@@ -2204,7 +2223,7 @@ class ChatPlayground {
                 // Display stopped response but don't add to history
                 if (fullResponse.trim()) {
                     let displayResponse = fullResponse;
-                    if (this.config.fileUpload.fileName) {
+                    if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                         displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                     }
                     displayResponse += '\n\n[Response stopped by user - not saved to history]';
