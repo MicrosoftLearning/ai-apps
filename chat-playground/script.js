@@ -31,6 +31,7 @@ class ChatPlayground {
         this.avatarEnabled = false; // Track if avatar is enabled
         this.selectedAvatar = null; // Track selected avatar filename
         this.availableAvatars = ['Boris.svg', 'Doris.svg']; // Available avatars
+        this.voiceInteractionCancelled = false; // Track if user explicitly cancelled voice interaction
 
         // Configuration objects
         this.config = {
@@ -3065,6 +3066,12 @@ class ChatPlayground {
             return;
         }
 
+        // Clear conversation history when starting a new session
+        await this.clearChat();
+
+        // Reset cancelled flag
+        this.voiceInteractionCancelled = false;
+
         // Start speech recognition using the appropriate engine
         await this.startSpeechRecognition();
     }
@@ -3095,15 +3102,13 @@ class ChatPlayground {
             cancelBtn.style.display = 'inline-block';
         }
         if (ccBtn) {
-            ccBtn.style.display = 'none'; // Hide during listening
+            ccBtn.style.display = 'inline-block'; // Show CC button throughout the session
         }
         if (chatIcon) {
             chatIcon.style.animation = 'pulse 1s infinite'; // Pulse while listening
         }
 
-        // Reset captions to hidden at start of new conversation
-        this.showCaptions = false;
-        this.updateCCButton();
+        // Keep captions hidden unless user explicitly enables them
         this.updateMessageVisibility();
 
         // Update welcome message
@@ -3605,7 +3610,15 @@ class ChatPlayground {
     }
 
     onSpeechComplete() {
-        this.resetVoiceUI();
+        // If user cancelled, reset to default state
+        if (this.voiceInteractionCancelled) {
+            this.resetVoiceUI();
+            return;
+        }
+
+        // Otherwise, automatically start listening again for follow-up
+        console.log('Speech complete, automatically starting listening for follow-up...');
+        this.startSpeechRecognition();
     }
 
     resetVoiceUI() {
@@ -3627,15 +3640,6 @@ class ChatPlayground {
         }
         if (ccBtn) {
             ccBtn.style.display = 'none';
-        }
-
-        // Always show all messages when conversation ends
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            const messages = chatMessages.querySelectorAll('.message');
-            messages.forEach(msg => {
-                msg.classList.remove('hidden');
-            });
         }
 
         // Reset captions state to off for next conversation
@@ -3680,6 +3684,9 @@ class ChatPlayground {
     }
 
     cancelVoiceInteraction() {
+        // Mark interaction as cancelled
+        this.voiceInteractionCancelled = true;
+
         // Stop speech recognition (unified method handles both engines)
         this.stopSpeechRecognition(true);
 
@@ -3697,6 +3704,16 @@ class ChatPlayground {
             if (this.currentAbortController) {
                 this.currentAbortController.abort();
             }
+        }
+
+        // Show all messages when user cancels
+        this.showCaptions = true;
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const messages = chatMessages.querySelectorAll('.message');
+            messages.forEach(msg => {
+                msg.classList.remove('hidden');
+            });
         }
 
         // Reset UI
