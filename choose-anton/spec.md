@@ -1,0 +1,2 @@
+This is a simple web app in which users can choose which of the "Ask Anton" experiences they want to use.
+The app should include the image of Anton from the images folder, and present users with two tiles - similar to the ones in the root of the /computing-history app, The first tile should describe the Azure-based Ask Anton experience (based on the /ask-azure app) and link to <https://aka.ms/azk-anton>. The second tile should describe the browser-based Ask Anton experience (based on the /ask-anton app) and link to <https://aka.ms/ask-anton>.

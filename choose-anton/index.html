@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ask Anton - Choose Your Experience</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎓</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .anton-image {
+            width: clamp(100px, 20vw, 140px);
+            height: auto;
+            border-radius: 8px;
+            margin: 0 auto 15px;
+            display: block;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: clamp(22px, 4vw, 28px);
+        }
+
+        .subheading {
+            color: #555;
+            font-size: clamp(14px, 3vw, 16px);
+            line-height: 1.6;
+        }
+
+        .apps {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        @media (min-width: 650px) {
+            .apps {
+                flex-direction: row;
+                gap: 20px;
+            }
+
+            .app-card {
+                flex: 1;
+            }
+        }
+
+        .app-card {
+            display: block;
+            padding: 20px;
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .app-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: inherit;
+            transition: opacity 0.2s;
+            opacity: 1;
+        }
+
+        .app-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .app-card:hover::before {
+            opacity: 0.9;
+        }
+
+        .app-card-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .app-card h2 {
+            margin-bottom: 8px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .app-card p {
+            opacity: 0.95;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .azure {
+            background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
+        }
+
+        .browser {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px 18px;
+            }
+
+            .header {
+                margin-bottom: 25px;
+            }
+
+            .apps {
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="images/anton.png" alt="Anton the AI assistant" class="anton-image">
+            <h1>🎓 Ask Anton</h1>
+            <p class="subheading">Choose your AI learning assistant experience</p>
+        </div>
+
+        <div class="apps">
+            <a href="https://aka.ms/azk-anton" class="app-card azure">
+                <div class="app-card-content">
+                    <span class="badge">☁️ Cloud-Powered</span>
+                    <h2>Azure-Based Experience</h2>
+                    <p>Connect to Microsoft Foundry for advanced AI capabilities. Requires API configuration and
+                        internet connection for powerful, cloud-based learning assistance.</p>
+                </div>
+            </a>
+
+            <a href="https://aka.ms/ask-anton" class="app-card browser">
+                <div class="app-card-content">
+                    <span class="badge">💻 Browser-Based</span>
+                    <h2>Local Browser Experience</h2>
+                    <p>Run AI models directly in your browser. No Azure subscription needed - models download once and
+                        run locally, keeping your data private on your device.</p>
+                </div>
+            </a>
+        </div>
+    </div>
+</body>
+
+</html>
