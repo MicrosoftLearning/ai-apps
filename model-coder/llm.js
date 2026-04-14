@@ -134,7 +134,8 @@ class ModelCoderLLM {
         this.isLoading = false;
         this.statusCallback = null;
         this.streamSessions = new Map();
-        this.responsesById = new Map();
+        this.responsesById = new Map();  // Maps response ID to output text
+        this.responseInputsById = new Map();  // Maps response ID to the input messages that generated it
         this.sessionVersion = 0;
         this.activeGenerationTasks = new Set();
         this.activeRunId = 0;
@@ -354,6 +355,7 @@ class ModelCoderLLM {
         this.sessionVersion += 1;
         this.streamSessions.clear();
         this.responsesById.clear();
+        this.responseInputsById.clear();
 
         // Let in-flight generation loops observe the new sessionVersion and unwind.
         if (this.activeGenerationTasks.size > 0) {
@@ -606,11 +608,18 @@ class ModelCoderLLM {
         }
     }
 
-    _toChatML(messages) {
+    _toChatML(messages, appendInstruction = false) {
         let prompt = "";
-        for (const message of messages) {
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
             const role = roleToChatML(message.role);
-            const content = contentToText(message.content);
+            let content = contentToText(message.content);
+            
+            // Append instruction to the last user message if requested
+            if (appendInstruction && i === messages.length - 1 && role === "user") {
+                content += "\nIMPORTANT: Respond with a concise, factually correct response.";
+            }
+            
             prompt += `<|im_start|>${role}\n${content}\n<|im_end|>\n\n`;
         }
         prompt += "<|im_start|>assistant\n";
@@ -647,10 +656,26 @@ class ModelCoderLLM {
             messages.push({ role: "developer", content: String(instructions) });
         }
 
-        if (previousResponseId && this.responsesById.has(previousResponseId)) {
-            messages.push({ role: "assistant", content: this.responsesById.get(previousResponseId) });
+        // If referencing a previous response, reconstruct the full conversation up to that point
+        if (previousResponseId) {
+            if (this.responseInputsById.has(previousResponseId)) {
+                // Add all the input messages from that response
+                const previousInputs = this.responseInputsById.get(previousResponseId);
+                for (const msg of previousInputs) {
+                    // Skip developer/system role if already added
+                    if (msg.role !== "developer") {
+                        messages.push(msg);
+                    }
+                }
+            }
+            
+            if (this.responsesById.has(previousResponseId)) {
+                // Add the assistant's response
+                messages.push({ role: "assistant", content: this.responsesById.get(previousResponseId) });
+            }
         }
 
+        // Add the new input
         if (Array.isArray(input)) {
             for (const message of input) {
                 messages.push({
@@ -669,7 +694,7 @@ class ModelCoderLLM {
         // Route to appropriate engine
         if (this.usingWllama) {
             // wllama expects ChatML prompt
-            const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt);
+            const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt, true);
             return await this._completeWithWllama(prompt, onDelta, expectedSessionVersion);
         } else {
             // WebLLM expects messages array
@@ -689,7 +714,7 @@ class ModelCoderLLM {
             nPredict: 320,
             seed: -1,
             sampling: {
-                temp: 0.6,
+                temp: 0.1,
                 top_k: 40,
                 top_p: 0.92,
                 penalty_repeat: 1.05,
@@ -764,7 +789,7 @@ class ModelCoderLLM {
         return messages;
     }
 
-    async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null) {
+    async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null, inputMessagesForStorage = null) {
         const streamId = makeId("stream");
         const responseId = makeId("resp");
         const createdAtVersion = this.sessionVersion;
@@ -812,6 +837,12 @@ class ModelCoderLLM {
             }
 
             this.responsesById.set(responseId, finalText);
+            
+                        // Store input messages for responses API streaming too
+                        if (streamType === "responses" && inputMessagesForStorage) {
+                            this.responseInputsById.set(responseId, inputMessagesForStorage);
+                        }
+            
             if (streamType === "chat") {
                 session.queue.push({
                     object: "chat.completion.chunk",
@@ -971,13 +1002,15 @@ class ModelCoderLLM {
             );
             validateMessages(messages, "input");
 
+            const responseHistoryMessages = messages.filter((message) => message.role !== "developer");
+
             // Translate messages for Phi-3 when using WebLLM
             if (!this.usingWllama) {
                 messages = this._translateToPhi3Prompt(messages);
             }
 
             if (payload.stream) {
-                const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id);
+                const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id, responseHistoryMessages);
                 return {
                     stream: true,
                     stream_id: streamMeta.stream_id,
@@ -988,6 +1021,7 @@ class ModelCoderLLM {
             const outputText = await this._complete(messages);
             const responseId = makeId("resp");
             this.responsesById.set(responseId, outputText);
+            this.responseInputsById.set(responseId, responseHistoryMessages);
 
             return {
                 id: responseId,

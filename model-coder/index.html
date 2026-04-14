@@ -113,23 +113,23 @@
                     It lets you experiment with prompts, responses, streaming, and async patterns in a safe environment.
                 </p>
                 <p>
-                    The app runs entirely in your browser using PyScript for Python execution and a local LLM through
-                    wllama.
-                    No prompts, code, or output are sent to external services while you use this sandbox.
+                    The app runs entirely in your browser using PyScript for Python execution and supports dual-mode inference:
+                </p>
+                <ul>
+                    <li><strong>GPU Mode (WebGPU):</strong> Uses Phi-3-mini-4k-instruct for faster inference on supported GPUs</li>
+                    <li><strong>CPU Mode (wllama):</strong> Uses SmolLM2-360M-Instruct for CPU-only environments</li>
+                </ul>
+                <p>
+                    Toggle between modes using the GPU/CPU button in the toolbar. No prompts, code, or output are sent to external services.
                 </p>
                 <p>
-                    Use the following parameters to connect to your local model:
-                <ul>
-                    <li><strong>base_url</strong> (the endpoint for your local wllama instance):
-                        <code>http://localwllama</code>
-                    </li>
-                    <li><strong>api_key</strong> (the authentication key for your local wllama instance):
-                        <code>key123</code>
-                    </li>
-                    <li><strong>model</strong> (the name of the model deployment): <code>smollm2</code></li>
-                </ul>
-
+                    Use the following parameters in your code to connect to the local inference engine:
                 </p>
+                <ul>
+                    <li><strong>base_url</strong> (the OpenAI-compatible endpoint): <code>https://local/openai</code></li>
+                    <li><strong>api_key</strong> (the authentication key): <code>key123</code></li>
+                    <li><strong>model</strong> (the model name): <code>local-llm</code></li>
+                </ul>
                 <p>
                     Prompts are filtered locally using a moderation word list. If a blocked term is detected,
                     the app returns: <code>I'm sorry. I can't help with that.</code>.
