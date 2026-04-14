@@ -26,6 +26,19 @@
 				"computing-history/computing-azure"
 			],
 			"isBackground": true
+		},
+		{
+			"label": "Serve model-coder",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"http.server",
+				"8000",
+				"--directory",
+				"model-coder"
+			],
+			"isBackground": true
 		}
 	]
 }
