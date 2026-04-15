@@ -131,7 +131,7 @@
                     "llms",
                     "gpt"
                 ],
-                "content": "Large Language Models (LLMs) are a type of artificial intelligence model designed to understand and generate human language. They are built using transformer architectures that utilize attention mechanisms to process and generate text. LLMs work by converting tokens (words or parts of words) into embeddings, which are vectors with multiple numeric 'dimensions', allowing the model to capture semantic meaning and context. These models are capable of performing a wide range of natural language processing tasks, including translation, summarization, and question-answering."
+                "content": "Large Language Models (LLMs) are a type of artificial intelligence model designed to understand and generate human language. They are built using transformer architectures that use attention mechanisms to process and generate text. LLMs work by converting tokens (words or parts of words) into embeddings, which are vectors with multiple numeric 'dimensions', allowing the model to capture semantic meaning and context. These models are capable of performing a wide range of natural language processing tasks, including translation, summarization, and question-answering."
             },
             {
                 "id": 10,
@@ -145,7 +145,7 @@
                     "ai agents",
                     "multi-agent"
                 ],
-                "content": "AI agents are generative AI apps designed to autonomously perform tasks or make decisions on behalf of users. They can operate independently or collaboratively in multi-agent systems to achieve complex objectives. AI agents typically consist of (a.) a large language model (LLM) that acts as the agent's 'brain', (b.) instructions that define the agent's job description and expected behavior, and (c.) tools that the agent can use to interact with external systems to retrieve information or initiate tasks. For example, an AI agent might be designed to assist with finding information about expense limits and policies, and submitting expense claims."
+                "content": "AI agents are generative AI apps designed to perform tasks or make decisions on behalf of users. AI agents typically consist of (a.) a large language model (LLM) that acts as the agent's 'brain', (b.) instructions that define the agent's job description and expected behavior, and (c.) tools that the agent can use to interact with external systems to retrieve information or initiate tasks. For example, an AI agent might be designed to assist with finding information about expense limits and policies, and submitting expense claims."
             },
             {
                 "id": 11,
@@ -535,7 +535,7 @@
                     "foundry models",
                     "model catalog"
                 ],
-                "content": "Microsoft Foundry provides access to a variety of pre-trained models through its model catalog. The model catalog includes models from Microsoft, OpenAI, and other model providers."
+                "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, and other model providers."
             },
             {
                 "id": 36,
@@ -544,7 +544,7 @@
                     "foundry agent",
                     "agent framework"
                 ],
-                "content": "Microsoft Foundry offers an agent framework that allows developers to create AI agents that can perform tasks autonomously. The framework provides tools for defining agent behavior, integrating with external systems, and managing agent interactions."
+                "content": "Microsoft Foundry includes an agent framework that enables developers to create AI agents that can perform tasks autonomously. The framework provides tools for defining agent behavior, integrating with external systems, and managing agent interactions."
             },
             {
                 "id": 37,

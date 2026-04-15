@@ -144,7 +144,7 @@ IMPORTANT: Follow these guidelines when responding:
     async loadIndex() {
         try {
             this.updateProgress(5, 'Loading knowledge base...');
-            const response = await fetch('index.json');
+            const response = await fetch('index.json', { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to load index');
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
@@ -1329,11 +1329,11 @@ IMPORTANT: Follow these guidelines when responding:
             // Skip empty paragraphs
             if (!paragraph.trim()) return paragraph;
 
-            // If paragraph is <= 300 chars, keep it as is
-            if (paragraph.length <= 300) return paragraph;
+            // If paragraph is <= 600 chars, keep it as is
+            if (paragraph.length <= 600) return paragraph;
 
-            // Find first sentence ending (., !, ?) after position 300
-            const searchFrom = 300;
+            // Find first sentence ending (., !, ?) after position 600
+            const searchFrom = 600;
             let endPos = -1;
 
             for (let i = searchFrom; i < paragraph.length; i++) {
@@ -1348,8 +1348,8 @@ IMPORTANT: Follow these guidelines when responding:
                 return paragraph.substring(0, endPos);
             }
 
-            // Otherwise, truncate at 300 chars with ellipsis
-            return paragraph.substring(0, 300) + '...';
+            // Otherwise, truncate at 600 chars with ellipsis
+            return paragraph.substring(0, 600) + '...';
         });
 
         return truncatedParagraphs.join('\n');
@@ -1392,16 +1392,17 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
+        chatMLPrompt += userMessage + '\n';
         // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += 'Create a one-sentence summary for each paragraph in the following text:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Respond with a short summary of each of the paragraphs in the following text:\n' + truncatedContext + '\n';
         }
-        chatMLPrompt += userMessage + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
         console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
+        console.log('ChatML Prompt:', chatMLPrompt);
 
         let assistantMessage = '';
         let audioPlayed = false;
@@ -1421,9 +1422,9 @@ IMPORTANT: Follow these guidelines when responding:
         // Use streaming with proper abort support
         try {
             const completion = await this.wllama.createCompletion(chatMLPrompt, {
-                nPredict: 150,
+                nPredict: 200,
                 sampling: {
-                    temp: 0.7,
+                    temp: 0.2,
                     top_k: 40,
                     top_p: 0.9,
                     penalty_repeat: 1.1
