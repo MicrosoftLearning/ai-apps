@@ -1368,6 +1368,7 @@ IMPORTANT: Follow these guidelines when responding:
         chatMLPrompt += '- Discuss AI and computing topics only\n';
         chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
         chatMLPrompt += '- Provide factual and accurate information\n\n';
+        chatMLPrompt += '- Follow all instructions exactly\n\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1394,7 +1395,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += 'Respond by summarizing each paragraph in the following text:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Create a one-sentence summary for each paragraph in the following text:\n---\n' + truncatedContext + '\n';
         }
         chatMLPrompt += userMessage + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
