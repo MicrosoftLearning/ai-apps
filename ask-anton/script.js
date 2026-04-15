@@ -1394,7 +1394,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += 'Respond by summarizing the following information:\n---\n' + truncatedContext + '\n';
+            chatMLPrompt += 'Respond by summarizing each paragraph in the following text:\n---\n' + truncatedContext + '\n';
         }
         chatMLPrompt += userMessage + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
