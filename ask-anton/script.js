@@ -1319,6 +1319,42 @@ IMPORTANT: Follow these guidelines when responding:
         return text.substring(0, 30).trim();
     }
 
+    truncateParagraphsForCPU(context) {
+        if (!context) return context;
+
+        // Split context into paragraphs (by newlines)
+        const paragraphs = context.split('\n');
+
+        const truncatedParagraphs = paragraphs.map(paragraph => {
+            // Skip empty paragraphs
+            if (!paragraph.trim()) return paragraph;
+
+            // If paragraph is <= 300 chars, keep it as is
+            if (paragraph.length <= 300) return paragraph;
+
+            // Find first sentence ending (., !, ?) after position 300
+            const searchFrom = 300;
+            let endPos = -1;
+
+            for (let i = searchFrom; i < paragraph.length; i++) {
+                if (paragraph[i] === '.' || paragraph[i] === '!' || paragraph[i] === '?') {
+                    endPos = i + 1; // Include the punctuation
+                    break;
+                }
+            }
+
+            // If found a sentence ending, truncate there
+            if (endPos > 0) {
+                return paragraph.substring(0, endPos);
+            }
+
+            // Otherwise, truncate at 300 chars with ellipsis
+            return paragraph.substring(0, 300) + '...';
+        });
+
+        return truncatedParagraphs.join('\n');
+    }
+
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         // Ensure wllama is loaded
         if (!this.wllama) {
@@ -1355,12 +1391,9 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        // Add context from index.json if available (truncate to prevent context overflow)
+        // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
-            const maxContextLength = 400;
-            const truncatedContext = context.length > maxContextLength
-                ? context.substring(0, maxContextLength) + '...'
-                : context;
+            const truncatedContext = this.truncateParagraphsForCPU(context);
             chatMLPrompt += 'Respond by summarizing the following information:\n---\n' + truncatedContext + '\n';
         }
         chatMLPrompt += userMessage + '\n';
