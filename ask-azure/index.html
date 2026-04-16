@@ -279,14 +279,12 @@
                     <li>Enter a name (e.g., "Ask Anton")</li>
                     <li>Select <strong>Accounts in this organizational directory only</strong></li>
                     <li>Click <strong>Register</strong></li>
-                    <li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>
-                        from the Overview page</li>
                 </ol>
 
                 <h4>Step 2: Configure Authentication</h4>
                 <ol>
                     <li>In your app registration, click <strong>Authentication</strong> in the left menu</li>
-                    <li>Click <strong>+ Add a platform</strong> &rarr; <strong>Single-page application</strong></li>
+                    <li>Click <strong>Add Redirect URI</strong> &rarr; <strong>Single-page application</strong></li>
                     <li>Add Redirect URI: <code>https://microsoftlearning.github.io/ai-apps/ask-azure/</code></li>
                     <li>Under <strong>Implicit grant and hybrid flows</strong>, check:
                         <ul>
@@ -303,7 +301,8 @@
                     <li>Click <strong>+ Add a permission</strong></li>
                     <li>Select <strong>APIs my organization uses</strong></li>
                     <li>Search for <strong>"Microsoft Cognitive Services"</strong> or use Application ID:
-                        <code>7d312290-28c8-473c-a0ed-8e53749b6d6d</code></li>
+                        <code>7d312290-28c8-473c-a0ed-8e53749b6d6d</code>
+                    </li>
                     <li>Select <strong>Azure Cognitive Services</strong></li>
                     <li>Choose <strong>Delegated permissions</strong></li>
                     <li>Check <strong>user_impersonation</strong></li>
@@ -318,12 +317,16 @@
                     <li>Verify the status shows a green checkmark</li>
                 </ol>
 
+                <p><strong>Note:</strong> You may need Global Administrator privileges to grant admin consent. If you
+                    don't have these permissions, contact your IT administrator.</p>
+
                 <h4>Step 5: Assign RBAC Role (if needed)</h4>
                 <p>Ensure your user account has the <strong>Cognitive Services User</strong> role on the Foundry/AI
                     Services resource in Azure.</p>
 
-                <p><strong>Note:</strong> You may need Global Administrator privileges to grant admin consent. If you
-                    don't have these permissions, contact your IT administrator.</p>
+                <h4>Step 6: Copy Application and Directory IDs</h4>
+                <p>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>
+                    from the Overview page</p>
 
                 <p><strong>📖 For more detailed instructions:</strong> <a
                         href="https://learn.microsoft.com/entra/identity-platform/quickstart-register-app"

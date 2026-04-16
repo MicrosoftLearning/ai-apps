@@ -6,7 +6,10 @@ const CONTENT_FILTER_MESSAGE = "I'm sorry, I can't help with that because it tri
 let config = {
     endpoint: '',
     apiKey: '',
-    deployment: ''
+    deployment: '',
+    authMode: 'key', // 'key' or 'entra'
+    clientId: '',
+    tenantId: ''
 };
 
 let conversationHistory = [];
@@ -21,6 +24,8 @@ let recordingTimeout = null;
 let mediaRecorder = null;
 let audioChunks = [];
 let currentAudio = null;
+let msalInstance = null;
+let msalAccount = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function () {
@@ -51,24 +56,30 @@ function toggleConfig() {
  */
 function saveConfig() {
     const endpoint = document.getElementById('endpoint').value.trim();
-    const apiKey = document.getElementById('apiKey').value.trim();
     const deployment = document.getElementById('deployment').value.trim();
     const statusDiv = document.getElementById('configStatus');
+    const authModeToggle = document.getElementById('auth-mode-toggle');
+    const authMode = authModeToggle.checked ? 'entra' : 'key';
 
-    if (!endpoint || !apiKey || !deployment) {
-        statusDiv.textContent = 'Please fill in all fields';
+    if (!endpoint || !deployment) {
+        statusDiv.textContent = 'Please fill in endpoint and deployment';
         statusDiv.className = 'config-status error';
         return;
     }
 
-    // Validate endpoint format and sanitize
+    // Validate endpoint format and extract base URL
+    let baseEndpoint = endpoint;
     try {
         const url = new URL(endpoint);
-        // Only allow https URLs for security
         if (url.protocol !== 'https:') {
             statusDiv.textContent = 'Endpoint must use HTTPS';
             statusDiv.className = 'config-status error';
             return;
+        }
+
+        const comIndex = endpoint.indexOf('.com');
+        if (comIndex !== -1) {
+            baseEndpoint = endpoint.substring(0, comIndex + 4);
         }
     } catch (e) {
         statusDiv.textContent = 'Invalid endpoint URL';
@@ -76,21 +87,51 @@ function saveConfig() {
         return;
     }
 
-    // Truncate endpoint to only include up to and including .com
-    let truncatedEndpoint = endpoint;
-    const comIndex = endpoint.indexOf('.com');
-    if (comIndex !== -1) {
-        truncatedEndpoint = endpoint.substring(0, comIndex + 4); // +4 to include ".com"
+    config.endpoint = baseEndpoint;
+    config.deployment = deployment;
+    config.authMode = authMode;
+
+    // Validate based on authentication mode
+    if (authMode === 'key') {
+        const apiKey = document.getElementById('apiKey').value.trim();
+        if (!apiKey) {
+            statusDiv.textContent = 'Please enter an API key';
+            statusDiv.className = 'config-status error';
+            return;
+        }
+        config.apiKey = apiKey;
+        config.clientId = '';
+        config.tenantId = '';
+        msalInstance = null;
+        msalAccount = null;
+    } else {
+        const clientId = document.getElementById('entra-client-id').value.trim();
+        const tenantId = document.getElementById('entra-tenant-id').value.trim();
+
+        if (!clientId || !tenantId) {
+            statusDiv.textContent = 'Please enter both Client ID and Tenant ID';
+            statusDiv.className = 'config-status error';
+            return;
+        }
+
+        if (!msalAccount) {
+            statusDiv.textContent = 'Please sign in with Entra ID before saving';
+            statusDiv.className = 'config-status error';
+            return;
+        }
+
+        config.clientId = clientId;
+        config.tenantId = tenantId;
+        config.apiKey = '';
     }
 
-    config.endpoint = truncatedEndpoint;
-    config.apiKey = apiKey;
-    config.deployment = deployment;
-
-    // Save to localStorage (exclude apiKey for security)
+    // Save to localStorage (do not persist apiKey)
     const configToPersist = {
         endpoint: config.endpoint,
-        deployment: config.deployment
+        deployment: config.deployment,
+        authMode: config.authMode,
+        clientId: config.clientId,
+        tenantId: config.tenantId
     };
     localStorage.setItem('azureOpenAIConfig', JSON.stringify(configToPersist));
 
@@ -118,10 +159,13 @@ function loadConfig() {
         try {
             const savedConfig = JSON.parse(saved);
 
-            // Load non-sensitive config from storage (apiKey is NOT loaded for security)
+            // Load non-sensitive config from storage
             config.endpoint = savedConfig.endpoint || '';
             config.deployment = savedConfig.deployment || '';
-            config.apiKey = ''; // Always start with empty API key
+            config.apiKey = ''; // Always start with empty API key for security
+            config.authMode = savedConfig.authMode || 'key';
+            config.clientId = savedConfig.clientId || '';
+            config.tenantId = savedConfig.tenantId || '';
 
             // Truncate endpoint to only include up to and including .com (in case old value was saved)
             if (config.endpoint) {
@@ -134,19 +178,306 @@ function loadConfig() {
             document.getElementById('endpoint').value = config.endpoint || '';
             document.getElementById('apiKey').value = ''; // Never populate API key from storage
             document.getElementById('deployment').value = config.deployment || '';
+            document.getElementById('entra-client-id').value = config.clientId || '';
+            document.getElementById('entra-tenant-id').value = config.tenantId || '';
+
+            // Set toggle state
+            const authModeToggle = document.getElementById('auth-mode-toggle');
+            if (config.authMode === 'entra') {
+                authModeToggle.checked = true;
+                document.getElementById('key-auth-fields').style.display = 'none';
+                document.getElementById('entra-auth-fields').style.display = 'block';
+                document.getElementById('entra-help-btn').style.display = 'inline-flex';
+            } else {
+                authModeToggle.checked = false;
+                document.getElementById('key-auth-fields').style.display = 'block';
+                document.getElementById('entra-auth-fields').style.display = 'none';
+                document.getElementById('entra-help-btn').style.display = 'none';
+            }
+
+            // Initialize MSAL if in Entra ID mode and we have clientId and tenantId
+            if (config.authMode === 'entra' && config.clientId && config.tenantId) {
+                initializeMSAL();
+            }
 
             // Note: isConfigured will be false since apiKey is not persisted
             // User must re-enter API key each session for security
-            if (config.endpoint && config.apiKey && config.deployment) {
-                isConfigured = true;
-                // Collapse config section if already configured
-                const content = document.getElementById('configContent');
-                const icon = document.getElementById('toggleIcon');
-                content.classList.add('hidden');
-                icon.classList.add('collapsed');
+            if (config.endpoint && config.deployment) {
+                if (config.authMode === 'key' && config.apiKey) {
+                    isConfigured = true;
+                    // Collapse config section if already configured
+                    const content = document.getElementById('configContent');
+                    const icon = document.getElementById('toggleIcon');
+                    content.classList.add('hidden');
+                    icon.classList.add('collapsed');
+                } else if (config.authMode === 'entra' && msalAccount) {
+                    isConfigured = true;
+                    // Collapse config section if already configured
+                    const content = document.getElementById('configContent');
+                    const icon = document.getElementById('toggleIcon');
+                    content.classList.add('hidden');
+                    icon.classList.add('collapsed');
+                }
             }
         } catch (e) {
             console.error('Error loading config:', e);
+        }
+    }
+}
+
+/**
+ * Initializes MSAL for Entra ID authentication
+ */
+function initializeMSAL() {
+    if (!config.clientId || !config.tenantId) {
+        console.error('Cannot initialize MSAL: missing client ID or tenant ID');
+        return;
+    }
+
+    try {
+        const msalConfig = {
+            auth: {
+                clientId: config.clientId,
+                authority: `https://login.microsoftonline.com/${config.tenantId}`,
+                redirectUri: window.location.href.split('?')[0].split('#')[0]
+            },
+            cache: {
+                cacheLocation: 'localStorage',
+                storeAuthStateInCookie: false
+            },
+            system: {
+                allowRedirectInIframe: false,
+                windowHashTimeout: 60000,
+                iframeHashTimeout: 6000,
+                loadFrameTimeout: 0
+            }
+        };
+
+        msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        // Initialize MSAL and handle any redirect responses
+        msalInstance.initialize().then(() => {
+            return msalInstance.handleRedirectPromise();
+        }).then((response) => {
+            if (response && response.account) {
+                msalAccount = response.account;
+                msalInstance.setActiveAccount(msalAccount);
+            } else {
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0) {
+                    msalAccount = accounts[0];
+                    msalInstance.setActiveAccount(msalAccount);
+                }
+            }
+
+            if (msalAccount) {
+                isConfigured = true;
+                updateUIState();
+                updateSignInButtonState();
+            }
+        }).catch((error) => {
+            console.error('Error handling MSAL redirect:', error);
+        });
+    } catch (error) {
+        console.error('Error initializing MSAL:', error);
+    }
+}
+
+/**
+ * Updates the sign-in status message
+ */
+function updateSigninStatus(message, isError = false) {
+    const signinStatus = document.getElementById('signin-status');
+    if (signinStatus) {
+        signinStatus.textContent = message;
+        signinStatus.style.color = isError ? '#721c24' : '#155724';
+    }
+}
+
+/**
+ * Updates the sign-in button state based on authentication status
+ */
+function updateSignInButtonState() {
+    const entraSigninBtn = document.getElementById('entra-signin-btn');
+    if (!entraSigninBtn) return;
+
+    if (msalAccount) {
+        entraSigninBtn.textContent = 'Sign Out';
+        entraSigninBtn.disabled = false;
+        entraSigninBtn.setAttribute('aria-label', 'Sign out of Entra ID');
+        updateSigninStatus(`Signed in as ${msalAccount.username}`);
+    } else {
+        entraSigninBtn.textContent = 'Sign In';
+        entraSigninBtn.setAttribute('aria-label', 'Sign in with Entra ID');
+
+        const clientId = document.getElementById('entra-client-id').value.trim();
+        const tenantId = document.getElementById('entra-tenant-id').value.trim();
+        entraSigninBtn.disabled = !clientId || !tenantId;
+
+        updateSigninStatus('');
+    }
+}
+
+/**
+ * Handles authentication mode toggle between Key and Entra ID
+ */
+function handleAuthModeToggle() {
+    const authModeToggle = document.getElementById('auth-mode-toggle');
+    const isEntraMode = authModeToggle.checked;
+
+    const keyAuthFields = document.getElementById('key-auth-fields');
+    const entraAuthFields = document.getElementById('entra-auth-fields');
+    const entraHelpBtn = document.getElementById('entra-help-btn');
+
+    if (isEntraMode) {
+        keyAuthFields.style.display = 'none';
+        entraAuthFields.style.display = 'block';
+        authModeToggle.setAttribute('aria-checked', 'true');
+        entraHelpBtn.style.display = 'inline-flex';
+        updateSignInButtonState();
+    } else {
+        keyAuthFields.style.display = 'block';
+        entraAuthFields.style.display = 'none';
+        authModeToggle.setAttribute('aria-checked', 'false');
+        entraHelpBtn.style.display = 'none';
+        updateSigninStatus('');
+    }
+
+    const configStatus = document.getElementById('configStatus');
+    configStatus.textContent = '';
+    configStatus.className = 'config-status';
+}
+
+/**
+ * Signs in with Entra ID
+ */
+async function signInWithEntraID() {
+    const clientId = document.getElementById('entra-client-id').value.trim();
+    const tenantId = document.getElementById('entra-tenant-id').value.trim();
+    const endpoint = document.getElementById('endpoint').value.trim();
+
+    if (!clientId || !tenantId) {
+        updateSigninStatus('Please enter both Client ID and Tenant ID', true);
+        return;
+    }
+
+    if (!endpoint) {
+        updateSigninStatus('Please enter an endpoint URL first', true);
+        return;
+    }
+
+    // Validate endpoint
+    let baseEndpoint = endpoint;
+    try {
+        const url = new URL(endpoint);
+        if (url.protocol !== 'https:') {
+            updateSigninStatus('Endpoint must use HTTPS', true);
+            return;
+        }
+
+        const comIndex = endpoint.indexOf('.com');
+        if (comIndex !== -1) {
+            baseEndpoint = endpoint.substring(0, comIndex + 4);
+        }
+    } catch (e) {
+        updateSigninStatus('Invalid endpoint URL', true);
+        return;
+    }
+
+    config.clientId = clientId;
+    config.tenantId = tenantId;
+
+    initializeMSAL();
+
+    if (!msalInstance) {
+        updateSigninStatus('Failed to initialize authentication', true);
+        return;
+    }
+
+    try {
+        updateSigninStatus('Opening sign-in window...');
+
+        const loginRequest = {
+            scopes: ['https://cognitiveservices.azure.com/.default'],
+            prompt: 'select_account',
+            redirectUri: window.location.href.split('?')[0].split('#')[0]
+        };
+
+        const response = await msalInstance.loginPopup(loginRequest);
+
+        if (response && response.account) {
+            msalAccount = response.account;
+            msalInstance.setActiveAccount(msalAccount);
+            updateSignInButtonState();
+            console.log('Successfully signed in with Entra ID');
+        } else {
+            updateSigninStatus('Sign-in failed', true);
+        }
+    } catch (error) {
+        console.error('Error during sign-in:', error);
+        updateSigninStatus(`Sign-in error: ${error.message}`, true);
+    }
+}
+
+/**
+ * Signs out from Entra ID
+ */
+async function signOutEntraID() {
+    if (!msalInstance || !msalAccount) {
+        return;
+    }
+
+    try {
+        updateSigninStatus('Signing out...');
+
+        const logoutRequest = {
+            account: msalAccount,
+            postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
+        };
+
+        await msalInstance.logoutPopup(logoutRequest);
+
+        msalAccount = null;
+        isConfigured = false;
+        updateSignInButtonState();
+        updateUIState();
+
+        console.log('Successfully signed out');
+    } catch (error) {
+        console.error('Error during sign-out:', error);
+        updateSigninStatus(`Sign-out error: ${error.message}`, true);
+    }
+}
+
+/**
+ * Gets an access token for Entra ID authentication
+ */
+async function getAccessToken() {
+    if (!msalInstance || !msalAccount) {
+        throw new Error('Not signed in with Entra ID');
+    }
+
+    try {
+        const tokenRequest = {
+            scopes: ['https://cognitiveservices.azure.com/.default'],
+            account: msalAccount
+        };
+
+        const response = await msalInstance.acquireTokenSilent(tokenRequest);
+        return response.accessToken;
+    } catch (error) {
+        console.error('Silent token acquisition failed, attempting interactive:', error);
+
+        try {
+            const tokenRequest = {
+                scopes: ['https://cognitiveservices.azure.com/.default'],
+                account: msalAccount
+            };
+            const response = await msalInstance.acquireTokenPopup(tokenRequest);
+            return response.accessToken;
+        } catch (interactiveError) {
+            console.error('Interactive token acquisition failed:', interactiveError);
+            throw new Error('Failed to acquire access token');
         }
     }
 }
@@ -435,11 +766,19 @@ function audioBufferToWav(audioBuffer) {
 async function transcribeAudio(audioBlob) {
     try {
         const speechEndpoint = getSpeechEndpointBase();
+
+        // Build headers based on authentication mode
         const requestHeaders = {
-            'Ocp-Apim-Subscription-Key': config.apiKey,
             'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
             'Accept': 'application/json'
         };
+
+        if (config.authMode === 'entra') {
+            const accessToken = await getAccessToken();
+            requestHeaders['Authorization'] = `Bearer ${accessToken}`;
+        } else {
+            requestHeaders['Ocp-Apim-Subscription-Key'] = config.apiKey;
+        }
 
         const candidateUrls = [
             `${speechEndpoint}/stt/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`,
@@ -562,12 +901,16 @@ async function synthesizeSpeech(text) {
         // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
         const parser = new DOMParser();
         const doc = parser.parseFromString(text, 'text/html');
-        const plainText = doc.body.textContent || '';
+        let plainText = doc.body.textContent || '';
 
         if (!plainText.trim()) {
             resetSendButton();
             return;
         }
+
+        // Replace URLs with "this website" for better speech output
+        plainText = plainText.replace(/https?:\/\/[^\s]+/gi, 'check out this website');
+        plainText = plainText.replace(/www\.[^\s]+/gi, 'check out this website');
 
         const speechEndpoint = getSpeechEndpointBase();
         const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
@@ -579,15 +922,24 @@ async function synthesizeSpeech(text) {
   </voice>
 </speak>`;
 
+        // Build headers based on authentication mode
+        const headers = {
+            'Content-Type': 'application/ssml+xml',
+            'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
+        };
+
+        if (config.authMode === 'entra') {
+            const accessToken = await getAccessToken();
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        } else {
+            headers['Ocp-Apim-Subscription-Key'] = config.apiKey;
+        }
+
         let response;
         try {
             response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Ocp-Apim-Subscription-Key': config.apiKey,
-                    'Content-Type': 'application/ssml+xml',
-                    'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
-                },
+                headers: headers,
                 body: ssml
             });
         } catch (fetchError) {
@@ -730,6 +1082,44 @@ function setupEventListeners() {
         closeAboutBtn.addEventListener('click', closeAbout);
     }
 
+    // Close Entra help button
+    const closeEntraHelpBtn = document.getElementById('closeEntraHelpBtn');
+    if (closeEntraHelpBtn) {
+        closeEntraHelpBtn.addEventListener('click', closeEntraHelp);
+    }
+
+    // Entra help button
+    const entraHelpBtn = document.getElementById('entra-help-btn');
+    if (entraHelpBtn) {
+        entraHelpBtn.addEventListener('click', showEntraHelp);
+    }
+
+    // Auth mode toggle
+    const authModeToggle = document.getElementById('auth-mode-toggle');
+    if (authModeToggle) {
+        authModeToggle.addEventListener('change', handleAuthModeToggle);
+    }
+
+    // Entra ID Sign-in/Sign-out button
+    const entraSigninBtn = document.getElementById('entra-signin-btn');
+    if (entraSigninBtn) {
+        entraSigninBtn.addEventListener('click', function () {
+            if (msalAccount) {
+                signOutEntraID();
+            } else {
+                signInWithEntraID();
+            }
+        });
+    }
+
+    // Monitor Entra ID credential inputs to enable/disable sign-in button
+    const entraClientId = document.getElementById('entra-client-id');
+    const entraTenantId = document.getElementById('entra-tenant-id');
+    if (entraClientId && entraTenantId) {
+        entraClientId.addEventListener('input', updateSignInButtonState);
+        entraTenantId.addEventListener('input', updateSignInButtonState);
+    }
+
     // Attach button
     const attachBtn = document.getElementById('attachBtn');
     if (attachBtn) {
@@ -777,6 +1167,11 @@ function setupEventListeners() {
     // Close modal on Escape key
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
+            const entraHelpModal = document.getElementById('entraHelpModal');
+            if (entraHelpModal && entraHelpModal.style.display === 'flex') {
+                closeEntraHelp();
+                return;
+            }
             const aboutModal = document.getElementById('aboutModal');
             if (aboutModal && aboutModal.style.display === 'flex') {
                 closeAbout();
@@ -972,12 +1367,23 @@ async function callAzureOpenAI(useConciseInstruction = false) {
         requestBody.previous_response_id = previousResponseId;
     }
 
+    // Build headers based on authentication mode
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+
+    if (config.authMode === 'entra') {
+        // Use Bearer token for Entra ID authentication
+        const accessToken = await getAccessToken();
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    } else {
+        // Use API key authentication
+        headers['api-key'] = config.apiKey;
+    }
+
     const response = await fetch(url, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'api-key': config.apiKey
-        },
+        headers: headers,
         body: JSON.stringify(requestBody)
     });
 
@@ -1291,5 +1697,29 @@ function closeInstructions() {
     // Return focus to the button that opened the modal
     if (viewInstructionsBtn) {
         viewInstructionsBtn.focus();
+    }
+}
+
+/**
+ * Shows the Entra ID help modal
+ */
+function showEntraHelp() {
+    const modal = document.getElementById('entraHelpModal');
+    const closeBtn = document.getElementById('closeEntraHelpBtn');
+    modal.style.display = 'flex';
+    if (closeBtn) {
+        closeBtn.focus();
+    }
+}
+
+/**
+ * Closes the Entra ID help modal
+ */
+function closeEntraHelp() {
+    const modal = document.getElementById('entraHelpModal');
+    const entraHelpBtn = document.getElementById('entra-help-btn');
+    modal.style.display = 'none';
+    if (entraHelpBtn) {
+        entraHelpBtn.focus();
     }
 }
