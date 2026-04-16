@@ -8,6 +8,8 @@
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <link rel="stylesheet" href="styles.css">
+    <!-- MSAL.js library for Entra ID authentication -->
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
 </head>
 
 <body>
@@ -170,8 +172,6 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="config-modal-title">⚙️ Microsoft Foundry Configuration</h2>
-                <button class="modal-close" id="config-modal-close" aria-label="Close configuration dialog"
-                    title="Close" type="button">×</button>
             </div>
             <div class="modal-body" id="config-modal-description">
                 <p>Start by creating a project and deploying a model in the (new) <a href="https://ai.azure.com"
@@ -187,17 +187,60 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="foundry-key">API Key:</label>
-                        <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
-                            aria-describedby="key-help">
-                        <small id="key-help" class="form-help">Your Foundry project API key</small>
-                    </div>
-
-                    <div class="form-group">
                         <label for="foundry-deployment">Model Deployment:</label>
                         <input type="text" id="foundry-deployment" placeholder="e.g., gpt-4.1-mini" autocomplete="off"
                             aria-describedby="deployment-help">
                         <small id="deployment-help" class="form-help">Your model deployment name</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="auth-mode-toggle">Authentication Mode:</label>
+                        <div class="toggle-container">
+                            <span class="toggle-label" id="auth-mode-label-key">Key</span>
+                            <label class="toggle-switch" for="auth-mode-toggle" aria-label="Switch authentication mode">
+                                <input type="checkbox" id="auth-mode-toggle" role="switch" aria-checked="false">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label" id="auth-mode-label-entra">Entra ID</span>
+                            <button class="entra-help-btn" id="entra-help-btn" title="Entra ID app configuration help"
+                                aria-label="Get help with Entra ID app configuration" type="button"
+                                style="display: none;">
+                                ?
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Key Authentication Fields -->
+                    <div id="key-auth-fields">
+                        <div class="form-group">
+                            <label for="foundry-key">API Key:</label>
+                            <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
+                                aria-describedby="key-help">
+                            <small id="key-help" class="form-help">Your Foundry project API key</small>
+                        </div>
+                    </div>
+
+                    <!-- Entra ID Authentication Fields -->
+                    <div id="entra-auth-fields" style="display: none;">
+                        <div class="form-group">
+                            <label for="entra-client-id">Application (client) ID:</label>
+                            <input type="text" id="entra-client-id" placeholder="Enter your app client ID"
+                                autocomplete="off" aria-describedby="client-help">
+                            <small id="client-help" class="form-help">Your Entra ID application (client) ID</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="entra-tenant-id">Directory (tenant) ID:</label>
+                            <input type="text" id="entra-tenant-id" placeholder="Enter your tenant ID"
+                                autocomplete="off" aria-describedby="tenant-help">
+                            <small id="tenant-help" class="form-help">Your Entra ID directory (tenant) ID</small>
+                        </div>
+
+                        <div class="form-group">
+                            <button class="modal-btn modal-btn-primary" id="entra-signin-btn" disabled
+                                aria-label="Sign in with Entra ID" type="button">Sign In</button>
+                            <small id="signin-status" class="form-help"></small>
+                        </div>
                     </div>
 
                     <div class="config-status" id="config-status" role="status" aria-live="polite"></div>
@@ -208,6 +251,88 @@
                     type="button">Cancel</button>
                 <button class="modal-btn modal-btn-primary" id="config-save" aria-label="Save configuration"
                     type="button">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entra ID Help Modal -->
+    <div id="entra-help-modal" class="modal" role="dialog" aria-labelledby="entra-help-modal-title" aria-modal="true"
+        aria-describedby="entra-help-modal-description" style="display: none;">
+        <div class="modal-overlay" aria-hidden="true"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="entra-help-modal-title">🔑 Entra ID App Configuration</h2>
+                <button class="modal-close" id="entra-help-modal-close" aria-label="Close help dialog" title="Close"
+                    type="button">×</button>
+            </div>
+            <div class="modal-body" id="entra-help-modal-description">
+                <h3>Setting up Entra ID Authentication</h3>
+                <p>To use Entra ID authentication, you need to register an application in the Azure Portal and configure
+                    the appropriate permissions.</p>
+
+                <h4>Step 1: Register Your Application</h4>
+                <ol>
+                    <li>Go to <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer">Azure
+                            Portal</a></li>
+                    <li>Navigate to <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong></li>
+                    <li>Click <strong>+ New registration</strong></li>
+                    <li>Enter a name (e.g., "Ask Anton")</li>
+                    <li>Select <strong>Accounts in this organizational directory only</strong></li>
+                    <li>Click <strong>Register</strong></li>
+                    <li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>
+                        from the Overview page</li>
+                </ol>
+
+                <h4>Step 2: Configure Authentication</h4>
+                <ol>
+                    <li>In your app registration, click <strong>Authentication</strong> in the left menu</li>
+                    <li>Click <strong>+ Add a platform</strong> &rarr; <strong>Single-page application</strong></li>
+                    <li>Add Redirect URI: <code>https://microsoftlearning.github.io/ai-apps/ask-azure/</code></li>
+                    <li>Under <strong>Implicit grant and hybrid flows</strong>, check:
+                        <ul>
+                            <li>☑ Access tokens</li>
+                            <li>☑ ID tokens</li>
+                        </ul>
+                    </li>
+                    <li>Click <strong>Configure</strong></li>
+                </ol>
+
+                <h4>Step 3: Add API Permissions</h4>
+                <ol>
+                    <li>Click <strong>API permissions</strong> in the left menu</li>
+                    <li>Click <strong>+ Add a permission</strong></li>
+                    <li>Select <strong>APIs my organization uses</strong></li>
+                    <li>Search for <strong>"Microsoft Cognitive Services"</strong> or use Application ID:
+                        <code>7d312290-28c8-473c-a0ed-8e53749b6d6d</code></li>
+                    <li>Select <strong>Azure Cognitive Services</strong></li>
+                    <li>Choose <strong>Delegated permissions</strong></li>
+                    <li>Check <strong>user_impersonation</strong></li>
+                    <li>Click <strong>Add permissions</strong></li>
+                </ol>
+
+                <h4>Step 4: Grant Admin Consent</h4>
+                <ol>
+                    <li>In the <strong>API permissions</strong> page, click <strong>Grant admin consent for [your
+                            tenant]</strong></li>
+                    <li>Click <strong>Yes</strong> to confirm</li>
+                    <li>Verify the status shows a green checkmark</li>
+                </ol>
+
+                <h4>Step 5: Assign RBAC Role (if needed)</h4>
+                <p>Ensure your user account has the <strong>Cognitive Services User</strong> role on the Foundry/AI
+                    Services resource in Azure.</p>
+
+                <p><strong>Note:</strong> You may need Global Administrator privileges to grant admin consent. If you
+                    don't have these permissions, contact your IT administrator.</p>
+
+                <p><strong>📖 For more detailed instructions:</strong> <a
+                        href="https://learn.microsoft.com/entra/identity-platform/quickstart-register-app"
+                        target="_blank" rel="noopener noreferrer">Quickstart: Register an application with the Microsoft
+                        identity platform</a></p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" id="entra-help-modal-ok" aria-label="Close help dialog"
+                    type="button">Close</button>
             </div>
         </div>
     </div>
