@@ -63,14 +63,12 @@
                     tabindex="0">&#128712;</button>
                 <button class="view-instructions-btn" id="viewDetailsBtn" title="View agent configuration"
                     aria-label="View agent configuration" tabindex="1">&#128195;</button>
-                <div class="mode-toggle-container" role="group" aria-labelledby="mode-toggle-label">
-                    <label class="mode-toggle-label" id="mode-toggle-label">
-                        <span class="toggle-icon" aria-hidden="true">&#128306;</span>
-                        <input type="checkbox" id="mode-toggle" class="mode-toggle-input" role="switch"
-                            aria-label="Toggle between GPU and CPU mode" aria-checked="false">
-                        <span class="mode-toggle-slider" aria-hidden="true"></span>
-                        <span class="mode-toggle-text" id="mode-toggle-text" aria-live="polite">GPU</span>
-                    </label>
+                <div class="mode-select-container" role="group" aria-label="Mode selection">
+                    <select id="mode-select" class="mode-select-input" aria-label="Select AI mode">
+                        <option value="gpu">GPU</option>
+                        <option value="cpu">CPU</option>
+                        <option value="basic" selected>Basic</option>
+                    </select>
                 </div>
                 <button class="restart-btn" id="restartBtn" title="Restart conversation"
                     aria-label="Restart conversation" tabindex="2">💬</button>
@@ -152,7 +150,7 @@
             </div>
         </div>
     </div>
-    <p class="model-footer">Powered by Microsoft Phi-3 (CPU fallback to SmolLM2)</p>
+    <p class="model-footer">Powered by Microsoft Phi-3 (CPU fallback to SmolLM2, Basic fallback to Wikipedia)</p>
     <script type="module" src="app.js"></script>
 </body>
 

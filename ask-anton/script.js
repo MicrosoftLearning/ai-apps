@@ -13,6 +13,12 @@ class AskAnton {
         this.currentAbortController = null;
         this.webGPUAvailable = false;
         this.usingWllama = false;
+        this.currentMode = 'basic';
+        this.availableModes = {
+            gpu: false,
+            cpu: true,
+            basic: true
+        };
         this.isLoadingModel = false;
         this.currentModal = null;
         this.lastFocusedElement = null;
@@ -52,8 +58,7 @@ class AskAnton {
             micBtn: document.getElementById('mic-btn'),
             restartBtn: document.getElementById('restart-btn'),
             searchStatus: document.getElementById('search-status'),
-            modeToggle: document.getElementById('mode-toggle'),
-            modeToggleText: document.getElementById('mode-toggle-text'),
+            modeSelect: document.getElementById('mode-select'),
             aboutBtn: document.getElementById('about-btn'),
             aboutModal: document.getElementById('about-modal'),
             aboutModalClose: document.getElementById('about-modal-close'),
@@ -264,22 +269,35 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async initializeEngine() {
-        // Check for WebGPU support before attempting to load WebLLM
         const hasWebGPU = this.checkWebGPUSupport();
+        this.availableModes.gpu = hasWebGPU;
 
-        if (!hasWebGPU) {
-            console.log('WebGPU not available, using wllama (CPU mode)');
-            await this.initializeWllama();
-            return;
+        if (hasWebGPU) {
+            try {
+                await this.initializeWebLLM();
+                return;
+            } catch (error) {
+                console.log('WebLLM initialization failed, falling back to CPU mode');
+                this.availableModes.gpu = false;
+            }
         }
 
-        // Try WebLLM first (faster with GPU)
         try {
-            await this.initializeWebLLM();
+            await this.initializeWllama(null, {
+                activateMode: true,
+                showChatInterface: true,
+                showFatalError: false
+            });
+            return;
         } catch (error) {
-            console.log('WebLLM initialization failed, falling back to wllama');
-            await this.initializeWllama();
+            console.log('CPU model initialization failed, falling back to Basic mode');
+            this.availableModes.cpu = false;
         }
+
+        this.initializeBasicMode(
+            'Ready to chat! (Basic mode)',
+            'Using Basic mode because the GPU and CPU models could not be loaded.'
+        );
     }
 
     async initializeWebLLM() {
@@ -304,7 +322,8 @@ IMPORTANT: Follow these guidelines when responding:
             this.updateProgress(100, 'Ready to chat!');
             console.log('WebLLM engine initialized successfully');
             this.webGPUAvailable = true;
-            this.usingWllama = false;
+            this.availableModes.gpu = true;
+            this.setCurrentMode('gpu');
 
             setTimeout(() => {
                 this.showChatInterface();
@@ -312,19 +331,30 @@ IMPORTANT: Follow these guidelines when responding:
 
         } catch (error) {
             console.error('Failed to initialize WebLLM:', error);
+            this.availableModes.gpu = false;
             throw error; // Re-throw to trigger fallback
         }
     }
 
-    async initializeWllama(progressCallback = null) {
+    async initializeWllama(progressCallback = null, options = {}) {
+        const {
+            activateMode = !this.availableModes.gpu,
+            showChatInterface = !this.availableModes.gpu,
+            showFatalError = false
+        } = options;
+
         try {
             // Check if already initialized
             if (this.wllama) {
                 console.log('Wllama already initialized');
+                this.availableModes.cpu = true;
+                if (activateMode) {
+                    this.setCurrentMode('cpu');
+                }
                 return;
             }
 
-            const isLazyLoad = this.webGPUAvailable; // If WebGPU is available, this is a lazy load
+            const isLazyLoad = progressCallback !== null || !showChatInterface;
 
             if (!isLazyLoad) {
                 this.updateProgress(15, 'Loading AI model (CPU mode)...');
@@ -398,11 +428,13 @@ IMPORTANT: Follow these guidelines when responding:
                 this.updateProgress(100, 'Ready to chat! (CPU mode)');
             }
             console.log('Wllama initialized successfully with SmolLM2-360M-Instruct');
+            this.availableModes.cpu = true;
 
-            if (!isLazyLoad) {
-                this.webGPUAvailable = false;
-                this.usingWllama = true;
+            if (activateMode) {
+                this.setCurrentMode('cpu');
+            }
 
+            if (showChatInterface) {
                 setTimeout(() => {
                     this.showChatInterface();
                 }, 500);
@@ -410,7 +442,8 @@ IMPORTANT: Follow these guidelines when responding:
 
         } catch (error) {
             console.error('Failed to initialize wllama:', error);
-            if (!this.webGPUAvailable) {
+            this.availableModes.cpu = false;
+            if (showFatalError) {
                 this.showError('Failed to load AI model. Please refresh the page.');
             }
             throw error;
@@ -436,8 +469,37 @@ IMPORTANT: Follow these guidelines when responding:
     showChatInterface() {
         this.elements.progressSection.style.display = 'none';
         this.elements.chatContainer.style.display = 'flex';
-        this.updateModeToggle();
+        this.updateModeSelector();
         this.elements.userInput.focus();
+    }
+
+    initializeBasicMode(progressText = 'Ready to chat! (Basic mode)', notice = null) {
+        this.setCurrentMode('basic');
+        this.updateProgress(100, progressText);
+
+        setTimeout(() => {
+            this.showChatInterface();
+            if (notice) {
+                this.addSystemMessage(notice);
+            }
+        }, 500);
+    }
+
+    setCurrentMode(mode) {
+        this.currentMode = mode;
+        this.usingWllama = mode === 'cpu';
+    }
+
+    getModeLabel(mode = this.currentMode) {
+        if (mode === 'gpu') {
+            return 'GPU';
+        }
+
+        if (mode === 'cpu') {
+            return 'CPU';
+        }
+
+        return 'Basic';
     }
 
     showError(message) {
@@ -526,9 +588,9 @@ IMPORTANT: Follow these guidelines when responding:
             this.restartConversation();
         });
 
-        // Mode toggle button
-        this.elements.modeToggle.addEventListener('change', () => {
-            this.toggleMode();
+        // Mode selector
+        this.elements.modeSelect.addEventListener('change', (event) => {
+            this.switchMode(event.target.value);
         });
 
         // About button
@@ -867,7 +929,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         // Check if wllama is still loading when in CPU mode
-        if (this.usingWllama && !this.wllama) {
+        if (this.currentMode === 'cpu' && !this.wllama) {
             this.addSystemMessage('CPU mode is still loading. Please wait...');
             return;
         }
@@ -933,106 +995,117 @@ IMPORTANT: Follow these guidelines when responding:
         console.log('Stop requested');
     }
 
-    toggleMode() {
-        if (!this.webGPUAvailable) {
-            this.lastFocusedElement = document.activeElement;
-            this.showAiModeModal();
+    async switchMode(targetMode) {
+        if (targetMode === this.currentMode) {
+            this.updateModeSelector();
             return;
         }
 
-        this.usingWllama = !this.usingWllama;
-        this.updateModeToggle();
+        if (targetMode === 'gpu') {
+            if (!this.availableModes.gpu || !this.engine) {
+                this.updateModeSelector();
+                this.lastFocusedElement = document.activeElement;
+                this.showAiModeModal();
+                return;
+            }
 
-        // If switching to wllama and it's not loaded yet, show loading message
-        if (this.usingWllama && !this.wllama) {
-            this.isLoadingModel = true;
-            this.disableInput();
-            const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0%');
-            const loadingMsgElement = loadingMsg.querySelector('p');
+            this.setCurrentMode('gpu');
+            this.updateModeSelector();
+            this.addSystemMessage('Switched to GPU mode');
+            return;
+        }
 
-            // Lazy load wllama
-            this.initializeWllama((progress) => {
-                // Update the loading message with progress
+        if (targetMode === 'basic') {
+            this.setCurrentMode('basic');
+            this.updateModeSelector();
+            this.addSystemMessage('Switched to Basic mode');
+            return;
+        }
+
+        if (!this.availableModes.cpu) {
+            this.updateModeSelector();
+            this.addSystemMessage('CPU mode is unavailable on this device.');
+            return;
+        }
+
+        if (this.wllama) {
+            this.setCurrentMode('cpu');
+            this.updateModeSelector();
+            this.addSystemMessage('Switched to CPU mode');
+            return;
+        }
+
+        this.isLoadingModel = true;
+        this.elements.modeSelect.disabled = true;
+        this.disableInput();
+        const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0%');
+        const loadingMsgElement = loadingMsg.querySelector('p');
+
+        try {
+            await this.initializeWllama((progress) => {
                 if (loadingMsgElement) {
                     const percentage = Math.round(progress * 100);
                     loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}%`;
                 }
-            }).then(() => {
-                const mode = this.usingWllama ? 'CPU' : 'GPU';
-                if (loadingMsgElement) {
-                    loadingMsgElement.textContent = `Switched to ${mode} mode`;
-                }
-                this.isLoadingModel = false;
-                this.enableInput();
-            }).catch(error => {
-                console.error('Failed to load wllama:', error);
-                if (loadingMsgElement) {
-                    loadingMsgElement.textContent = 'Failed to load CPU mode. Reverting to GPU mode.';
-                }
-                this.usingWllama = false;
-                this.updateModeToggle();
-                this.isLoadingModel = false;
-                this.enableInput();
+            }, {
+                activateMode: true,
+                showChatInterface: false,
+                showFatalError: false
             });
-        } else {
-            const mode = this.usingWllama ? 'CPU' : 'GPU';
-            console.log(`Switched to ${mode} mode`);
-            this.addSystemMessage(`Switched to ${mode} mode`);
+
+            if (loadingMsgElement) {
+                loadingMsgElement.textContent = 'Switched to CPU mode';
+            }
+        } catch (error) {
+            console.error('Failed to load CPU mode:', error);
+            this.availableModes.cpu = false;
+
+            const fallbackMode = this.availableModes.gpu && this.engine ? 'gpu' : 'basic';
+            this.setCurrentMode(fallbackMode);
+
+            if (loadingMsgElement) {
+                loadingMsgElement.textContent = `Failed to load CPU mode. Switched to ${this.getModeLabel(fallbackMode)} mode.`;
+            }
+        } finally {
+            this.updateModeSelector();
+            this.isLoadingModel = false;
+            this.enableInput();
+            this.elements.modeSelect.disabled = false;
         }
     }
 
-    updateModeToggle() {
-        const isGpuMode = !this.usingWllama;
-
-        // Update checkbox state
-        this.elements.modeToggle.checked = this.usingWllama;
-        this.elements.modeToggle.setAttribute('aria-checked', this.usingWllama ? 'true' : 'false');
-
-        // Update text label
-        this.elements.modeToggleText.textContent = isGpuMode ? 'GPU' : 'CPU';
-
-        // Update title and aria-label
-        const modeTitle = isGpuMode ?
-            'Currently using GPU (WebLLM). Toggle to switch to CPU mode.' :
-            'Currently using CPU (wllama). Toggle to switch to GPU mode.';
-        const ariaLabel = isGpuMode ?
-            'Toggle engine mode. Currently in GPU mode. Toggle to switch to CPU mode.' :
-            'Toggle engine mode. Currently in CPU mode. Toggle to switch to GPU mode.';
-
-        this.elements.modeToggle.parentElement.parentElement.title = modeTitle;
-        this.elements.modeToggle.setAttribute('aria-label', ariaLabel);
-
-        // Disable toggle if WebGPU not available
-        if (!this.webGPUAvailable) {
-            this.elements.modeToggle.disabled = true;
-            this.elements.modeToggle.checked = true; // CPU mode
-            this.elements.modeToggle.setAttribute('aria-checked', 'true');
-            this.elements.modeToggleText.textContent = 'CPU';
-            this.elements.modeToggle.parentElement.parentElement.title = 'WebGPU not available - CPU mode only. Click for more info.';
-            this.elements.modeToggle.setAttribute('aria-label', 'Engine mode set to CPU only. WebGPU not available. Press for more information.');
-
-            // Make the label clickable to show info modal
-            const label = this.elements.modeToggle.parentElement;
-            label.style.cursor = 'pointer';
-            label.tabIndex = 0; // Make focusable for keyboard navigation
-
-            label.onclick = (e) => {
-                if (this.elements.modeToggle.disabled) {
-                    e.preventDefault();
-                    this.lastFocusedElement = document.activeElement;
-                    this.showAiModeModal();
-                }
-            };
-
-            // Add keyboard support for info modal when disabled
-            label.onkeydown = (e) => {
-                if (this.elements.modeToggle.disabled && (e.key === 'Enter' || e.key === ' ')) {
-                    e.preventDefault();
-                    this.lastFocusedElement = document.activeElement;
-                    this.showAiModeModal();
-                }
-            };
+    updateModeSelector() {
+        const { modeSelect } = this.elements;
+        if (!modeSelect) {
+            return;
         }
+
+        const modeIcons = {
+            gpu: { enabled: '🟢', disabled: '◯' },
+            cpu: { enabled: '🟠', disabled: '◯' },
+            basic: { enabled: '⚪', disabled: '◯' }
+        };
+
+        const modeLabels = { gpu: 'GPU', cpu: 'CPU', basic: 'Basic' };
+
+        Array.from(modeSelect.options).forEach(option => {
+            const mode = option.value;
+            const isAvailable = mode === 'basic' ? true : this.availableModes[mode];
+            const icon = isAvailable ? modeIcons[mode].enabled : modeIcons[mode].disabled;
+            option.textContent = `${icon} ${modeLabels[mode]}`;
+            option.disabled = !isAvailable;
+        });
+
+        modeSelect.value = this.currentMode;
+
+        const modeDescriptions = {
+            gpu: 'GPU mode uses WebLLM with Phi-3-mini.',
+            cpu: 'CPU mode uses wllama with SmolLM2.',
+            basic: 'Basic mode returns matching content directly from the knowledge base.'
+        };
+
+        modeSelect.title = `Current mode: ${this.getModeLabel()}. ${modeDescriptions[this.currentMode]}`;
+        modeSelect.setAttribute('aria-label', `Choose a response mode. Current mode: ${this.getModeLabel()}.`);
     }
 
     // ============================================================================
@@ -1129,8 +1202,10 @@ IMPORTANT: Follow these guidelines when responding:
         const messageTextDiv = responseMessage.querySelector('.message-text');
         const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
 
-        if (this.usingWllama) {
+        if (this.currentMode === 'cpu') {
             messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        } else if (this.currentMode === 'basic') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
         } else {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
         }
@@ -1202,8 +1277,10 @@ IMPORTANT: Follow these guidelines when responding:
             // Route to the appropriate engine
             let assistantMessage = '';
 
-            if (this.usingWllama) {
+            if (this.currentMode === 'cpu') {
                 assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
+            } else if (this.currentMode === 'basic') {
+                assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
             } else {
                 assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
@@ -1232,8 +1309,10 @@ IMPORTANT: Follow these guidelines when responding:
             responseMessage.remove();
 
             // Suggest switching to CPU mode if currently in GPU mode
-            if (!this.usingWllama) {
-                this.addMessage('assistant', 'Sorry, I encountered an error in GPU mode. Try switching to CPU mode using the toggle at the top, then ask your question again.');
+            if (this.currentMode === 'gpu') {
+                this.addMessage('assistant', 'Sorry, I encountered an error in GPU mode. Try switching to CPU or Basic mode using the list at the top, then ask your question again.');
+            } else if (this.currentMode === 'cpu') {
+                this.addMessage('assistant', 'Sorry, I encountered an error in CPU mode. Try switching to Basic mode using the list at the top, then ask your question again.');
             } else {
                 this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             }
@@ -1353,6 +1432,39 @@ IMPORTANT: Follow these guidelines when responding:
         });
 
         return truncatedParagraphs.join('\n');
+    }
+
+    buildBasicResponse(searchResult) {
+        const { documents = [] } = searchResult;
+
+        if (!documents.length) {
+            return "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.";
+        }
+
+        return documents.map(document => document.content).join('\n\n');
+    }
+
+    async generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput = false) {
+        const assistantMessage = this.buildBasicResponse(searchResult);
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+
+        if (this.stopRequested) {
+            return '';
+        }
+
+        if (usedVoiceInput) {
+            this.playRandomResponseAudio();
+        }
+
+        const animationCompleted = await this.animateTyping(
+            messageTextDiv,
+            assistantMessage,
+            (partialMessage) => this.formatResponse(partialMessage),
+            12
+        );
+
+        return animationCompleted ? assistantMessage : '';
     }
 
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
