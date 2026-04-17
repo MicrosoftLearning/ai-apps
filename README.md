@@ -49,7 +49,7 @@ All in-browser LLM-based apps include a *minimal* content moderation solution in
 
 ### Other AI models and technologies
 
-In addition to WebLLM and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
+In addition to WebLLM and the Microsoft Phi model / Wllama and the SmolLM2 model as described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.
