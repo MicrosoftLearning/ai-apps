@@ -561,17 +561,5 @@
                 "content": "Developers can use SDKs and APIs to build AI apps and agents with Microsoft Foundry. The Foundry SDK enables programmatic access to projects, agents, and other Foundry resources, while the OpenAI API enables developers to integrate powerful language models into their applications. Within the OpenAI API, the Responses API and ChatCompletions APIs provide interfaces for generating responses and managing conversations with large language models."
             }
         ]
-    },
-    {
-        "category": "AI Concepts",
-        "link": "https://aka.ms/mslearn-ai-concepts-intro",
-        "documents": [
-            {
-                "id": 99,
-                "title": "Introduction to AI Concepts",
-                "keywords": [],
-                "content": "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts."
-            }
-        ]
     }
 ]

@@ -152,7 +152,7 @@ IMPORTANT: Follow these guidelines when responding:
 
     async loadProhibitedWords() {
         try {
-            const response = await fetch('moderation/mod.txt');
+            const response = await fetch('moderation/mod.txt', { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to load prohibited words');
 
             const encodedWordsText = await response.text();
@@ -763,7 +763,9 @@ IMPORTANT: Follow these guidelines when responding:
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
             'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on',
-            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with'
+            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with',
+            'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
+            'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
         ]);
         const uniqueWords = [];
         const seenWords = new Set();
@@ -1012,6 +1014,12 @@ IMPORTANT: Follow these guidelines when responding:
         // Search for relevant context
         const searchResult = this.searchContext(userMessage);
 
+        // If no results found, provide Microsoft Learn search link
+        if (!searchResult.context || searchResult.documents.length === 0) {
+            await this.respondWithNoResultsSearchLink(userMessage, usedVoice);
+            return;
+        }
+
         // Generate response
         await this.generateResponse(userMessage, searchResult, usedVoice);
     }
@@ -1239,8 +1247,8 @@ IMPORTANT: Follow these guidelines when responding:
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
-        const encodedKeywords = encodeURIComponent(bingKeywords).replace(/%20/g, '+');
-        const bingUrl = `https://www.bing.com/search?q=site%3Alearn.microsoft.com+${encodedKeywords}`;
+        const encodedKeywords = encodeURIComponent(bingKeywords);
+        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
         const historyAssistantMessage = `OK, I searched for "${bingKeywords}".\nHere's what I found.`;
         const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
 
@@ -1294,6 +1302,68 @@ IMPORTANT: Follow these guidelines when responding:
                 role: 'assistant',
                 content: historyAssistantMessage
             });
+        } finally {
+            this.isGenerating = false;
+            this.stopRequested = false;
+            this.updateSendButton(false);
+
+            setTimeout(() => {
+                this.elements.searchStatus.textContent = '';
+            }, 2000);
+        }
+    }
+
+    async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
+        const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
+        const encodedKeywords = encodeURIComponent(bingKeywords);
+        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
+        const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
+
+        this.isGenerating = true;
+        this.stopRequested = false;
+        this.updateSendButton(true);
+
+        const responseMessage = this.addMessage('assistant', '', false);
+        const messageTextDiv = responseMessage.querySelector('.message-text');
+        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">this link</a>`;
+
+        if (this.currentMode === 'cpu') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        } else if (this.currentMode === 'basic') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
+
+        try {
+            await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (usedVoiceInput) {
+                this.playNoResultsAudio();
+            }
+
+            const animationCompleted = await this.animateTyping(
+                messageTextDiv,
+                historyAssistantMessage,
+                (partialMessage) => this.formatResponse(partialMessage),
+                25
+            );
+
+            if (!animationCompleted) {
+                return;
+            }
+
+            this.renderAssistantMessage(
+                messageTextDiv,
+                assistantMessage,
+                [],
+                [],
+                { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
+            );
+
+            // Don't add to conversation history when no context is found
+            // to avoid the model repeating this message on the next turn
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -1793,6 +1863,13 @@ IMPORTANT: Follow these guidelines when responding:
         const audio = new Audio('moderation/sorry.wav');
         audio.play().catch(error => {
             console.error('Error playing moderation audio:', error);
+        });
+    }
+
+    playNoResultsAudio() {
+        const audio = new Audio('audio/no_results.wav');
+        audio.play().catch(error => {
+            console.error('Error playing no results audio:', error);
         });
     }
 

@@ -165,17 +165,21 @@
                 </p>
                 <h3>Features</h3>
                 <ul>
-                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3-mini for fast inference), CPU mode (wllama with SmolLM2 for broader compatibility), and Basic mode (knowledge-base content without model inference)</li>
+                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3-mini for fast inference),
+                        CPU mode (wllama with SmolLM2 for broader compatibility), and Basic mode (knowledge-base content
+                        without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
-                    <li><strong>Bing Search Integration:</strong> Seamlessly search Microsoft Learn documentation for AI topics</li>
+                    <li><strong>Search Integration:</strong> Seamlessly search Microsoft Learn documentation for AI
+                        topics</li>
                     <li><strong>Voice Input:</strong> Intelligent speech recognition - uses browser's Web Speech API for
                         best results, with automatic fallback to offline Vosk if unavailable</li>
                 </ul>
 
                 <h3>How It Works</h3>
                 <p>Ask Anton runs AI models entirely in your browser, so your questions remain private. No data is sent
-                    to external servers. Use the mode list in the chat header to switch between GPU, CPU, and Basic responses.</p>
+                    to external servers. Use the mode list in the chat header to switch between GPU, CPU, and Basic
+                    responses.</p>
 
                 <h3>Getting Started</h3>
                 <p>Try asking a question like "What is machine learning?" or "Explain artificial intelligence" to get
@@ -202,7 +206,9 @@
                 <p>GPU mode uses WebLLM with the Phi-3-mini model, which requires <strong>WebGPU support</strong> in
                     your browser for fast, GPU-accelerated inference.</p>
 
-                <p>CPU mode uses wllama with SmolLM2 when GPU mode is unavailable or when you prefer a broader browser-compatible option. Basic mode skips model inference entirely and returns matching content directly from the built-in knowledge base.</p>
+                <p>CPU mode uses wllama with SmolLM2 when GPU mode is unavailable or when you prefer a broader
+                    browser-compatible option. Basic mode skips model inference entirely and returns matching content
+                    directly from the built-in knowledge base.</p>
 
                 <p>If you are using a Windows computer with an ARM64 CPU (such as a Snapdragon processor) that has an
                     integrated GPU, you may need to explicitly enable WebGPU support in your browser's settings:</p>
@@ -214,7 +220,8 @@
 
                 <p class="warning"><strong>Remember to disable it again when you're finished!</strong></p>
 
-                <p>If the GPU and CPU models are both unavailable, the app automatically switches to Basic mode so you can still search the built-in AI content.</p>
+                <p>If the GPU and CPU models are both unavailable, the app automatically switches to Basic mode so you
+                    can still search the built-in AI content.</p>
             </div>
             <div class="modal-footer">
                 <button class="modal-btn" id="modal-ok" aria-label="Acknowledge GPU mode dialog" type="button">Got
