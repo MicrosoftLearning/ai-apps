@@ -1661,12 +1661,46 @@ IMPORTANT: Follow these guidelines when responding:
             // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
             const parser = new DOMParser();
             const doc = parser.parseFromString(text, 'text/html');
-            const plainText = doc.body.textContent || '';
+            let plainText = doc.body.textContent || '';
 
             if (!plainText.trim()) {
                 this.isSpeaking = false;
                 return;
             }
+
+            // Replace URLs with speakable format
+            // First, handle markdown-style URLs [text](url) - remove the duplicates
+            plainText = plainText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+
+            // Then replace all URLs with speakable format
+            plainText = plainText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
+                // Remove protocol
+                let cleaned = url.replace(/^https?:\/\//i, '');
+                // Remove www. if present
+                cleaned = cleaned.replace(/^www\./i, '');
+                // Remove trailing period (if URL ends a sentence)
+                cleaned = cleaned.replace(/\.$/, '');
+                // Replace dots with " dot "
+                cleaned = cleaned.replace(/\./g, ' dot ');
+                // Replace slashes with " slash "
+                cleaned = cleaned.replace(/\//g, ' slash ');
+                // Replace hyphens with spaces
+                cleaned = cleaned.replace(/-/g, ' ');
+                return cleaned;
+            });
+            plainText = plainText.replace(/www\.[^\s]+/gi, function (url) {
+                // Remove www. if present
+                let cleaned = url.replace(/^www\./i, '');
+                // Remove trailing period (if URL ends a sentence)
+                cleaned = cleaned.replace(/\.$/, '');
+                // Replace dots with " dot "
+                cleaned = cleaned.replace(/\./g, ' dot ');
+                // Replace slashes with " slash "
+                cleaned = cleaned.replace(/\//g, ' slash ');
+                // Replace hyphens with spaces
+                cleaned = cleaned.replace(/-/g, ' ');
+                return cleaned;
+            });
 
             const speechEndpoint = this.getSpeechEndpointBase();
             const url = `${speechEndpoint}/tts/cognitiveservices/v1`;

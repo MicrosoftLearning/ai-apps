@@ -7,8 +7,7 @@ const sendBtn = document.getElementById('send-btn');
 const uploadBtn = document.getElementById('upload-btn');
 const imageUpload = document.getElementById('image-upload');
 const micBtn = document.getElementById('mic-btn');
-const modeToggle = document.getElementById('mode-toggle');
-const modeToggleText = document.getElementById('mode-toggle-text');
+const modeSelect = document.getElementById('mode-select');
 
 // State
 let model = null;
@@ -24,9 +23,11 @@ let mobilenetReady = false; // Track if MobileNet is initialized
 let conversationHistory = []; // Track conversation for context
 let inappropriateWords = []; // Loaded from moderation file
 let webGPUAvailable = false; // Track if WebGPU is available
-let usingWllama = false; // Track which engine is active
+let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
+const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
 let currentStream = null; // Track current streaming completion
+let typingAnimationsInProgress = 0; // Track active typewriter animations
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -45,6 +46,7 @@ let hasSpeech = false;
 const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
+let voskLoadingMessage = null; // Track the loading message for Vosk
 
 // Calculate speech model path dynamically based on current location
 // This works both locally and on GitHub Pages
@@ -53,6 +55,43 @@ const basePath = window.location.pathname.substring(0, window.location.pathname.
 const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
 const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+
+// Global error handler for unhandled promise rejections (e.g., from Vosk library)
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+
+    // Check if this is a Vosk model loading error
+    if (!voskLoaded && !voskLoadingFailed && event.reason) {
+        const errorMsg = String(event.reason);
+        const errorStack = event.reason?.stack || '';
+        // Check for Vosk-related errors
+        if (errorMsg.includes('404') ||
+            errorMsg.includes('HTTP error') ||
+            errorMsg.includes('model') ||
+            errorMsg.includes('Cannot read properties of undefined') ||
+            errorStack.includes('vosk')) {
+            console.log('Detected Vosk model loading failure from unhandled rejection');
+            voskLoadingFailed = true;
+
+            // Remove the loading message if it exists
+            if (voskLoadingMessage && voskLoadingMessage.message) {
+                voskLoadingMessage.message.remove();
+                voskLoadingMessage = null;
+            }
+
+            // Add error message to chat
+            addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+            micBtn.disabled = true;
+            micBtn.title = 'Voice input unavailable';
+
+            // Re-enable buttons
+            sendBtn.disabled = false;
+            textInput.disabled = false;
+
+            event.preventDefault(); // Prevent the error from being logged again
+        }
+    }
+});
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
@@ -137,27 +176,45 @@ async function init() {
         const hasWebGPU = checkWebGPUSupport();
 
         if (!hasWebGPU) {
-            console.log('WebGPU not available, using wllama (CPU mode)');
-            await initWllama();
+            console.log('WebGPU not available, trying wllama (CPU mode)');
+            try {
+                await initWllama();
+                currentMode = 'cpu';
+            } catch (error) {
+                console.log('Wllama also failed, using Basic mode (Wikipedia)');
+                currentMode = 'basic';
+                availableModes.cpu = false;
+                updateModelName('Wikipedia API (Basic)');
+                updateLoadingStatus('smollm', 'ready', 'Basic');
+            }
         } else {
             // Try WebLLM first (faster with GPU)
             try {
                 await initializeWebLLM();
+                // currentMode = 'gpu' is set inside initializeWebLLM
             } catch (error) {
                 console.log('WebLLM initialization failed, falling back to wllama');
-                await initWllama();
+                try {
+                    await initWllama();
+                    currentMode = 'cpu';
+                } catch (error2) {
+                    console.log('Wllama also failed, using Basic mode (Wikipedia)');
+                    currentMode = 'basic';
+                    availableModes.cpu = false;
+                    updateModelName('Wikipedia API (Basic)');
+                    updateLoadingStatus('smollm', 'ready', 'Basic');
+                }
             }
         }
 
-        // Both models loaded successfully
         hideLoadingOverlay();
-        updateModeToggle();
+        updateModeSelect();
     } catch (e) {
         console.error("Initialization error:", e);
         // Show error but still try to hide overlay after a delay
         setTimeout(() => {
             hideLoadingOverlay();
-            addMessage(`Error loading models: ${e.message}. Some features may be unavailable.`, "bot");
+            addMessage(`Error loading models: ${escapeHtml(e.message)}. Some features may be unavailable.`, "bot");
         }, 2000);
     }
 }
@@ -185,7 +242,8 @@ async function initializeWebLLM() {
         updateLoadingStatus('smollm', 'ready', '100%');
         console.log('WebLLM engine initialized successfully');
         webGPUAvailable = true;
-        usingWllama = false;
+        currentMode = 'gpu';
+        availableModes.gpu = true;
 
     } catch (error) {
         console.error('Failed to initialize WebLLM:', error);
@@ -211,19 +269,17 @@ async function loadVoskModel() {
             return false;
         }
 
-        const loadingMsg = addMessage('Loading offline speech model... This may take a moment.', 'bot');
+        voskLoadingMessage = addMessage('Loading offline speech model... This may take a moment.', 'bot');
         sendBtn.disabled = true;
         textInput.disabled = true;
         micBtn.disabled = true;
 
-        try {
-            voskModel = await Vosk.createModel(speechModelUrl);
-        } catch (modelError) {
-            // Remove the loading message since we failed
-            if (loadingMsg && loadingMsg.message) {
-                loadingMsg.message.remove();
-            }
-            throw modelError; // Re-throw to be caught by outer catch
+        // Load the model - no timeout, just let it load
+        voskModel = await Vosk.createModel(speechModelUrl);
+
+        // Validate that the model loaded
+        if (!voskModel || typeof voskModel.KaldiRecognizer !== 'function') {
+            throw new Error('Vosk model did not load properly');
         }
 
         voskRecognizer = new voskModel.KaldiRecognizer(16000);
@@ -266,10 +322,11 @@ async function loadVoskModel() {
         console.log('Vosk speech model loaded successfully');
 
         // Update the loading message
-        const msgBubble = loadingMsg.bubble;
+        const msgBubble = voskLoadingMessage.bubble;
         if (msgBubble) {
             setBubbleContent(msgBubble, 'Offline speech model ready! Please try your voice input again.');
         }
+        voskLoadingMessage = null;
 
         sendBtn.disabled = false;
         textInput.disabled = false;
@@ -279,7 +336,13 @@ async function loadVoskModel() {
     } catch (error) {
         console.error('Failed to load Vosk model:', error);
         voskLoadingFailed = true;
-        // Don't add another error message here - handleVoiceInput will inform the user
+
+        // Remove the loading message if it exists
+        if (voskLoadingMessage && voskLoadingMessage.message) {
+            voskLoadingMessage.message.remove();
+            voskLoadingMessage = null;
+        }
+
         sendBtn.disabled = false;
         textInput.disabled = false;
         micBtn.disabled = false;
@@ -300,6 +363,12 @@ function shiftWord(text, amount) {
 
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 async function loadInappropriateWords() {
@@ -453,8 +522,6 @@ async function initWllama(progressCallback = null) {
         wllamaReady = true;
         if (!isLazyLoad) {
             updateLoadingStatus('smollm', 'ready', '100%');
-            webGPUAvailable = false;
-            usingWllama = true;
         }
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
@@ -622,12 +689,19 @@ function scrollToBottom() {
  */
 async function typeTextInBubble(bubble, text, speed = 20, startingText = '') {
     return new Promise((resolve) => {
+        typingAnimationsInProgress++;
+
+        const finishTyping = () => {
+            typingAnimationsInProgress = Math.max(0, typingAnimationsInProgress - 1);
+            resolve();
+        };
+
         let currentIndex = 0;
         let displayText = startingText;
 
         // If starting text equals full text, nothing to type
         if (startingText === text) {
-            resolve();
+            finishTyping();
             return;
         }
 
@@ -668,7 +742,7 @@ async function typeTextInBubble(bubble, text, speed = 20, startingText = '') {
                 clearInterval(typeInterval);
                 setBubbleContent(bubble, text);
                 scrollToBottom();
-                resolve();
+                finishTyping();
                 return;
             }
 
@@ -741,8 +815,8 @@ function startResponse() {
  * Marks the bot as done responding (disables stop button)
  */
 function endResponse() {
-    // Only end if not speaking
-    if (!speechSynthesis.speaking) {
+    // Only end when both speech and typing animation are finished
+    if (!speechSynthesis.speaking && typingAnimationsInProgress === 0) {
         isResponding = false;
         shouldStopResponse = false;
         sendBtn.classList.remove('stop-mode');
@@ -909,7 +983,7 @@ async function handleSend() {
     }
 
     // For GPU mode with streaming, create message first
-    if (!usingWllama && webGPUAvailable && engine) {
+    if (currentMode === 'gpu' && webGPUAvailable && engine) {
         const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
         startResponse();
 
@@ -917,7 +991,7 @@ async function handleSend() {
             const summary = await generateComputingInfo(text, (chunk) => {
                 if (bubble && chunk) {
                     const currentText = bubble.textContent || '';
-                    setBubbleContent(bubble, currentText + chunk);
+                    setBubbleContent(bubble, escapeHtml(currentText + chunk));
                     scrollToBottom();
                 }
             });
@@ -950,7 +1024,7 @@ async function handleSend() {
             }
         } catch (e) {
             if (checkStopResponse()) return;
-            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + e.message);
+            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + escapeHtml(e.message));
             endResponse();
         }
     } else {
@@ -964,7 +1038,25 @@ async function handleSend() {
             if (checkStopResponse()) return;
 
             if (summary) {
-                addMessage(`${summary}`, "bot");
+                if (currentMode === 'basic' || currentMode === 'cpu') {
+                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                    startResponse();
+
+                    // In voice mode, speak immediately while the text animates.
+                    if (isVoiceInput) {
+                        speakTextContent(summary);
+                        isVoiceInput = false;
+                    }
+
+                    await typeTextInBubble(bubble, `${summary}`, 20);
+
+                    if (checkStopResponse()) return;
+
+                    endResponse();
+                } else {
+                    addMessage(`${summary}`, "bot");
+                }
+
                 // Store in conversation history
                 conversationHistory.push({
                     user: truncateToFirstSentence(text),
@@ -979,7 +1071,7 @@ async function handleSend() {
         } catch (e) {
             removeTyping();
             if (checkStopResponse()) return;
-            addMessage("Sorry, I had trouble searching via text. " + e.message, "bot");
+            addMessage("Sorry, I had trouble searching via text. " + escapeHtml(e.message), "bot");
         }
     }
 }
@@ -1076,16 +1168,55 @@ function hasBoundaryKeyword(text, keywords) {
 }
 
 /**
+ * Extracts up to maxSentences from the start of text, treating periods between digits
+ * (for example, 12.5) as part of a number instead of sentence boundaries.
+ * @param {string} text - Source text
+ * @param {number} maxSentences - Maximum number of sentences to include
+ * @returns {string} Extracted leading sentences, or original trimmed text if no boundary found
+ */
+function extractLeadingSentences(text, maxSentences = 1) {
+    if (!text) return '';
+
+    let sentenceCount = 0;
+    let cutIndex = -1;
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+
+        if (char === '.' || char === '!' || char === '?') {
+            const prev = i > 0 ? text[i - 1] : '';
+            const next = i < text.length - 1 ? text[i + 1] : '';
+
+            // Ignore decimal points like 12.5
+            if (char === '.' && /\d/.test(prev) && /\d/.test(next)) {
+                continue;
+            }
+
+            sentenceCount++;
+            cutIndex = i + 1;
+
+            if (sentenceCount >= maxSentences) {
+                break;
+            }
+        }
+    }
+
+    if (cutIndex === -1) {
+        return text.trim();
+    }
+
+    return text.slice(0, cutIndex).trim();
+}
+
+/**
  * Extracts the first sentence from a given text string
  * @param {string} text - The text to truncate
  * @returns {string} The first sentence or first 100 characters
  */
 function truncateToFirstSentence(text) {
-    // Find first sentence-ending punctuation
-    const match = text.match(/^[^.!?]+[.!?]/);
-    if (match) {
-        return match[0].trim();
-    }
+    const firstSentence = extractLeadingSentences(text, 1);
+    if (firstSentence) return firstSentence;
+
     // No sentence-ending punctuation found, take first 100 characters
     return text.substring(0, 100).trim();
 }
@@ -1304,6 +1435,7 @@ async function performClassification(imgEl, userText = "") {
         // Standard prediction message for all other classes
         const confidence = (topMatch.probability * 100).toFixed(1);
         let reply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+        let hasGeneratedInfoSummary = false;
 
         // Add secondary guess if close
         if (result[1] && result[1].probability > 0.1) {
@@ -1322,19 +1454,21 @@ async function performClassification(imgEl, userText = "") {
             // AI-generated info for classes 0, 1, 2, 3
             if ([0, 1, 2, 3].includes(classIndex)) {
                 // For GPU mode with streaming, add message and stream into it
-                if (!usingWllama && webGPUAvailable && engine) {
+                if (currentMode === 'gpu' && webGPUAvailable && engine) {
                     const { bubble } = addMessage(reply, "bot", null, { deferCompletion: true });
                     startResponse();
 
                     try {
                         const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
                         const infoPrompt = buildClassInfoPrompt(classIndex);
+                        const modelQuery = infoPrompt || topMatch.className;
+                        console.log('[Image Classification] Sending query to model:', modelQuery);
 
                         let streamedText = '';
-                        const summary = await generateComputingInfo(infoPrompt || topMatch.className, (chunk) => {
+                        const summary = await generateComputingInfo(modelQuery, (chunk) => {
                             if (bubble && chunk) {
                                 streamedText += chunk;
-                                setBubbleContent(bubble, reply + `<br>` + streamedText);
+                                setBubbleContent(bubble, reply + `<br>` + escapeHtml(streamedText));
                                 scrollToBottom();
                             }
                         });
@@ -1366,18 +1500,23 @@ async function performClassification(imgEl, userText = "") {
                     }
                     return; // Exit early since we already added the message
                 } else {
-                    // CPU mode - use existing non-streaming approach
+                    // CPU and Basic modes - use non-streaming approach
                     showTyping();
                     try {
                         const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
                         const infoPrompt = buildClassInfoPrompt(classIndex);
-                        const summary = await generateComputingInfo(infoPrompt || topMatch.className);
+                        const modelQuery = currentMode === 'basic'
+                            ? topMatch.className
+                            : (infoPrompt || topMatch.className);
+                        console.log('[Image Classification] Sending query to model:', modelQuery);
+                        const summary = await generateComputingInfo(modelQuery);
                         if (checkStopResponse()) {
                             removeTyping();
                             return;
                         }
                         if (summary) {
-                            reply += `<br>${summary}`;
+                            reply += `<br>${escapeHtml(summary)}`;
+                            hasGeneratedInfoSummary = true;
                             conversationHistory.push({
                                 user: historyUserPrompt,
                                 assistant: truncateToFirstSentence(summary)
@@ -1400,6 +1539,26 @@ async function performClassification(imgEl, userText = "") {
             }
         }
 
+        // Match text response behavior for CPU/Basic when generated info is included.
+        if ([0, 1, 2, 3].includes(classIndex) && hasGeneratedInfoSummary && (currentMode === 'cpu' || currentMode === 'basic')) {
+            const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+            startResponse();
+
+            if (isVoiceInput) {
+                const tempEl = document.createElement('div');
+                tempEl.innerHTML = reply;
+                const plainText = (tempEl.textContent || '').replace(/\s+/g, ' ').trim();
+                speakTextContent(plainText);
+                isVoiceInput = false;
+            }
+
+            await typeTextInBubble(bubble, reply, 20);
+
+            if (checkStopResponse()) return;
+            endResponse();
+            return;
+        }
+
         addMessage(reply, "bot");
 
     } catch (err) {
@@ -1417,10 +1576,12 @@ async function performClassification(imgEl, userText = "") {
  */
 async function generateComputingInfo(query, onChunk = null) {
     // Use WebLLM if available and enabled, otherwise use wllama
-    if (!usingWllama && webGPUAvailable && engine) {
+    if (currentMode === 'gpu' && webGPUAvailable && engine) {
         return await generateWithWebLLM(query, onChunk);
-    } else if (wllamaReady && wllama) {
+    } else if (currentMode === 'cpu' && wllamaReady && wllama) {
         return await generateWithWllama(query);
+    } else if (currentMode === 'basic') {
+        return await generateWithWikipedia(query);
     } else {
         console.warn("No AI engine ready, skipping generation");
         return null;
@@ -1438,7 +1599,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         const messages = [
             {
                 role: "system",
-                content: 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\nRules:\n- You may discuss computing and technology topics only\n- Respond with one or two clear sentences, using simple language\n- Focus on key facts and historical context\n- You must not provide assistance with activities that are illegal or may cause harm'
+                content: 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\nRules:\n- You may discuss computing and technology topics only\n- Respond with one or two clear sentences, using simple language. \n- Focus on key facts and historical context\n- You must not provide assistance with activities that are illegal or may cause harm'
             }
         ];
 
@@ -1614,6 +1775,50 @@ async function generateWithWllama(query) {
 }
 
 /**
+ * Generates information using Wikipedia API (Basic mode)
+ * Extracts keywords from the query and returns the first paragraph of the best-matching article.
+ * @param {string} query - The query to look up
+ * @returns {Promise<string|null>} First paragraph of the Wikipedia article, or null
+ */
+async function generateWithWikipedia(query) {
+    try {
+        // Use only the first line for keyword extraction (handles multi-line prompts)
+        const firstLine = query.split('\n')[0];
+        const keywords = extractKeywords(firstLine);
+        if (!keywords) return null;
+
+        // Search Wikipedia for a matching article
+        const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
+        const searchResponse = await fetch(searchUrl);
+        if (!searchResponse.ok) throw new Error('Wikipedia search request failed');
+
+        const searchData = await searchResponse.json();
+        const results = searchData?.query?.search;
+        if (!results || results.length === 0) return null;
+
+        // Fetch the article summary
+        const title = results[0].title;
+        const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+        const summaryResponse = await fetch(summaryUrl);
+        if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
+
+        const summaryData = await summaryResponse.json();
+        const extract = summaryData?.extract;
+        if (!extract || extract.length < 20) return null;
+
+        // Return the first non-empty paragraph, trimmed to 2 sentences for conciseness
+        const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
+        const extractedSentences = extractLeadingSentences(firstParagraph, 2);
+        const result = extractedSentences || firstParagraph.substring(0, 300).trim();
+
+        return result.length >= 20 ? result : null;
+    } catch (error) {
+        console.error('Wikipedia lookup failed:', error);
+        return null;
+    }
+}
+
+/**
  * Classifies an image using TensorFlow.js models
  * @param {HTMLImageElement} imgElement - The image to classify
  * @returns {Promise<Array>} Array of classification results sorted by probability
@@ -1709,104 +1914,123 @@ if (closeAboutBtn) {
 // Voice Input (Speech-to-Text)
 micBtn.addEventListener('click', handleVoiceInput);
 
-// Mode toggle
-if (modeToggle) {
-    modeToggle.addEventListener('change', toggleMode);
+// Mode select
+if (modeSelect) {
+    modeSelect.addEventListener('change', selectMode);
 }
 
 /**
- * Toggles between GPU and CPU mode
+ * Handles mode selection from the dropdown
  */
-function toggleMode() {
-    if (!webGPUAvailable) {
-        // Show info that WebGPU is not available
-        addMessage('WebGPU is not available in your browser. The app is running in CPU mode using SmolLM2.', 'bot');
-        return;
-    }
+function selectMode() {
+    const selected = modeSelect.value;
 
-    usingWllama = !usingWllama;
-    updateModeToggle();
-
-    // If switching to wllama and it's not loaded yet, show loading message
-    if (usingWllama && !wllama) {
-        sendBtn.disabled = true;
-        textInput.disabled = true;
-        micBtn.disabled = true;
-        const loadingMsg = addMessage('Switching to CPU mode - loading model... 0%', 'bot');
-        const loadingBubble = loadingMsg.bubble;
-
-        // Lazy load wllama
-        initWllama((progress) => {
-            if (loadingBubble) {
-                const percentage = Math.round(progress * 100);
-                setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
-            }
-        }).then(() => {
-            const mode = usingWllama ? 'CPU' : 'GPU';
-            if (loadingBubble) {
-                setBubbleContent(loadingBubble, `Switched to ${mode} mode`);
-            }
-            sendBtn.disabled = false;
-            textInput.disabled = false;
-            micBtn.disabled = false;
-        }).catch(error => {
-            console.error('Failed to load wllama:', error);
-            if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'Failed to load CPU mode. Reverting to GPU mode.');
-            }
-            usingWllama = false;
-            updateModeToggle();
-            sendBtn.disabled = false;
-            textInput.disabled = false;
-            micBtn.disabled = false;
-        });
-    } else {
-        const mode = usingWllama ? 'CPU' : 'GPU';
-        console.log(`Switched to ${mode} mode`);
-        addMessage(`Switched to ${mode} mode`, 'bot');
-    }
-}
-
-/**
- * Updates the mode toggle UI
- */
-function updateModeToggle() {
-    if (!modeToggle || !modeToggleText) return;
-
-    const isGpuMode = !usingWllama;
-
-    // Update checkbox state
-    modeToggle.checked = usingWllama;
-    modeToggle.setAttribute('aria-checked', usingWllama ? 'true' : 'false');
-
-    // Update text label
-    modeToggleText.textContent = isGpuMode ? 'GPU' : 'CPU';
-
-    // Update title and aria-label
-    const modeTitle = isGpuMode ?
-        'Currently using GPU (Phi-3). Click to switch to CPU mode (SmolLM2).' :
-        'Currently using CPU (SmolLM2). Click to switch to GPU mode (Phi-3).';
-    const ariaLabel = isGpuMode ?
-        'Toggle AI mode. Currently in GPU mode. Click to switch to CPU mode.' :
-        'Toggle AI mode. Currently in CPU mode. Click to switch to GPU mode.';
-
-    const toggleContainer = modeToggle.parentElement;
-    if (toggleContainer) {
-        toggleContainer.title = modeTitle;
-    }
-    modeToggle.setAttribute('aria-label', ariaLabel);
-
-    // Disable toggle if WebGPU not available
-    if (!webGPUAvailable) {
-        modeToggle.disabled = true;
-        modeToggle.checked = true; // CPU mode
-        modeToggle.setAttribute('aria-checked', 'true');
-        modeToggleText.textContent = 'CPU';
-        if (toggleContainer) {
-            toggleContainer.title = 'WebGPU not available - CPU mode only';
+    if (selected === 'gpu') {
+        if (!availableModes.gpu || !webGPUAvailable || !engine) {
+            addMessage('GPU mode is not available in your browser.', 'bot');
+            updateModeSelect(); // revert dropdown to current mode
+            return;
         }
-        modeToggle.setAttribute('aria-label', 'AI mode set to CPU only. WebGPU not available.');
+        currentMode = 'gpu';
+        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
+        updateModeSelect();
+    } else if (selected === 'cpu') {
+        if (!availableModes.cpu) {
+            addMessage('CPU mode is not available. The model failed to load.', 'bot');
+            updateModeSelect(); // revert dropdown to current mode
+            return;
+        }
+        if (!wllama) {
+            // Lazy-load wllama on first switch to CPU
+            modeSelect.disabled = true;
+            sendBtn.disabled = true;
+            textInput.disabled = true;
+            micBtn.disabled = true;
+            const loadingMsg = addMessage('Switching to CPU mode - loading model... 0%', 'bot');
+            const loadingBubble = loadingMsg.bubble;
+
+            initWllama((progress) => {
+                if (loadingBubble) {
+                    const percentage = Math.round(progress * 100);
+                    setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
+                }
+            }).then(() => {
+                currentMode = 'cpu';
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'Switched to CPU mode (SmolLM2)');
+                }
+                modeSelect.disabled = false;
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                updateModeSelect();
+            }).catch(error => {
+                console.error('Failed to load wllama:', error);
+                availableModes.cpu = false;
+                // Fall back to GPU if available, otherwise stay on Basic
+                if (availableModes.gpu && webGPUAvailable && engine) {
+                    currentMode = 'gpu';
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'Failed to load CPU mode. Switched to GPU mode.');
+                    }
+                } else {
+                    currentMode = 'basic';
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'Failed to load CPU mode. Switched to Basic mode.');
+                    }
+                }
+                modeSelect.disabled = false;
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                updateModeSelect();
+            });
+            return;
+        }
+        currentMode = 'cpu';
+        addMessage('Switched to CPU mode (SmolLM2)', 'bot');
+        updateModeSelect();
+    } else {
+        currentMode = 'basic';
+        addMessage('Switched to Basic mode (Wikipedia)', 'bot');
+        updateModeSelect();
     }
+}
+
+/**
+ * Updates the mode select dropdown to reflect the current mode and availability
+ */
+function updateModeSelect() {
+    if (!modeSelect) return;
+
+    // Reflect current mode in the dropdown
+    modeSelect.value = currentMode;
+
+    // Dynamically update each option's text and disabled state based on availability
+    const gpuOption = modeSelect.querySelector('option[value="gpu"]');
+    const cpuOption = modeSelect.querySelector('option[value="cpu"]');
+    const basicOption = modeSelect.querySelector('option[value="basic"]');
+
+    if (gpuOption) {
+        const gpuReady = availableModes.gpu && webGPUAvailable && engine;
+        gpuOption.disabled = !gpuReady;
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
+    }
+    if (cpuOption) {
+        const cpuReady = availableModes.cpu;
+        cpuOption.disabled = !cpuReady;
+        cpuOption.textContent = cpuReady ? '🟠 CPU (SmolLM2)' : '⚫ CPU (unavailable)';
+    }
+    if (basicOption) {
+        basicOption.textContent = '⚪ Basic (Wikipedia)';
+    }
+
+    // Update tooltip to reflect current mode
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
+        : currentMode === 'cpu' ? 'CPU (SmolLM2)'
+            : 'Basic (Wikipedia)';
+    modeSelect.title = `AI mode: ${modeLabel}`;
+    modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
 }
 
 /**
@@ -1822,16 +2046,23 @@ async function handleVoiceInput() {
 
             // Load Vosk model if not already loaded
             if (!voskLoaded && !voskLoadingFailed) {
+                console.log('Attempting to load Vosk model...');
                 const loaded = await loadVoskModel();
+                console.log('loadVoskModel returned:', loaded);
                 if (!loaded) {
-                    // Vosk also failed - inform user and stay on Web Speech
-                    console.log('Vosk fallback unavailable, voice input disabled');
-                    addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model could not be loaded.', 'bot');
+                    // Vosk genuinely failed - inform user and permanently disable voice input
+                    console.log('Vosk fallback failed to load, disabling voice input');
+                    addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+                    micBtn.disabled = true;
+                    micBtn.title = 'Voice input unavailable';
                     return;
                 }
             } else if (voskLoadingFailed) {
-                // Previously failed to load Vosk - inform user
-                addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model is not available.', 'bot');
+                // Previously failed - voice input unavailable
+                console.log('Vosk previously failed, voice input disabled');
+                addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+                micBtn.disabled = true;
+                micBtn.title = 'Voice input unavailable';
                 return;
             }
 
@@ -1876,16 +2107,9 @@ async function tryWebSpeech() {
 
             // Start no-speech timeout
             noSpeechTimer = setTimeout(() => {
-                if (!hasResolved) {
-                    console.log('No speech detected in 5 seconds, cancelling...');
-                    recognition.stop();
-                    if (!hasResolved) {
-                        hasResolved = true;
-                        micBtn.classList.remove('listening');
-                        addMessage('No speech detected. Please try again.', 'bot');
-                        resolve(true); // Don't fallback, just inform user
-                    }
-                }
+                console.log('No speech detected in 5 seconds, cancelling...');
+                recognition.stop();
+                // Don't resolve here - let the error handler or onend handle it
             }, noSpeechTimeout);
 
             recognition.onresult = (event) => {
@@ -1939,6 +2163,14 @@ async function tryWebSpeech() {
                 }
 
                 micBtn.classList.remove('listening');
+
+                // If we haven't resolved yet, it means recognition ended without a result
+                // This can happen with network errors or no speech - fallback to Vosk
+                if (!hasResolved) {
+                    hasResolved = true;
+                    console.log('Web Speech ended without result, falling back to Vosk');
+                    resolve(false);
+                }
             };
 
             recognition.start();
@@ -2093,13 +2325,56 @@ function stopVoskRecording(cancel = false) {
  * @param {HTMLElement} element - The element containing text to speak
  */
 function speakText(element) {
+    // Extract text content from DOM element (safe, no HTML parsing needed)
+    const cleanText = (element.textContent || '').replace(/\s+/g, ' ').trim();
+    speakTextContent(cleanText);
+}
+
+/**
+ * Converts plain text to speech using Web Speech Synthesis API
+ * @param {string} text - The text to speak
+ */
+function speakTextContent(text) {
     if (!('speechSynthesis' in window)) {
         endResponse();
         return;
     }
 
-    // Extract text content from DOM element (safe, no HTML parsing needed)
-    const cleanText = (element.textContent || '').replace(/\s+/g, ' ').trim();
+    let cleanText = (text || '').replace(/\s+/g, ' ').trim();
+    if (!cleanText) {
+        endResponse();
+        return;
+    }
+
+    // Replace URLs with speakable format
+    cleanText = cleanText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
+        // Remove protocol
+        let cleaned = url.replace(/^https?:\/\//i, '');
+        // Remove www. if present
+        cleaned = cleaned.replace(/^www\./i, '');
+        // Remove trailing period (if URL ends a sentence)
+        cleaned = cleaned.replace(/\.$/, '');
+        // Replace dots with " dot "
+        cleaned = cleaned.replace(/\./g, ' dot ');
+        // Replace slashes with " slash "
+        cleaned = cleaned.replace(/\//g, ' slash ');
+        // Replace hyphens with spaces
+        cleaned = cleaned.replace(/-/g, ' ');
+        return cleaned;
+    });
+    cleanText = cleanText.replace(/www\.[^\s]+/gi, function (url) {
+        // Remove www. if present
+        let cleaned = url.replace(/^www\./i, '');
+        // Remove trailing period (if URL ends a sentence)
+        cleaned = cleaned.replace(/\.$/, '');
+        // Replace dots with " dot "
+        cleaned = cleaned.replace(/\./g, ' dot ');
+        // Replace slashes with " slash "
+        cleaned = cleaned.replace(/\//g, ' slash ');
+        // Replace hyphens with spaces
+        cleaned = cleaned.replace(/-/g, ' ');
+        return cleaned;
+    });
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
@@ -2219,10 +2494,12 @@ function showAppDetails() {
 
     // Update model name based on current mode
     if (modelNameElement) {
-        if (!usingWllama && webGPUAvailable && engine) {
+        if (currentMode === 'gpu' && webGPUAvailable && engine) {
             modelNameElement.textContent = 'Phi-3-mini-4k-instruct (WebGPU - running locally)';
-        } else if (wllamaReady && wllama) {
+        } else if (currentMode === 'cpu' && wllamaReady && wllama) {
             modelNameElement.textContent = 'SmolLM2-360M-Instruct (CPU - running locally)';
+        } else if (currentMode === 'basic') {
+            modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
         } else {
             modelNameElement.textContent = 'Loading...';
         }

@@ -908,9 +908,35 @@ async function synthesizeSpeech(text) {
             return;
         }
 
-        // Replace URLs with "this website" for better speech output
-        plainText = plainText.replace(/https?:\/\/[^\s]+/gi, 'check out this website');
-        plainText = plainText.replace(/www\.[^\s]+/gi, 'check out this website');
+        // Replace URLs with speakable format
+        plainText = plainText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
+            // Remove protocol
+            let cleaned = url.replace(/^https?:\/\//i, '');
+            // Remove www. if present
+            cleaned = cleaned.replace(/^www\./i, '');
+            // Remove trailing period (if URL ends a sentence)
+            cleaned = cleaned.replace(/\.$/, '');
+            // Replace dots with " dot "
+            cleaned = cleaned.replace(/\./g, ' dot ');
+            // Replace slashes with " slash "
+            cleaned = cleaned.replace(/\//g, ' slash ');
+            // Replace hyphens with spaces
+            cleaned = cleaned.replace(/-/g, ' ');
+            return cleaned;
+        });
+        plainText = plainText.replace(/www\.[^\s]+/gi, function (url) {
+            // Remove www. if present
+            let cleaned = url.replace(/^www\./i, '');
+            // Remove trailing period (if URL ends a sentence)
+            cleaned = cleaned.replace(/\.$/, '');
+            // Replace dots with " dot "
+            cleaned = cleaned.replace(/\./g, ' dot ');
+            // Replace slashes with " slash "
+            cleaned = cleaned.replace(/\//g, ' slash ');
+            // Replace hyphens with spaces
+            cleaned = cleaned.replace(/-/g, ' ');
+            return cleaned;
+        });
 
         const speechEndpoint = getSpeechEndpointBase();
         const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
