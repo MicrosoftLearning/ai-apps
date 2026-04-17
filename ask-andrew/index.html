@@ -1,209 +1,191 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ask Andrew - AI Learning Assistant</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
-    <link rel="stylesheet" href="styles.css">
+    <title>Ask Anton - Choose Your Experience</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎓</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .anton-image {
+            width: clamp(100px, 20vw, 140px);
+            height: auto;
+            border-radius: 8px;
+            margin: 0 auto 15px;
+            display: block;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: clamp(22px, 4vw, 28px);
+        }
+
+        .subheading {
+            color: #555;
+            font-size: clamp(14px, 3vw, 16px);
+            line-height: 1.6;
+        }
+
+        .apps {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        @media (min-width: 650px) {
+            .apps {
+                flex-direction: row;
+                gap: 20px;
+            }
+
+            .app-card {
+                flex: 1;
+            }
+        }
+
+        .app-card {
+            display: block;
+            padding: 20px;
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .app-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: inherit;
+            transition: opacity 0.2s;
+            opacity: 1;
+        }
+
+        .app-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .app-card:hover::before {
+            opacity: 0.9;
+        }
+
+        .app-card-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .app-card h2 {
+            margin-bottom: 8px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .app-card p {
+            opacity: 0.95;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .azure {
+            background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
+        }
+
+        .browser {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px 18px;
+            }
+
+            .header {
+                margin-bottom: 25px;
+            }
+
+            .apps {
+                gap: 15px;
+            }
+        }
+    </style>
 </head>
+
 <body>
-    <!-- Skip to main content link for keyboard navigation -->
-    <a href="#chat-messages" class="skip-link">Skip to main chat content</a>
-    
-    <div class="container" role="main" aria-label="Ask Andrew Chat Application">
-        <header role="banner">
-            <h1 id="app-title">🎓 Ask Andrew</h1>
-            <p class="subtitle" id="app-subtitle">A sample AI assistant for educational purposes only</p>
-        </header>
-        
-        <div class="chat-wrapper">
-            <!-- Model Loading Progress -->
-            <div class="progress-section" id="progress-section" role="status" aria-live="polite" aria-label="Model loading progress">
-                <div class="progress-content">
-                    <img src="images/andrew.png" alt="Andrew the AI assistant preparing to help you learn" class="andrew-image">
-                    <h2 class="loading-title" id="loading-title">Andrew is joining the chat...</h2>
-                    <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-labelledby="progress-text">
-                        <div class="progress-fill" id="progress-fill"></div>
-                    </div>
-                    <p class="progress-text" id="progress-text">Loading model: 0%</p>
-                    <p class="progress-info" aria-live="polite">This may take a minute on first load</p>
-                </div>
-            </div>
-
-            <!-- Chat Interface -->
-            <div class="chat-container" id="chat-container" style="display: none;" role="region" aria-labelledby="chat-title">
-                <div class="chat-header" role="banner">
-                    <div class="header-content">
-                        <h2 id="chat-title">💬 Chat with Andrew</h2>
-                        <div class="header-buttons" role="toolbar" aria-label="Chat controls">
-                            <button class="about-btn" id="about-btn" 
-                                    title="About this app" 
-                                    aria-label="Learn about Ask Andrew">
-                                ℹ️ About
-                            </button>
-                            <div class="mode-toggle-container" role="group" aria-labelledby="mode-toggle-label">
-                                <label class="mode-toggle-label" id="mode-toggle-label">
-                                    <span class="toggle-icon" aria-hidden="true">&#128306;</span>
-                                    <input type="checkbox" 
-                                           id="mode-toggle" 
-                                           class="mode-toggle-input" 
-                                           role="switch"
-                                           aria-label="Toggle between GPU and CPU mode"
-                                           aria-checked="false">
-                                    <span class="mode-toggle-slider" aria-hidden="true"></span>
-                                    <span class="mode-toggle-text" id="mode-toggle-text" aria-live="polite">GPU</span>
-                                </label>
-                            </div>
-                            <button class="restart-btn" id="restart-btn" 
-                                    title="Restart conversation" 
-                                    aria-label="Start a new chat conversation">
-                                🔄 New Chat
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat conversation">
-                    <div class="welcome-message" role="article" aria-label="Welcome message from Andrew">
-                        <div class="avatar andrew-avatar" aria-hidden="true">
-                            <img src="images/andrew-icon.png" alt="Andrew the AI assistant avatar" class="avatar-image">
-                        </div>
-                        <div class="message-content">
-                            <p class="message-author">Andrew</p>
-                            <p>Hi! I'm Andrew, a simple AI assistant. I can help you understand AI concepts. What would you like to learn about today?</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="chat-input-area" role="form" aria-label="Message input form">
-                    <div class="input-wrapper">
-                        <button id="mic-btn" class="mic-btn" 
-                                title="Voice input" 
-                                aria-label="Voice input"
-                                type="button">
-                            <span class="mic-icon" aria-hidden="true">&#127897;</span>
-                        </button>
-                        <label for="user-input" class="visually-hidden">Your question about AI topics</label>
-                        <textarea 
-                            id="user-input" 
-                            placeholder="Ask a question about AI topics..."
-                            rows="1"
-                            aria-label="Type your question about AI topics here"
-                            aria-describedby="chat-description search-status"
-                            aria-required="false"
-                        ></textarea>
-                        <button id="send-btn" class="send-btn" 
-                                title="Send message" 
-                                aria-label="Send message"
-                                type="submit">
-                            <span class="send-icon" aria-hidden="true">▶</span>
-                        </button>
-                    </div>
-                    <div class="example-questions">
-                        <p class="example-label" id="example-label">Try asking:</p>
-                        <div class="example-buttons" role="region" aria-labelledby="example-label">
-                            <button class="example-btn" data-question="What's the relationship between machine learning and artificial intelligence?" 
-                                    aria-label="Ask about the relationship between machine learning and artificial intelligence">
-                                What's the relationship between machine learning and artificial intelligence?
-                            </button>
-                            <button class="example-btn" data-question="What is generative AI?" 
-                                    aria-label="Ask about generative AI">
-                                What is generative AI?
-                            </button>
-                            <button class="example-btn" data-question="How does a large language model work?" 
-                                    aria-label="Ask how a large language model works">
-                                How does a large language model work?
-                            </button>
-                            <button class="example-btn" data-question="What is agentic AI?" 
-                                    aria-label="Ask about agentic AI">
-                                What is agentic AI?
-                            </button>
-                            <button class="example-btn" data-question="What is computer vision?" 
-                                    aria-label="Ask about computer vision">
-                                What is computer vision?
-                            </button>
-                            <button class="example-btn" data-question="Tell me about AI speech" 
-                                    aria-label="Ask about AI speech">
-                                Tell me about AI speech
-                            </button>
-                        </div>
-                    </div>
-                    <div class="input-info">
-                        <span id="search-status" class="search-status" role="status" aria-live="polite" aria-atomic="true"></span>
-                    </div>
-                    <div class="disclaimer">
-                        <p>AI-generated content can contain mistakes</p>
-                    </div>
-                </div>
-            </div>
+    <div class="container">
+        <div class="header">
+            <img src="images/anton.png" alt="Anton the AI assistant" class="anton-image">
+            <h1>🎓 Ask Anton</h1>
+            <p class="subheading">Choose your AI learning assistant experience</p>
         </div>
 
-        <footer role="contentinfo">
-            <p>Powered by WebLLM (Phi-3) + wllama (SmolLM2) • GPU mode for speed, CPU mode for compatibility</p>
-        </footer>
-    </div>
+        <div class="apps">
+            <a href="https://aka.ms/azk-anton" class="app-card azure">
+                <div class="app-card-content">
+                    <span class="badge">☁️ Cloud-Powered</span>
+                    <h2>Azure-Based Experience</h2>
+                    <p>Connect to Microsoft Foundry for advanced AI capabilities. Requires an Azure subscription and
+                        API configuration for powerful, cloud-based learning assistance.</p>
+                </div>
+            </a>
 
-    <!-- About App Modal -->
-    <div id="about-modal" class="modal" role="dialog" aria-labelledby="about-modal-title" aria-modal="true" aria-describedby="about-modal-description" style="display: none;">
-        <div class="modal-overlay" aria-hidden="true"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="about-modal-title">🎓 About Ask Andrew</h2>
-                <button class="modal-close" id="about-modal-close" aria-label="Close about dialog" title="Close" type="button">×</button>
-            </div>
-            <div class="modal-body" id="about-modal-description">
-                <p><strong>Ask Andrew</strong> is a sample AI agent designed to help you understand artificial intelligence concepts and topics.</p>
-                <p>📋 <a href="https://microsoftlearning.github.io/ai-apps/" target="_blank" rel="noopener noreferrer">Important details and AI transparency notes (opens in new window)</a></p>
-                <h3>Features</h3>
-                <ul>
-                    <li><strong>GPU Mode:</strong> Fast responses using WebLLM with Phi-3-mini (requires WebGPU)</li>
-                    <li><strong>CPU Mode:</strong> Fallback mode using wllama with SmolLM2 (works on all browsers)</li>
-                    <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI topics</li>
-                    <li><strong>Voice Input:</strong> Use your microphone to ask questions naturally</li>
-                </ul>
-                
-                <h3>How It Works</h3>
-                <p>Ask Andrew runs AI models entirely in your browser, so your questions remain private. No data is sent to external servers. Toggle between GPU and CPU modes using the button in the chat header.</p>
-                
-                <h3>Getting Started</h3>
-                <p>Try asking a question like "What is machine learning?" or "Explain artificial intelligence" to get started.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn" id="about-modal-ok" aria-label="Close about dialog" type="button">Close</button>
-            </div>
+            <a href="https://aka.ms/ask-anton" class="app-card browser">
+                <div class="app-card-content">
+                    <span class="badge">💻 Browser-Based</span>
+                    <h2>Local Browser Experience</h2>
+                    <p>Run AI models directly in your browser. No Azure subscription needed - models download once and
+                        run locally, keeping your data private on your device.</p>
+                </div>
+            </a>
         </div>
     </div>
-
-    <!-- AI Mode Info Modal -->
-    <div id="ai-mode-modal" class="modal" role="dialog" aria-labelledby="modal-title" aria-modal="true" aria-describedby="ai-mode-modal-description" style="display: none;">
-        <div class="modal-overlay" aria-hidden="true"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modal-title">🤖 About GPU Mode</h2>
-                <button class="modal-close" id="modal-close" aria-label="Close GPU mode dialog" title="Close" type="button">×</button>
-            </div>
-            <div class="modal-body" id="ai-mode-modal-description">
-                <p>GPU mode uses WebLLM with the Phi-3-mini model, which requires <strong>WebGPU support</strong> in your browser for fast, GPU-accelerated inference.</p>
-                
-                <p>If you are using a Windows computer with an ARM64 CPU (such as a Snapdragon processor) that has an integrated GPU, you may need to explicitly enable WebGPU support in your browser's settings:</p>
-                
-                <ul>
-                    <li>In <strong>Microsoft Edge</strong>, go to <code>edge://flags</code></li>
-                    <li>In <strong>Google Chrome</strong>, go to <code>chrome://flags</code></li>
-                </ul>
-                
-                <p class="warning"><strong>Remember to disable it again when you're finished!</strong></p>
-                
-                <p>If your browser doesn't support WebGPU, the app automatically uses CPU mode (wllama with SmolLM2), which works everywhere but is slower.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn" id="modal-ok" aria-label="Acknowledge GPU mode dialog" type="button">Got it!</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Scripts -->
-    <script type="module" src="script.js?v=60"></script>
 </body>
+
 </html>
