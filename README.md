@@ -58,5 +58,6 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by Model Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
+- [Wikipedia API](https://www.mediawiki.org/wiki/Wikimedia_APIs) used in the computing-history app as a failsafe model alternative when neither WebGPU or wllama are available.
 
 The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to a model in the local browser environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.
