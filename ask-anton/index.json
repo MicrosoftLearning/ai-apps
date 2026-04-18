@@ -469,7 +469,6 @@
                     "content understanding",
                     "document",
                     "documents",
-                    "form",
                     "forms",
                     "invoice processing",
                     "receipt processing",
@@ -559,6 +558,21 @@
                     "azure-projects"
                 ],
                 "content": "Developers can use SDKs and APIs to build AI apps and agents with Microsoft Foundry. The Foundry SDK enables programmatic access to projects, agents, and other Foundry resources, while the OpenAI API enables developers to integrate powerful language models into their applications. Within the OpenAI API, the Responses API and ChatCompletions APIs provide interfaces for generating responses and managing conversations with large language models."
+            },
+            {
+                "id": 38,
+                "title": "Foundry Toolkit for Visual Studio Code",
+                "keywords": [
+                    "foundry toolkit",
+                    "visual studio code",
+                    "vs code",
+                    "visual studio",
+                    "ai toolkit",
+                    "vs code extension",
+                    "visual studio extension",
+                    "visual studio code extension"
+                ],
+                "content": "Visual Studio Code is a popular code editor that supports a wide range of extensions and tools for developers. Developers can use the Foundry Toolkit for Visual Studio Code to build AI apps and agents on Microsoft Foundry. The toolkit provides integration with the Foundry SDK, enabling programmatic access to projects, agents, and other Foundry resources."
             }
         ]
     }
