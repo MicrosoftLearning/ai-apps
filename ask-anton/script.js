@@ -74,13 +74,12 @@ class AskAnton {
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
 
 IMPORTANT: Follow these guidelines when responding:
-- Do not engage in conversation on topics other than artificial intelligence and computing.
+- Do not engage in conversation on topics other than artificial intelligence and computing. For questions outside of these topics, politely decline to answer.
 - Explain concepts clearly and concisely in a single paragraph based only on the provided context.
 - Keep responses short and focused on the question, with no headings.
 - Use examples and analogies when helpful.
 - Use simple language suitable for learners in a conversational, friendly tone.
 - Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- If the context includes "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.", use that exact phrasing and no additional information.
 - Do not start responses with "A:" or "Q:".
 - Keep your responses concise and to the point, in ONE paragraph.
 - Do NOT provide links for more information (these will be added automatically later).`;
@@ -762,7 +761,7 @@ IMPORTANT: Follow these guidelines when responding:
         const normalizedText = this.normalizeSearchText(text);
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
-            'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on',
+            'a', 'an', 'and', 'angie', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
             'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with',
             'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
             'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
@@ -905,19 +904,9 @@ IMPORTANT: Follow these guidelines when responding:
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
 
-        // If no matches, fall back to AI Concepts category
+        // If no matches, return null context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            const aiConceptsCategory = this.indexData.find(cat => cat.category === 'AI Concepts');
-            if (aiConceptsCategory && aiConceptsCategory.documents.length > 0) {
-                const fallbackDoc = aiConceptsCategory.documents[0];
-                return {
-                    context: fallbackDoc.content,
-                    categories: [aiConceptsCategory.category],
-                    links: [aiConceptsCategory.link],
-                    documents: [fallbackDoc]
-                };
-            }
             return { context: null, categories: [], links: [], documents: [] };
         }
 
@@ -1244,6 +1233,10 @@ IMPORTANT: Follow these guidelines when responding:
         messageTextDiv.innerHTML = formattedMessage;
     }
 
+    hasPreviousUserPrompt() {
+        return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
+    }
+
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
@@ -1319,6 +1312,8 @@ IMPORTANT: Follow these guidelines when responding:
         const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
         const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
         const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
+        const shouldTryGpuConversationFallback = this.currentMode === 'gpu' && this.hasPreviousUserPrompt();
+        const gpuFallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1338,6 +1333,29 @@ IMPORTANT: Follow these guidelines when responding:
 
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (shouldTryGpuConversationFallback) {
+                const modelResponse = await this.generateWithWebLLM(userMessage, null, messageTextDiv, usedVoiceInput);
+
+                if (this.stopRequested) {
+                    return;
+                }
+
+                if (modelResponse.trim()) {
+                    const displayedMessage = `${modelResponse.trim()}${gpuFallbackNote}`;
+                    messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
+
+                    this.conversationHistory.push({
+                        role: 'user',
+                        content: userMessage
+                    });
+                    this.conversationHistory.push({
+                        role: 'assistant',
+                        content: modelResponse.trim()
+                    });
+                    return;
+                }
+            }
 
             if (usedVoiceInput) {
                 this.playNoResultsAudio();
@@ -1454,7 +1472,7 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
-        let userPrompt = userMessage;
+        let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
             userPrompt = `${context}\n\nQ: ${userMessage}`;
         }
@@ -1521,22 +1539,22 @@ IMPORTANT: Follow these guidelines when responding:
     truncateParagraphsForCPU(context) {
         if (!context) return context;
 
-        // Split context into paragraphs (by newlines)
-        const paragraphs = context.split('\n');
+        // Split context into sections by blank lines, then concatenate into one flow.
+        const sections = context
+            .split(/\n\s*\n+/)
+            .map(section => section.replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
 
-        const truncatedParagraphs = paragraphs.map(paragraph => {
-            // Skip empty paragraphs
-            if (!paragraph.trim()) return paragraph;
-
-            // If paragraph is <= 600 chars, keep it as is
-            if (paragraph.length <= 600) return paragraph;
+        const truncatedSections = sections.map(section => {
+            // If section is <= 600 chars, keep it as is
+            if (section.length <= 600) return section;
 
             // Find first sentence ending (., !, ?) after position 600
             const searchFrom = 600;
             let endPos = -1;
 
-            for (let i = searchFrom; i < paragraph.length; i++) {
-                if (paragraph[i] === '.' || paragraph[i] === '!' || paragraph[i] === '?') {
+            for (let i = searchFrom; i < section.length; i++) {
+                if (section[i] === '.' || section[i] === '!' || section[i] === '?') {
                     endPos = i + 1; // Include the punctuation
                     break;
                 }
@@ -1544,14 +1562,66 @@ IMPORTANT: Follow these guidelines when responding:
 
             // If found a sentence ending, truncate there
             if (endPos > 0) {
-                return paragraph.substring(0, endPos);
+                return section.substring(0, endPos);
             }
 
             // Otherwise, truncate at 600 chars with ellipsis
-            return paragraph.substring(0, 600) + '...';
+            return section.substring(0, 600) + '...';
         });
 
-        return truncatedParagraphs.join('\n');
+        return truncatedSections.reduce((combined, section) => {
+            if (!combined) {
+                return section;
+            }
+
+            const needsSentenceSeparator = !/[.!?]\s*$/.test(combined);
+            return combined + (needsSentenceSeparator ? '. ' : ' ') + section;
+        }, '');
+    }
+
+    trimIncompleteSentenceForCPU(text) {
+        if (!text) return text;
+
+        let trimmedText = text.trim();
+        if (!trimmedText) return trimmedText;
+
+        const hasCompleteSentenceEnding = (value) => /[.!?]["')\]]*\s*$/.test(value);
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        const trailingLeadInPattern = /(?:\b(?:and|or|but|so|because|which|that|who|when|where|while|with|for|to|of|in|on|at|by|as|like|including)\b|\b(?:such as|for example|for instance|for example,|for instance,)\b|[,;:\-–—(]\s*)$/i;
+
+        while (trailingLeadInPattern.test(trimmedText)) {
+            trimmedText = trimmedText.replace(trailingLeadInPattern, '').trim();
+        }
+
+        if (!trimmedText) {
+            return '';
+        }
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        let lastSentenceEnd = -1;
+
+        for (let i = 0; i < trimmedText.length; i++) {
+            if (trimmedText[i] === '.' || trimmedText[i] === '!' || trimmedText[i] === '?') {
+                let endIndex = i + 1;
+                while (endIndex < trimmedText.length && /["')\]]/.test(trimmedText[endIndex])) {
+                    endIndex++;
+                }
+                lastSentenceEnd = endIndex;
+            }
+        }
+
+        if (lastSentenceEnd > 0) {
+            return trimmedText.substring(0, lastSentenceEnd).trim();
+        }
+
+        return trimmedText;
     }
 
     buildBasicResponse(searchResult) {
@@ -1624,13 +1694,13 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += userMessage + '\n';
+        chatMLPrompt += userMessage;
         // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += 'Respond with a short summary of each of the paragraphs in the following text:\n' + truncatedContext + '\n';
+            chatMLPrompt += ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
         }
-        chatMLPrompt += '<|im_end|>\n\n';
+        chatMLPrompt += '\n<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
         console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
@@ -1680,6 +1750,13 @@ IMPORTANT: Follow these guidelines when responding:
                     messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                     this.scrollToBottom();
                 }
+            }
+
+            const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+            if (cleanedAssistantMessage !== assistantMessage) {
+                assistantMessage = cleanedAssistantMessage;
+                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                this.scrollToBottom();
             }
 
             // Clear abort controller on successful completion
