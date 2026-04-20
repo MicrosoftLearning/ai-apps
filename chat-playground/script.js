@@ -14,7 +14,10 @@ class ChatPlayground {
         this.engine = null;
         this.wllama = null; // wllama engine for CPU mode
         this.usingWllama = false; // Track which engine is active
+        this.usingWikipedia = false; // Track if no-model Wikipedia mode is active
+        this.currentMode = 'none'; // 'phi3-gpu', 'phi3-cpu', or 'none'
         this.wllamaLoaded = false; // Track if wllama is initialized
+        this.wllamaFailed = false; // Track if SmolLM2 failed to load
         this.isModelLoaded = false;
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
@@ -262,7 +265,7 @@ class ChatPlayground {
 
     // Get model-specific default parameters
     getModelDefaults() {
-        if (this.usingWllama) {
+        if (this.currentMode === 'phi3-cpu') {
             // SmolLM2 (CPU mode) - Lower temperature for consistency
             return {
                 temperature: 0.3,
@@ -1172,20 +1175,32 @@ class ChatPlayground {
         const hasWebGPU = this.checkWebGPUSupport();
 
         if (!hasWebGPU) {
-            console.log('WebGPU not available, using wllama (CPU mode)');
+            console.log('WebGPU not available, trying wllama (CPU mode)');
             this.webllmAvailable = false;
             try {
                 await this.initializeWllama();
                 console.log('Wllama initialized successfully');
                 this.usingWllama = true;
+                this.usingWikipedia = false;
+                this.currentMode = 'phi3-cpu';
                 this.wllamaLoaded = true;
+                this.wllamaFailed = false;
+                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
 
                 // Set SmolLM2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
                 console.error('Wllama initialization failed:', wllamaError);
-                this.updateProgress(0, 'AI models unavailable. Please check your internet connection and refresh the page.', true);
+                this.wllamaLoaded = false;
+                this.wllamaFailed = true;
+                this.usingWllama = false;
+                this.usingWikipedia = true;
+                this.currentMode = 'none';
+                this.currentModelId = 'None (Wikipedia)';
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+                this.updateProgress(100, 'Wikipedia mode ready! (No local model)');
                 setTimeout(() => {
                     this.enableUI();
                 }, 2000);
@@ -1200,6 +1215,9 @@ class ChatPlayground {
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
             this.usingWllama = false;
+            this.usingWikipedia = false;
+            this.currentMode = 'phi3-gpu';
+            this.wllamaFailed = false;
 
             // Set Phi-3 default parameters
             this.config.modelParameters = this.getModelDefaults();
@@ -1212,14 +1230,26 @@ class ChatPlayground {
                 await this.initializeWllama();
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
+                this.usingWikipedia = false;
+                this.currentMode = 'phi3-cpu';
                 this.wllamaLoaded = true;
+                this.wllamaFailed = false;
+                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
 
                 // Set SmolLM2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
-                this.updateProgress(0, 'AI models unavailable. Please check your internet connection and refresh the page.', true);
+                this.wllamaLoaded = false;
+                this.wllamaFailed = true;
+                this.usingWllama = false;
+                this.usingWikipedia = true;
+                this.currentMode = 'none';
+                this.currentModelId = 'None (Wikipedia)';
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+                this.updateProgress(100, 'Wikipedia mode ready! (No local model)');
                 setTimeout(() => {
                     this.enableUI();
                 }, 2000);
@@ -1307,6 +1337,7 @@ class ChatPlayground {
 
     async initializeWllama(progressCallback) {
         console.log('Initializing wllama...');
+        this.wllamaLoaded = false;
 
         const updateProgress = progressCallback || ((loaded, total) => {
             const percentage = Math.round((loaded / total) * 100);
@@ -1402,8 +1433,8 @@ class ChatPlayground {
         // Populate model dropdown with available models
         this.populateModelDropdown();
 
-        // Set parameter controls based on whether WebLLM is available
-        this.setParameterControlsEnabled(this.webllmAvailable || this.wllamaLoaded);
+        // Set parameter controls based on active mode
+        this.setParameterControlsEnabled(this.currentMode !== 'none');
     }
 
     disableUI() {
@@ -1431,8 +1462,7 @@ class ChatPlayground {
         }
 
         // Determine if we're actually switching models
-        const previousMode = this.usingWllama;
-        const newModeIsWllama = selectedValue === 'phi3-cpu';
+        const previousMode = this.currentMode;
 
         if (selectedValue === 'phi3-gpu') {
             if (!this.webllmAvailable) {
@@ -1448,19 +1478,29 @@ class ChatPlayground {
             }
 
             this.usingWllama = false;
+            this.usingWikipedia = false;
+            this.currentMode = 'phi3-gpu';
+            this.currentModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
 
             // Apply Phi-3 default parameters
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
+            this.setParameterControlsEnabled(true);
 
             // Clear chat and restart conversation
-            if (previousMode !== this.usingWllama) {
+            if (previousMode !== this.currentMode) {
                 await this.clearChat();
                 this.showToast('Switched to Phi-3 (GPU) - Conversation restarted');
             }
 
             console.log('Switched to Phi-3 (GPU) mode');
         } else if (selectedValue === 'phi3-cpu') {
+            if (this.wllamaFailed) {
+                alert('SmolLM2 (CPU) is not available because it previously failed to load.');
+                this.populateModelDropdown();
+                return;
+            }
+
             // Keep WebLLM engine loaded (it uses GPU memory, wllama uses system RAM)
             // If wllama not loaded yet, load it
             if (!this.wllamaLoaded) {
@@ -1479,10 +1519,15 @@ class ChatPlayground {
                     });
 
                     this.usingWllama = true;
+                    this.usingWikipedia = false;
+                    this.currentMode = 'phi3-cpu';
+                    this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
+                    this.wllamaFailed = false;
 
                     // Apply SmolLM2 default parameters
                     this.config.modelParameters = this.getModelDefaults();
                     this.updateParameterUI();
+                    this.setParameterControlsEnabled(true);
 
                     // Clear chat and restart conversation
                     await this.clearChat();
@@ -1491,27 +1536,55 @@ class ChatPlayground {
                     console.log('Switched to SmolLM2 (CPU) mode');
                 } catch (error) {
                     console.error('Failed to load wllama:', error);
-                    this.populateModelDropdown(); // Reset to previous selection
-                    alert('Failed to load SmolLM2 (CPU). Please try again.');
-                    // Re-enable UI even on error
+                    this.wllamaLoaded = false;
+                    this.wllamaFailed = true;
+                    this.usingWllama = false;
+                    this.usingWikipedia = true;
+                    this.currentMode = 'none';
+                    this.currentModelId = 'None (Wikipedia)';
+                    this.config.modelParameters = this.getModelDefaults();
+                    this.updateParameterUI();
+                    this.populateModelDropdown();
+                    alert('Failed to load SmolLM2 (CPU). Switching to None (Wikipedia mode).');
                     this.enableUI();
                 }
             } else {
                 this.usingWllama = true;
+                this.usingWikipedia = false;
+                this.currentMode = 'phi3-cpu';
+                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
 
                 // Apply SmolLM2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
+                this.setParameterControlsEnabled(true);
 
                 // Clear chat and restart conversation
-                if (previousMode !== this.usingWllama) {
+                if (previousMode !== this.currentMode) {
                     await this.clearChat();
                     this.showToast('Switched to SmolLM2 (CPU) - Conversation restarted');
                 }
 
                 console.log('Switched to SmolLM2 (CPU) mode');
             }
+        } else if (selectedValue === 'none') {
+            this.usingWllama = false;
+            this.usingWikipedia = true;
+            this.currentMode = 'none';
+            this.currentModelId = 'None (Wikipedia)';
+            this.config.modelParameters = this.getModelDefaults();
+            this.updateParameterUI();
+            this.setParameterControlsEnabled(false);
+
+            if (previousMode !== this.currentMode) {
+                await this.clearChat();
+                this.showToast('Switched to None (Wikipedia mode) - Conversation restarted');
+            }
+
+            console.log('Switched to None (Wikipedia mode)');
         }
+
+        this.populateModelDropdown();
     }
 
     populateModelDropdown() {
@@ -1523,19 +1596,35 @@ class ChatPlayground {
         phiOption.value = 'phi3-gpu';
         phiOption.textContent = 'Phi-3-mini (GPU)';
         phiOption.disabled = !this.webllmAvailable;
-        if (this.webllmAvailable && !this.usingWllama) {
-            phiOption.selected = true;
-        }
         this.modelSelect.appendChild(phiOption);
 
         // Add SmolLM2 (CPU) option
         const cpuOption = document.createElement('option');
         cpuOption.value = 'phi3-cpu';
         cpuOption.textContent = 'SmolLM2 (CPU)';
-        if (this.usingWllama || !this.webllmAvailable) {
-            cpuOption.selected = true;
-        }
+        cpuOption.disabled = this.wllamaFailed;
         this.modelSelect.appendChild(cpuOption);
+
+        // Add no-model Wikipedia option
+        const noneOption = document.createElement('option');
+        noneOption.value = 'none';
+        noneOption.textContent = 'None';
+        this.modelSelect.appendChild(noneOption);
+
+        const canUseGpu = this.webllmAvailable;
+        const canUseCpu = !this.wllamaFailed;
+
+        if (this.currentMode === 'phi3-gpu' && canUseGpu) {
+            this.modelSelect.value = 'phi3-gpu';
+        } else if (this.currentMode === 'phi3-cpu' && canUseCpu) {
+            this.modelSelect.value = 'phi3-cpu';
+        } else {
+            this.currentMode = 'none';
+            this.usingWikipedia = true;
+            this.usingWllama = false;
+            this.currentModelId = 'None (Wikipedia)';
+            this.modelSelect.value = 'none';
+        }
     }
 
     setParameterControlsEnabled(enabled) {
@@ -1752,7 +1841,9 @@ class ChatPlayground {
             const thinkingIndicator = this.addThinkingIndicator();
 
             // Route to the appropriate engine
-            if (this.usingWllama) {
+            if (this.currentMode === 'none' || this.usingWikipedia) {
+                await this.handleWikipediaMode(thinkingIndicator, userMessage, imageAnalysis);
+            } else if (this.usingWllama) {
                 await this.handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis);
             } else {
                 await this.handleStreamingMode(messages, thinkingIndicator, userMessage);
@@ -1906,6 +1997,170 @@ class ChatPlayground {
 
         // No sentence-ending punctuation found, take first 60 characters
         return text.substring(0, 60);
+    }
+
+    extractLeadingSentences(text, maxSentences = 2) {
+        const input = (text ?? '').trim();
+        if (!input) return '';
+
+        let sentenceCount = 0;
+        let endIndex = -1;
+
+        for (let i = 0; i < input.length; i++) {
+            const char = input[i];
+            if (char !== '.' && char !== '!' && char !== '?') continue;
+
+            const prev = i > 0 ? input[i - 1] : '';
+            const next = i < input.length - 1 ? input[i + 1] : '';
+            if (char === '.' && /\d/.test(prev) && /\d/.test(next)) {
+                continue;
+            }
+
+            sentenceCount += 1;
+            if (sentenceCount >= maxSentences) {
+                endIndex = i + 1;
+                break;
+            }
+        }
+
+        if (endIndex === -1) {
+            return input;
+        }
+
+        return input.slice(0, endIndex).trim();
+    }
+
+    async generateWithWikipedia(query, imageClassName = '') {
+        try {
+            const firstLine = (query || '').split('\n')[0];
+            const queryKeywords = this.extractKeywords(firstLine);
+            const imageKeywords = imageClassName ? this.extractKeywords(imageClassName) : [];
+
+            const combinedKeywords = [...new Set([...(queryKeywords || []), ...(imageKeywords || [])])];
+            const keywords = combinedKeywords.join(' ');
+            if (!keywords) return null;
+
+            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
+            const searchResponse = await fetch(searchUrl);
+            if (!searchResponse.ok) throw new Error('Wikipedia search request failed');
+
+            const searchData = await searchResponse.json();
+            const results = searchData?.query?.search;
+            if (!results || results.length === 0) return null;
+
+            const title = results[0].title;
+            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+            const summaryResponse = await fetch(summaryUrl);
+            if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
+
+            const summaryData = await summaryResponse.json();
+            const extract = summaryData?.extract;
+            if (!extract || extract.length < 20) return null;
+
+            const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
+            const extractedSentences = this.extractLeadingSentences(firstParagraph, 2);
+            const result = extractedSentences || firstParagraph.substring(0, 300).trim();
+
+            return result.length >= 20 ? result : null;
+        } catch (error) {
+            console.error('Wikipedia lookup failed:', error);
+            return null;
+        }
+    }
+
+    async generateNoneModeResponse(query, imageClassName = '') {
+        const firstLine = (query || '').split('\n')[0];
+
+        if (this.config.fileUpload.content) {
+            const keywords = this.extractKeywords(firstLine);
+            const bestLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
+
+            if (bestLine) {
+                return bestLine;
+            }
+
+            return "I couldn't find a relevant line in the uploaded file for your prompt keywords.";
+        }
+
+        const wikiResponse = await this.generateWithWikipedia(query, imageClassName);
+        if (wikiResponse) {
+            return `${wikiResponse}\n\n(Source: Wikipedia)`;
+        }
+
+        return "I'm sorry. I couldn't find a relevant Wikipedia article for that prompt.";
+    }
+
+    maybeMutateNoneModeResponse(text) {
+        const isNoneMode = this.currentMode === 'none' || this.usingWikipedia;
+        const temperature = Number(this.config?.modelParameters?.temperature ?? 0);
+
+        if (!isNoneMode || !(temperature > 1.0) || !text) {
+            return text;
+        }
+
+        const wordMatches = [...text.matchAll(/[A-Za-z0-9']+/g)];
+        if (wordMatches.length < 2) {
+            return text;
+        }
+
+        const maxWordsToReverse = Math.min(4, wordMatches.length);
+        const wordsToReverseCount = 2 + Math.floor(Math.random() * (maxWordsToReverse - 1));
+        const selectedIndexes = new Set();
+
+        while (selectedIndexes.size < wordsToReverseCount) {
+            selectedIndexes.add(Math.floor(Math.random() * wordMatches.length));
+        }
+
+        const replacements = Array.from(selectedIndexes)
+            .map(index => wordMatches[index])
+            .sort((a, b) => b.index - a.index);
+
+        let mutatedText = text;
+        for (const match of replacements) {
+            const start = match.index;
+            const end = start + match[0].length;
+            mutatedText = mutatedText.slice(0, start)
+                + this.reverseWord(match[0])
+                + mutatedText.slice(end);
+        }
+
+        return mutatedText;
+    }
+
+    maybeShortenNoneModeResponse(text) {
+        const isNoneMode = this.currentMode === 'none' || this.usingWikipedia;
+        if (!isNoneMode || !text) {
+            return text;
+        }
+
+        const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
+        const wantsShortResponse = /\b(short|concise|summarize|summary|brief)\b/i.test(promptFromUi);
+
+        if (!wantsShortResponse) {
+            return text;
+        }
+
+        return this.extractLeadingSentences(text, 1);
+    }
+
+    async handleWikipediaMode(thinkingIndicator, userMessage, imageAnalysis = '') {
+        thinkingIndicator.remove();
+
+        const assistantMessageEl = this.addMessage('assistant', 'Searching Wikipedia...');
+        const contentEl = assistantMessageEl.querySelector('.message-content');
+
+        let responseText = await this.generateNoneModeResponse(userMessage, imageAnalysis);
+        responseText = this.maybeShortenNoneModeResponse(responseText);
+        responseText = this.maybeMutateNoneModeResponse(responseText);
+
+        if (!this.isGenerating) {
+            return;
+        }
+
+        await this.typeResponse(contentEl, responseText);
+
+        this.conversationHistory.push({ role: 'user', content: userMessage });
+        this.conversationHistory.push({ role: 'assistant', content: responseText });
     }
 
     // Helper function to remove a trailing incomplete sentence
@@ -3482,6 +3737,10 @@ class ChatPlayground {
 
                 responseText = result.trim();
                 console.log('Wllama completion finished, response length:', responseText.length);
+            } else if (this.currentMode === 'none' || this.usingWikipedia) {
+                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
+                responseText = this.maybeShortenNoneModeResponse(responseText);
+                responseText = this.maybeMutateNoneModeResponse(responseText);
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }
