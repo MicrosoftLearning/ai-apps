@@ -1382,7 +1382,7 @@ async function callAzureOpenAI(useConciseInstruction = false) {
         instructions: instructions,
         store: true,
         tools: [
-            { type: "web_search_preview" }
+            { type: "web_search" }
         ],
         tool_choice: "auto"
     };
