@@ -19,8 +19,10 @@
             background: linear-gradient(135deg, #d0d0d0 0%, #a8a8a8 100%);
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
+            gap: 14px;
             padding: 20px;
         }
 
@@ -155,6 +157,15 @@
                 gap: 15px;
             }
         }
+
+        .disclaimer {
+            max-width: 800px;
+            width: 100%;
+            color: #1f1f1f;
+            font-size: 13px;
+            line-height: 1.45;
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -186,6 +197,8 @@
             </a>
         </div>
     </div>
+
+    <p class="disclaimer">Ask Anton is <u>not</u> a supported Microsoft product or a component of Microsoft Learn / AI Skills Navigator<br>It is provided as-is without warranty of any kind as an example AI application to accompany training materials.</p>
 </body>
 
 </html>
