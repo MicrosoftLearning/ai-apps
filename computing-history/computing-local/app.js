@@ -440,12 +440,20 @@ async function loadModel() {
  * Initializes the Wllama language model for CPU mode text generation
  * @throws {Error} If Wllama initialization fails
  */
-async function initWllama(progressCallback = null) {
+async function initWllama(progressCallback = null, options = {}) {
     try {
+        const { forceReload = false } = options;
+
         // Check if already initialized
-        if (wllama) {
+        if (wllama && !forceReload) {
             console.log('Wllama already initialized');
             return;
+        }
+
+        if (forceReload) {
+            // Reset instance so loadModelFromHF runs again and starts a fresh session.
+            wllama = null;
+            wllamaReady = false;
         }
 
         const isLazyLoad = webGPUAvailable; // If WebGPU is available, this is a lazy load
@@ -1712,7 +1720,7 @@ async function generateWithWllama(query) {
         const completion = await wllama.createCompletion(chatMLPrompt, {
             nPredict: 250,
             sampling: {
-                temp: 0.3,
+                temp: 0.1,
                 top_k: 40,
                 top_p: 0.9,
                 penalty_repeat: 1.1
@@ -2450,8 +2458,17 @@ async function restartConversation() {
         // Clear conversation history (browser-side cache)
         conversationHistory = [];
 
-        // Clear model's KV cache for Wllama
-        if (wllama && wllamaReady) {
+        // In CPU mode, fully reload SmolLM2 so restart begins with a fresh model session.
+        if (currentMode === 'cpu' && availableModes.cpu) {
+            try {
+                await initWllama(null, { forceReload: true });
+                console.log('SmolLM2 model reloaded after restart');
+            } catch (error) {
+                console.error('Failed to reload SmolLM2 after restart:', error);
+                addMessage('Could not reload CPU model after restart. Try switching modes and back to CPU.', 'bot');
+            }
+        } else if (wllama && wllamaReady) {
+            // Non-CPU restarts only need cache clear when a CPU model exists in memory.
             try {
                 await wllama.kvClear();
                 console.log('Wllama KV cache cleared');
