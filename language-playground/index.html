@@ -9,14 +9,7 @@
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='86'>📑</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="coi-serviceworker.js"></script>
-    <!-- Import map for module resolution -->
-    <script type="importmap">
-        {
-            "imports": {
-                "@wllama/wllama": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js"
-            }
-        }
-    </script>
+    <script src="https://unpkg.com/compromise"></script>
 </head>
 
 <body>
@@ -26,15 +19,7 @@
             <h1>Language Playground</h1>
             <div class="toolbar-right">
                 <div class="model-controls">
-                    <span id="model-status" class="model-status-text loading">Loading model...</span>
-                    <div class="model-toggle-wrap" role="group" aria-label="Model selection">
-                        <span class="model-label">CPU</span>
-                        <label class="switch" for="model-toggle" title="Switch between GPU and CPU models">
-                            <input type="checkbox" id="model-toggle" aria-label="Toggle GPU/CPU mode">
-                            <span class="slider"></span>
-                        </label>
-                        <span class="model-label">GPU</span>
-                    </div>
+                    <span id="model-status" class="model-status-text ready">Rule-based extraction ready</span>
                 </div>
                 <div class="theme-toggle-wrap" role="group" aria-label="Theme controls">
                     <span aria-hidden="true">☀</span>

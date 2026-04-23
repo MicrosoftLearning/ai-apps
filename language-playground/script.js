@@ -1,17 +1,8 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
-import { Wllama } from '@wllama/wllama';
-
 (function () {
     "use strict";
 
     const MAX_FILE_SIZE = 10 * 1024;
 
-    // AI Model state
-    let engine = null; // WebLLM engine for GPU mode
-    let wllama = null; // Wllama instance for CPU mode
-    let webGPUAvailable = false; // Track if WebGPU is available
-    let usingWllama = false; // Track which engine is active
-    let aiModelReady = false; // Track if AI model is loaded
     let loadingTimers = []; // Track loading message timers
 
     const LANGUAGES = [
@@ -45,7 +36,7 @@ import { Wllama } from '@wllama/wllama';
             { label: "Arabic paragraph", text: "انا اسكن في دبي واعمل في شركة برمجيات. في عطلة نهاية الاسبوع ازور عائلتي واقرا كتابا جديدا." }
         ],
         pii: [
-            { label: "Contact note", text: "John Smith can be reached by email at john@contoso.com, or by phone on +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
+            { label: "Contact note", text: "John Smith can be reached by email at john@contoso.com, or by phone on +1 555 123 4567. Mailing address: 123 Any Street, Anytown, WA, USA, 01234." },
             { label: "Customer form", text: "Customer Feedback Form\nDate: 4/1/2026\nCustomer: Mario Gizzi\nEmail: mario@adventure-works.com\nPhone: 555 123 0987\nRating: 5\nComment: Thanks for the great service. I received my delivery at 1482 Westward Way, Seattle. Everything looks great!" }
         ]
     };
@@ -95,8 +86,7 @@ import { Wllama } from '@wllama/wllama';
         results: document.getElementById("results"),
         announcer: document.getElementById("aria-announcer"),
         themeToggle: document.getElementById("theme-toggle"),
-        modelStatus: document.getElementById("model-status"),
-        modelToggle: document.getElementById("model-toggle")
+        modelStatus: document.getElementById("model-status")
     };
 
     function announce(text) {
@@ -200,261 +190,48 @@ import { Wllama } from '@wllama/wllama';
         elements.modelStatus.className = 'model-status-text ' + (isLoading ? 'loading' : 'ready');
     }
 
-    /**
-     * Disables PII-related UI elements during model loading
-     * but keeps Language Detection features enabled
-     */
-    function disableUI() {
-        // Keep the analyzer dropdown enabled, but disable the PII option
-        const piiOption = elements.analyzerSelect.querySelector('option[value="pii"]');
-        if (piiOption) piiOption.disabled = true;
-
-        // Keep text input, sample select, attach button enabled for language detection
-        // elements.sourceText, elements.sampleSelect, elements.attachBtn remain enabled
-
-        // Disable GPU/CPU toggle until model loads
-        if (elements.modelToggle) elements.modelToggle.disabled = true;
-
-        // Detect button state is managed by updateDetectButton()
-        updateDetectButton();
+    function dedupeStrings(values) {
+        return Array.from(new Set(values.map(function (value) {
+            return String(value || "").trim();
+        }).filter(Boolean)));
     }
 
-    /**
-     * Enables PII-related UI elements after model is loaded
-     */
-    function enableUI() {
-        // Enable the PII option in the analyzer dropdown
-        const piiOption = elements.analyzerSelect.querySelector('option[value="pii"]');
-        if (piiOption) piiOption.disabled = false;
-
-        // Enable GPU/CPU toggle now that model is loaded (only if WebGPU is available)
-        if (elements.modelToggle && webGPUAvailable) elements.modelToggle.disabled = false;
-
-        // Other elements (text input, etc.) were never disabled
-        updateDetectButton();
-    }
-
-    /**
-     * Checks if WebGPU is available in the browser
-     */
-    function checkWebGPUSupport() {
-        if (!navigator.gpu) {
-            console.log('WebGPU not supported in this browser');
-            return false;
+    function extractPeople(text) {
+        if (typeof window.nlp !== "function") {
+            return [];
         }
-        return true;
+
+        const doc = window.nlp(text);
+        return dedupeStrings(doc.people().out("array"));
     }
 
-    /**
-     * Initializes WebLLM for GPU mode
-     */
-    async function initializeWebLLM() {
-        try {
-            updateModelStatus('Loading Phi-3-mini (GPU)...', true);
-
-            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-
-            engine = await webllm.CreateMLCEngine(
-                targetModelId,
-                {
-                    initProgressCallback: function (progress) {
-                        console.log('WebLLM progress object:', progress);
-
-                        // Use the text property if available for more detailed status
-                        if (progress.text) {
-                            updateModelStatus(progress.text, true);
-                        } else {
-                            const percentage = Math.round(progress.progress * 100);
-                            updateModelStatus('Loading Phi-3-mini: ' + percentage + '%', true);
-                        }
-                    }
-                }
-            );
-
-            updateModelStatus('Phi-3-mini (GPU) Ready', false);
-            console.log('WebLLM engine initialized successfully');
-            webGPUAvailable = true;
-            usingWllama = false;
-            aiModelReady = true;
-
-        } catch (error) {
-            console.error('Failed to initialize WebLLM:', error);
-            throw error; // Re-throw to trigger fallback
-        }
+    function extractEmails(text) {
+        const matches = text.match(/\b[^\s@]+@[^\s@]+\b/g) || [];
+        return dedupeStrings(matches);
     }
 
-    /**
-     * Initializes the Wllama language model for CPU mode text generation
-     */
-    async function initWllama() {
-        try {
-            if (wllama) {
-                console.log('Wllama already initialized');
-                return;
-            }
-
-            console.log("Initializing wllama...");
-            updateModelStatus('Loading SmolLM2 (CPU)...', true);
-
-            // Configure WASM paths for CDN
-            const CONFIG_PATHS = {
-                'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
-                'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
-            };
-
-            const internalProgressCallback = ({ loaded, total }) => {
-                const progress = loaded / total;
-                const percentage = Math.round((progress * 100));
-                const statusText = 'Loading SmolLM2: ' + percentage + '%';
-                console.log('Wllama progress:', percentage + '%', 'loaded:', loaded, 'total:', total);
-                updateModelStatus(statusText, true);
-                // Force DOM update
-                if (elements.modelStatus) {
-                    elements.modelStatus.offsetHeight;
-                }
-            };
-
-            // Try multithreaded (4 threads) first, fall back to single-threaded
-            const useMultiThread = window.crossOriginIsolated === true;
-            const preferredThreads = useMultiThread ? 4 : 1;
-            console.log('Cross-origin isolated: ' + window.crossOriginIsolated + ', attempting ' + preferredThreads + ' thread(s)');
-
-            try {
-                wllama = new Wllama(CONFIG_PATHS);
-
-                await wllama.loadModelFromHF(
-                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                    'smollm2-360m-instruct-q8_0.gguf',
-                    {
-                        n_ctx: 768,
-                        n_threads: preferredThreads,
-                        progressCallback: internalProgressCallback
-                    }
-                );
-                console.log('Wllama initialized successfully with ' + preferredThreads + ' thread(s)');
-            } catch (multiErr) {
-                if (preferredThreads > 1) {
-                    console.warn('Multi-threaded init failed (' + multiErr.message + '), falling back to single thread');
-
-                    wllama = new Wllama(CONFIG_PATHS);
-                    await wllama.loadModelFromHF(
-                        'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                        'smollm2-360m-instruct-q8_0.gguf',
-                        {
-                            n_ctx: 768,
-                            n_threads: 1,
-                            progressCallback: internalProgressCallback
-                        }
-                    );
-                    console.log("Wllama initialized successfully with 1 thread (fallback)");
-                } else {
-                    throw multiErr;
-                }
-            }
-
-            updateModelStatus('SmolLM2 (CPU) Ready', false);
-            usingWllama = true;
-            aiModelReady = true;
-        } catch (error) {
-            console.error('Failed to initialize wllama:', error);
-            updateModelStatus('Model loading failed', false);
-            throw error;
-        }
+    function extractPhones(text) {
+        const matches = text.match(/\b(?:\d{3} \d{3} \d{4}|\d{3}-\d{3}-\d{4}|\d{3} \d{3}-\d{4})\b/g) || [];
+        return dedupeStrings(matches);
     }
 
-    /**
-     * Initializes AI models on page load
-     */
-    async function initAIModels() {
-        disableUI();
+    function extractAddresses(text) {
+        const suffixRegex = "(?:Street|Avenue|Lane|Road|Place|Boulevard|Way)";
+        const addressRegex = new RegExp("(?:^|[^\\d-])(\\d{1,5}\\s+[A-Za-z][^\\n\\r:.!?]*?\\b" + suffixRegex + "\\b[.,;:?!]?)", "gi");
+        const matches = Array.from(text.matchAll(addressRegex)).map(function (match) {
+            return match[1];
+        });
 
-        try {
-            // Check for WebGPU support
-            const hasWebGPU = checkWebGPUSupport();
-
-            if (!hasWebGPU) {
-                console.log('WebGPU not available, using wllama (CPU mode)');
-                if (elements.modelToggle) {
-                    elements.modelToggle.checked = false;
-                    elements.modelToggle.disabled = true;
-                    // Update tooltip to indicate GPU mode is unavailable
-                    const toggleLabel = elements.modelToggle.closest('.switch');
-                    if (toggleLabel) {
-                        toggleLabel.title = 'GPU mode unavailable (WebGPU not supported)';
-                    }
-                }
-                await initWllama();
-            } else {
-                // Try WebLLM first (faster with GPU)
-                try {
-                    if (elements.modelToggle) {
-                        elements.modelToggle.checked = true;
-                    }
-                    await initializeWebLLM();
-                } catch (error) {
-                    console.log('WebLLM initialization failed, falling back to wllama');
-                    if (elements.modelToggle) {
-                        elements.modelToggle.checked = false;
-                    }
-                    await initWllama();
-                }
-            }
-
-            enableUI();
-        } catch (error) {
-            console.error("AI model initialization error:", error);
-            updateModelStatus("Model loading failed", false);
-            showStatus("Error loading AI model: " + error.message + ". PII detection may be unavailable.", true);
-            enableUI();
-        }
+        return dedupeStrings(matches.map(function (match) {
+            return match.trim();
+        }));
     }
 
-    /**
-     * Switches between GPU and CPU models
-     */
-    async function switchModel(useGPU) {
-        // Clear UI and reset state when switching models
-        resetUi();
-
-        // Switch to Language Detection mode and disable PII until new model loads
-        state.mode = "language";
-        elements.analyzerSelect.value = "language";
-        populateSamples();
-        updatePlaceholder();
-
-        disableUI();
-        aiModelReady = false;
-
-        try {
-            if (useGPU) {
-                // Load GPU model
-                if (engine) {
-                    console.log('WebLLM already loaded');
-                    updateModelStatus('Phi-3-mini (GPU) Ready', false);
-                    usingWllama = false;
-                    aiModelReady = true;
-                } else {
-                    await initializeWebLLM();
-                }
-            } else {
-                // Load CPU model
-                if (wllama) {
-                    console.log('Wllama already loaded');
-                    updateModelStatus('SmolLM2 (CPU) Ready', false);
-                    usingWllama = true;
-                    aiModelReady = true;
-                } else {
-                    await initWllama();
-                }
-                usingWllama = true;
-            }
-            enableUI();
-        } catch (error) {
-            console.error('Model switch failed:', error);
-            updateModelStatus('Model loading failed', false);
-            showStatus('Failed to load model: ' + error.message, true);
-            enableUI();
-        }
+    function removePhonesFromText(text, phones) {
+        return phones.reduce(function (current, phone) {
+            const replacement = " ".repeat(phone.length);
+            return current.replace(new RegExp(escapeRegExp(phone), "g"), replacement);
+        }, text);
     }
 
     function stripDiacritics(text) {
@@ -635,160 +412,14 @@ import { Wllama } from '@wllama/wllama';
     }
 
     async function detectPii(text) {
-        if (!aiModelReady) {
-            throw new Error("AI model is not ready yet. Please wait for model initialization.");
-        }
-
         const entities = [];
-        let aiResponse = "";
+        const phones = extractPhones(text);
+        const textWithoutPhones = removePhonesFromText(text, phones);
 
-        try {
-            // Generate prompt based on the model being used
-            let prompt;
-            if (usingWllama) {
-                // SmolLM2 prompt using ChatML format - kept concise for context limits
-                prompt = '<|im_start|>system\n';
-                prompt += 'Extract people\'s names, phone numbers, emails, and addresses from text. Find ALL instances. Use format: - TYPE: value where TYPE is PERSON, PHONE, EMAIL, or ADDRESS. Never invent values.\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>user\n';
-                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
-                prompt += 'Contact Sarah Johnson at sarah@company.com or 555-123-4567. Office: 123 Main St, Boston.\n';
-                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>assistant\n';
-                prompt += '- PERSON: Sarah Johnson\n';
-                prompt += '- EMAIL: sarah@company.com\n';
-                prompt += '- PHONE: 555 123 4567\n';
-                prompt += '- ADDRESS: 123 Main St, Boston\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>user\n';
-                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
-                prompt += 'Customer: Lisa Chen called about a delivery to 12 Tree Ave, Toytown, WA. Call her back on 555 234 5678, or her cellphone (206 555-9999); or email her at lisa.chen@contoso.com.\n';
-                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>assistant\n';
-                prompt += '- PERSON: Lisa Chen\n';
-                prompt += '- ADDRESS: 12 Tree Ave, Toytown, WA\n';
-                prompt += '- PHONE: 555 234 5678\n';
-                prompt += '- PHONE: 206 555 9999\n';
-                prompt += '- EMAIL: lisa.chen@contoso.com\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>user\n';
-                prompt += 'List all PERSON, PHONE, EMAIL, and ADDRESS values you find in the following text:\n---\n';
-                prompt += text + '\n';
-                prompt += '---\nIMPORTANT: List all of the PERSON, PHONE, EMAIL, and ADDRESS values you find; but DO NOT create new values that are not in the text.\n\n';
-                prompt += '<|im_end|>\n\n';
-
-                prompt += '<|im_start|>assistant\n';
-            } else {
-                // Phi 3-mini prompt
-                prompt = "Extract people's names, telephone numbers, email addresses, and street addresses from the following text.\n\n";
-                prompt += "IMPORTANT RULES:\n";
-                prompt += "- Extract ONLY values that are ACTUALLY PRESENT in the text\n";
-                prompt += "- Find ALL instances of each type (there may be multiple names, multiple phone numbers, etc.)\n";
-                prompt += "- PII can appear anywhere - in sentences, forms, labels, or free-form text\n";
-                prompt += "- ALL telephone numbers (phone, cellphone, mobile, etc.) must be classified as PHONE\n";
-                prompt += "- Phone numbers can be in various formats: 555-123-4567, 555 123 0987, (555) 123-4567, etc.\n";
-                prompt += "- NEVER invent, guess, or make up values\n";
-                prompt += "- If a type is not found, do not list it at all\n";
-                prompt += "- You MUST use ONLY these 4 types - no other types are allowed\n\n";
-                prompt += "Return a bulleted list with each item in this format:\n";
-                prompt += "- TYPE: value\n\n";
-                prompt += "TYPE must be EXACTLY one of: PERSON, PHONE, EMAIL, ADDRESS\n";
-                prompt += "Do NOT use any other type names like CELLPHONE, MOBILE, etc.\n\n";
-                prompt += "Examples:\n\n";
-                prompt += "Input: Contact Sarah Johnson at sarah@email.com or call 555-123-4567.\n";
-                prompt += "Output:\n";
-                prompt += "- PERSON: Sarah Johnson\n";
-                prompt += "- EMAIL: sarah@email.com\n";
-                prompt += "- PHONE: 555-123-4567\n\n";
-                prompt += "Input: Phone: 555 123 0987\nCellphone: 543 123 8765\n";
-                prompt += "Output:\n";
-                prompt += "- PHONE: 555 123 0987\n";
-                prompt += "- PHONE: 543 123 8765\n\n";
-                prompt += "Input: I received a delivery at 100 Oak Street, Portland. Great service!\n";
-                prompt += "Output:\n";
-                prompt += "- ADDRESS: 100 Oak Street, Portland\n\n";
-                prompt += "Now extract from this text:\n" + text;
-            }
-
-            // Call the appropriate model
-            if (usingWllama) {
-                // Use Wllama (SmolLM2) with very low temperature to prevent hallucination
-                const response = await wllama.createCompletion(prompt, {
-                    nPredict: 512,
-                    sampling: {
-                        temp: 0.0,
-                        top_p: 0.9,
-                        penalty_repeat: 1.1
-                    },
-                    stopTokens: ['<|im_end|>', '<|im_start|>']
-                });
-                aiResponse = response;
-            } else {
-                // Use WebLLM (Phi 3-mini) with low temperature for factual extraction
-                const messages = [
-                    { role: "user", content: prompt }
-                ];
-                const response = await engine.chat.completions.create({
-                    messages: messages,
-                    temperature: 0.0,
-                    max_tokens: 512
-                });
-                aiResponse = response.choices[0].message.content;
-            }
-
-            console.log("AI Response:", aiResponse);
-
-            // Parse the AI response to extract PII terms
-            const lines = aiResponse.split('\n');
-            const typeMapping = {
-                'PERSON': 'Person',
-                'PHONE': 'Phone',
-                'EMAIL': 'Email',
-                'ADDRESS': 'Address'
-            };
-
-            lines.forEach(function (line) {
-                line = line.trim();
-                if (!line || line.length < 3) return;
-
-                // Remove bullet points and list markers
-                line = line.replace(/^[-*•]\s*/, '');
-
-                // Try to match format: "TYPE: value" or "TYPE (PERSON, PHONE, etc): value"
-                let match = line.match(/^(PERSON|PHONE|EMAIL|ADDRESS)\s*[:(]\s*(.+)$/i);
-                if (!match) {
-                    // Try alternative format: "value (TYPE)" or "value - TYPE"
-                    match = line.match(/^(.+?)\s*[-:(]\s*(PERSON|PHONE|EMAIL|ADDRESS)\s*[)]?$/i);
-                    if (match) {
-                        match = [match[0], match[2], match[1]];
-                    }
-                }
-
-                if (match) {
-                    const typeRaw = match[1].toUpperCase();
-                    let value = match[2].trim();
-
-                    // Clean up the value
-                    value = value.replace(/^[:\s)]+|[:\s)]+$/g, '').trim();
-
-                    if (value && typeRaw in typeMapping) {
-                        const type = typeMapping[typeRaw];
-                        addEntity(entities, value, type);
-                    }
-                }
-            });
-
-        } catch (error) {
-            console.error("Error during PII detection:", error);
-            throw new Error("Failed to detect PII using AI model: " + error.message);
-        }
+        phones.forEach(function (value) { addEntity(entities, value, "Phone"); });
+        extractPeople(text).forEach(function (value) { addEntity(entities, value, "Person"); });
+        extractEmails(text).forEach(function (value) { addEntity(entities, value, "Email"); });
+        extractAddresses(textWithoutPhones).forEach(function (value) { addEntity(entities, value, "Address"); });
 
         // Remove duplicates
         const uniqueEntities = [];
@@ -1037,7 +668,7 @@ import { Wllama } from '@wllama/wllama';
                 // Disable button and show loading state for PII detection
                 elements.detectBtn.disabled = true;
                 elements.detectBtn.textContent = "Analyzing...";
-                showStatus("Detecting PII using AI model...", false);
+                showStatus("Detecting PII using compromise and regex rules...", false);
 
                 const result = await detectPii(text);
                 elements.sourceText.value = result.redactedText;
@@ -1072,10 +703,7 @@ import { Wllama } from '@wllama/wllama';
         updatePlaceholder();
         updateDetectButton();
 
-        // Initialize AI models for PII detection
-        // Language detection is enabled immediately, but PII extraction
-        // and GPU/CPU toggle are disabled until the model loads
-        initAIModels();
+        updateModelStatus("Rule-based extraction ready", false);
 
         elements.analyzerSelect.addEventListener("change", function () {
             state.mode = elements.analyzerSelect.value;
@@ -1124,12 +752,6 @@ import { Wllama } from '@wllama/wllama';
             localStorage.setItem("language-playground-theme", dark ? "dark" : "light");
         });
 
-        if (elements.modelToggle) {
-            elements.modelToggle.addEventListener("change", function () {
-                const useGPU = elements.modelToggle.checked;
-                switchModel(useGPU);
-            });
-        }
     }
 
     initialize();

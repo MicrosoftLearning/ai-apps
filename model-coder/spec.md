@@ -18,7 +18,7 @@ Users write Python code in a PyScript editor and execute it in a terminal pane. 
 - Streaming responses
 - Async usage with `AsyncOpenAI`
 
-The model runtime is local and in-browser with dual-mode support: WebLLM (Phi-3-mini) when WebGPU is available, falling back to wllama (SmolLM2) for CPU-only environments.
+The model runtime is local and in-browser with dual-mode support: WebLLM (Phi-3-mini) when WebGPU is available, falling back to wllama (Phi-2) for CPU-only environments.
 
 ## Core Goals
 
@@ -80,15 +80,15 @@ The wrapper exposed via `nopenai.py` supports:
 - `OpenAI(base_url="http://localwllama", api_key="...")`
 - `AsyncOpenAI(base_url="http://localwllama", api_key="...")`
 - Chat Completions:
-  - `chat.completions.create(model="smollm2", messages=[...], stream=False|True)`
+  - `chat.completions.create(model="local-llm", messages=[...], stream=False|True)`
 - Responses API:
-  - `responses.create(model="smollm2", input=..., instructions=..., previous_response_id=..., stream=False|True)`
+  - `responses.create(model="local-llm", input=..., instructions=..., previous_response_id=..., stream=False|True)`
 - Synchronous and asynchronous stream iterators
 
 Validation behavior:
 
 - `base_url` must be `http://localwllama`
-- `model` must be `smollm2`
+- `model` must be `local-llm`
 - message role/content types are validated
 - user prompts are checked against `moderation/mod.txt` reversed-term filters in JS before ChatML assembly
 - matched prompts return `I'm sorry. I can't help with that` as the model response
@@ -96,7 +96,7 @@ Validation behavior:
 ## Local Model Runtime
 
 - Uses `@wllama/wllama` from CDN.
-- Loads model `ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF` (`smollm2-360m-instruct-q8_0.gguf`).
+- Loads model `Felladrin/gguf-sharded-phi-2-orange-v2` (`phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf`).
 - Converts request message structures to ChatML prompt format.
 - Supports full and streaming completion paths.
 - Maintains response/session maps for continuation semantics and stream retrieval.

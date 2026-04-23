@@ -145,6 +145,24 @@ body {
     min-height: 36px;
 }
 
+.mode-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    border: 1px solid var(--accent-strong);
+    border-radius: 9px;
+    padding: 4px 7px;
+    min-height: 36px;
+}
+
+.mode-label {
+    font-size: 0.82rem;
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
 #template-select {
     border: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: 7px;
@@ -154,7 +172,22 @@ body {
     font-size: 0.9rem;
 }
 
+#mode-select {
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 7px;
+    padding: 6px 8px;
+    background: #ffffff;
+    color: #111111;
+    font-size: 0.84rem;
+    min-height: 32px;
+}
+
 #template-select option {
+    color: #111111;
+    background: #ffffff;
+}
+
+#mode-select option {
     color: #111111;
     background: #ffffff;
 }
@@ -164,7 +197,18 @@ body {
     outline-offset: 1px;
 }
 
+#mode-select:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.6);
+    outline-offset: 1px;
+}
+
 #template-select:focus-visible {
+    outline: 3px solid #ffffff;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.35);
+}
+
+#mode-select:focus-visible {
     outline: 3px solid #ffffff;
     outline-offset: 1px;
     box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.35);
@@ -212,26 +256,9 @@ button.secondary:hover:not(:disabled) {
     background: var(--accent-strong);
 }
 
-/* Mode toggle button - visually distinct */
-#mode-toggle-btn {
-    min-width: 50px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-}
-
-#mode-toggle-btn[aria-pressed="true"] {
-    background: var(--accent);
-    color: #ffffff;
-    border-color: var(--accent-strong);
-}
-
-#mode-toggle-btn[aria-pressed="false"]:not(:disabled) {
-    background: var(--dimmed-bg);
-    color: var(--text-color);
-}
-
-#mode-toggle-btn:disabled {
-    opacity: 0.4;
+#mode-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 button:focus-visible {
@@ -501,8 +528,20 @@ body.dark-theme #template-select {
     border-color: rgba(255, 255, 255, 0.4);
 }
 
+body.dark-theme #mode-select {
+    background: #000000;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
 body.dark-theme #template-select option,
 body.dark-theme #template-select optgroup {
+    background: #000000;
+    color: #ffffff;
+}
+
+body.dark-theme #mode-select option,
+body.dark-theme #mode-select optgroup {
     background: #000000;
     color: #ffffff;
 }

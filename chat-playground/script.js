@@ -15,9 +15,9 @@ class ChatPlayground {
         this.wllama = null; // wllama engine for CPU mode
         this.usingWllama = false; // Track which engine is active
         this.usingWikipedia = false; // Track if no-model Wikipedia mode is active
-        this.currentMode = 'none'; // 'phi3-gpu', 'phi3-cpu', or 'none'
+        this.currentMode = 'none'; // 'phi3-gpu', 'phi2-cpu', or 'none'
         this.wllamaLoaded = false; // Track if wllama is initialized
-        this.wllamaFailed = false; // Track if SmolLM2 failed to load
+        this.wllamaFailed = false; // Track if Phi-2 failed to load
         this.isModelLoaded = false;
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
@@ -265,11 +265,11 @@ class ChatPlayground {
 
     // Get model-specific default parameters
     getModelDefaults() {
-        if (this.currentMode === 'phi3-cpu') {
-            // SmolLM2 (CPU mode) - Lower temperature for consistency
+        if (this.currentMode === 'phi2-cpu') {
+            // Phi-2 (CPU mode) - Lower temperature for consistency
             return {
-                temperature: 0.3,
-                top_p: 0.7,
+                temperature: 0.1,
+                top_p: 0.85,
                 max_tokens: 1000,
                 repetition_penalty: 1.1
             };
@@ -402,32 +402,33 @@ class ChatPlayground {
     }
 
     initializeParameterControls() {
-        // Centralized parameter configuration
+        // Centralized parameter configuration - using modal slider IDs (only parameter
+        // sliders present in the HTML)
         this.parameterConfig = [
             {
-                id: 'temperature-slider',
-                valueId: 'temperature-value',
+                id: 'modal-temperature-slider',
+                valueId: 'modal-temperature-value',
                 param: 'temperature',
                 type: 'float',
                 displayName: 'Temperature'
             },
             {
-                id: 'top-p-slider',
-                valueId: 'top-p-value',
+                id: 'modal-top-p-slider',
+                valueId: 'modal-top-p-value',
                 param: 'top_p',
                 type: 'float',
                 displayName: 'Top P'
             },
             {
-                id: 'max-tokens-slider',
-                valueId: 'max-tokens-value',
+                id: 'modal-max-tokens-slider',
+                valueId: 'modal-max-tokens-value',
                 param: 'max_tokens',
                 type: 'int',
                 displayName: 'Max Tokens'
             },
             {
-                id: 'repetition-penalty-slider',
-                valueId: 'repetition-penalty-value',
+                id: 'modal-repetition-penalty-slider',
+                valueId: 'modal-repetition-penalty-value',
                 param: 'repetition_penalty',
                 type: 'float',
                 displayName: 'Repetition Penalty'
@@ -1182,12 +1183,12 @@ class ChatPlayground {
                 console.log('Wllama initialized successfully');
                 this.usingWllama = true;
                 this.usingWikipedia = false;
-                this.currentMode = 'phi3-cpu';
+                this.currentMode = 'phi2-cpu';
                 this.wllamaLoaded = true;
                 this.wllamaFailed = false;
-                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
+                this.currentModelId = 'Phi-2-orange-v2-Q5_K_M-GGUF';
 
-                // Set SmolLM2 default parameters
+                // Set Phi-2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
@@ -1231,12 +1232,12 @@ class ChatPlayground {
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
                 this.usingWikipedia = false;
-                this.currentMode = 'phi3-cpu';
+                this.currentMode = 'phi2-cpu';
                 this.wllamaLoaded = true;
                 this.wllamaFailed = false;
-                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
+                this.currentModelId = 'Phi-2-orange-v2-Q5_K_M-GGUF';
 
-                // Set SmolLM2 default parameters
+                // Set Phi-2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
@@ -1344,7 +1345,13 @@ class ChatPlayground {
             this.updateProgress(percentage, `Loading wllama model (CPU mode): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
         });
 
-        updateProgress(0, 100);
+        const isLazyLoad = this.webllmAvailable;
+
+        if (!isLazyLoad) {
+            updateProgress(10, 100);
+        } else {
+            updateProgress(0, 100);
+        }
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
@@ -1352,45 +1359,59 @@ class ChatPlayground {
             'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
         };
 
-        // Try multithreaded (4 threads) first if cross-origin isolated, fall back to single-threaded
-        const useMultiThread = window.crossOriginIsolated === true;
-        const preferredThreads = useMultiThread ? 4 : 1;
-        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
-
-        const modelConfig = {
-            n_ctx: 2048,
-            n_threads: preferredThreads,
-            progressCallback: ({ loaded, total }) => {
+        const internalProgressCallback = ({ loaded, total }) => {
+            if (!isLazyLoad) {
+                const progress = loaded / total;
+                const percentage = Math.round(progress * 100);
+                const adjustedLoaded = Math.round(20 + (percentage * 0.8));
+                updateProgress(adjustedLoaded, 100);
+            } else {
                 updateProgress(loaded, total);
             }
         };
 
-        try {
-            // Initialize wllama with CDN-hosted WASM files
-            this.wllama = new Wllama(CONFIG_PATHS);
+        // Try multithreaded first if cross-origin isolated, fall back to single-threaded
+        const useMultiThread = window.crossOriginIsolated === true;
+        const availableThreads = navigator.hardwareConcurrency || 4;
+        const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
-            // Load SmolLM2 model from HuggingFace
+        try {
+            this.wllama = new Wllama(CONFIG_PATHS);
+            if (!isLazyLoad) {
+                updateProgress(20, 100);
+            }
+
             await this.wllama.loadModelFromHF(
-                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                'smollm2-360m-instruct-q8_0.gguf',
-                modelConfig
+                'Felladrin/gguf-sharded-phi-2-orange-v2',
+                'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
+                {
+                    n_ctx: 384,
+                    n_threads: preferredThreads,
+                    progressCallback: internalProgressCallback
+                }
             );
             console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+            await this.warmWllamaCache(isLazyLoad, updateProgress);
         } catch (multiErr) {
             if (preferredThreads > 1) {
                 console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+                if (!isLazyLoad) {
+                    updateProgress(20, 100);
+                }
 
-                // Retry with single thread
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(
-                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                    'smollm2-360m-instruct-q8_0.gguf',
+                    'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                     {
-                        ...modelConfig,
-                        n_threads: 1
+                        n_ctx: 384,
+                        n_threads: 1,
+                        progressCallback: internalProgressCallback
                     }
                 );
                 console.log('Wllama initialized successfully with 1 thread (fallback)');
+                await this.warmWllamaCache(isLazyLoad, updateProgress);
             } else {
                 throw multiErr;
             }
@@ -1403,6 +1424,34 @@ class ChatPlayground {
             this.progressContainer.style.display = 'none';
             this.enableUI();
         }, 1000);
+    }
+
+    async warmWllamaCache(isLazyLoad = true, progressCallback = null) {
+        if (!this.wllama) return;
+
+        try {
+            const systemInstruction = '<|im_start|>system\n' +
+                'You are an AI assistant that helps people find information.\n' +
+                '<|im_end|>';
+
+            console.log('Warming cache with system instruction...');
+
+            if (!isLazyLoad) {
+                progressCallback?.(99, 100);
+            } else if (progressCallback) {
+                progressCallback(99, 100);
+            }
+
+            await this.wllama.createCompletion(systemInstruction, {
+                nPredict: 1,
+                sampling: {
+                    temp: 0.0
+                }
+            });
+            console.log('Cache warmed successfully');
+        } catch (error) {
+            console.log('Cache warming failed (non-critical):', error.message);
+        }
     }
 
     updateProgress(percentage, text, useHTML = false) {
@@ -1494,9 +1543,9 @@ class ChatPlayground {
             }
 
             console.log('Switched to Phi-3 (GPU) mode');
-        } else if (selectedValue === 'phi3-cpu') {
+        } else if (selectedValue === 'phi2-cpu') {
             if (this.wllamaFailed) {
-                alert('SmolLM2 (CPU) is not available because it previously failed to load.');
+                alert('Phi-2 (CPU) is not available because it previously failed to load.');
                 this.populateModelDropdown();
                 return;
             }
@@ -1515,25 +1564,25 @@ class ChatPlayground {
                 try {
                     await this.initializeWllama((loaded, total) => {
                         const percentage = Math.round((loaded / total) * 100);
-                        this.updateProgress(percentage, `Loading SmolLM2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+                        this.updateProgress(percentage, `Loading Phi-2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
                     });
 
                     this.usingWllama = true;
                     this.usingWikipedia = false;
-                    this.currentMode = 'phi3-cpu';
-                    this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
+                    this.currentMode = 'phi2-cpu';
+                    this.currentModelId = 'Phi-2-orange-v2-Q5_K_M-GGUF';
                     this.wllamaFailed = false;
 
-                    // Apply SmolLM2 default parameters
+                    // Apply Phi-2 default parameters
                     this.config.modelParameters = this.getModelDefaults();
                     this.updateParameterUI();
                     this.setParameterControlsEnabled(true);
 
                     // Clear chat and restart conversation
                     await this.clearChat();
-                    this.showToast('Switched to SmolLM2 (CPU) - Conversation restarted');
+                    this.showToast('Switched to Phi-2 (CPU) - Conversation restarted');
 
-                    console.log('Switched to SmolLM2 (CPU) mode');
+                    console.log('Switched to Phi-2 (CPU) mode');
                 } catch (error) {
                     console.error('Failed to load wllama:', error);
                     this.wllamaLoaded = false;
@@ -1545,16 +1594,16 @@ class ChatPlayground {
                     this.config.modelParameters = this.getModelDefaults();
                     this.updateParameterUI();
                     this.populateModelDropdown();
-                    alert('Failed to load SmolLM2 (CPU). Switching to None (Wikipedia mode).');
+                    alert('Failed to load Phi-2 (CPU). Switching to None (Wikipedia mode).');
                     this.enableUI();
                 }
             } else {
                 this.usingWllama = true;
                 this.usingWikipedia = false;
-                this.currentMode = 'phi3-cpu';
-                this.currentModelId = 'SmolLM2-360M-Instruct-Q8_0-GGUF';
+                this.currentMode = 'phi2-cpu';
+                this.currentModelId = 'Phi-2-orange-v2-Q5_K_M-GGUF';
 
-                // Apply SmolLM2 default parameters
+                // Apply Phi-2 default parameters
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
                 this.setParameterControlsEnabled(true);
@@ -1562,10 +1611,10 @@ class ChatPlayground {
                 // Clear chat and restart conversation
                 if (previousMode !== this.currentMode) {
                     await this.clearChat();
-                    this.showToast('Switched to SmolLM2 (CPU) - Conversation restarted');
+                    this.showToast('Switched to Phi-2 (CPU) - Conversation restarted');
                 }
 
-                console.log('Switched to SmolLM2 (CPU) mode');
+                console.log('Switched to Phi-2 (CPU) mode');
             }
         } else if (selectedValue === 'none') {
             this.usingWllama = false;
@@ -1598,10 +1647,10 @@ class ChatPlayground {
         phiOption.disabled = !this.webllmAvailable;
         this.modelSelect.appendChild(phiOption);
 
-        // Add SmolLM2 (CPU) option
+        // Add Phi-2 (CPU) option
         const cpuOption = document.createElement('option');
-        cpuOption.value = 'phi3-cpu';
-        cpuOption.textContent = 'SmolLM2 (CPU)';
+        cpuOption.value = 'phi2-cpu';
+        cpuOption.textContent = 'Phi-2 (CPU)';
         cpuOption.disabled = this.wllamaFailed;
         this.modelSelect.appendChild(cpuOption);
 
@@ -1616,8 +1665,8 @@ class ChatPlayground {
 
         if (this.currentMode === 'phi3-gpu' && canUseGpu) {
             this.modelSelect.value = 'phi3-gpu';
-        } else if (this.currentMode === 'phi3-cpu' && canUseCpu) {
-            this.modelSelect.value = 'phi3-cpu';
+        } else if (this.currentMode === 'phi2-cpu' && canUseCpu) {
+            this.modelSelect.value = 'phi2-cpu';
         } else {
             this.currentMode = 'none';
             this.usingWikipedia = true;
@@ -2194,7 +2243,7 @@ class ChatPlayground {
         return trimmedText.slice(0, sentenceEndIndex).trimEnd();
     }
 
-    // Helper function to build simple ChatML prompt for voice mode with SmolLM2
+    // Helper function to build simple ChatML prompt for voice mode with Phi-2
     buildPrompt(userMessage, systemMessage) {
         let prompt = '';
 
@@ -2207,17 +2256,14 @@ class ChatPlayground {
             previousAssistantResponse = this.conversationHistory[this.conversationHistory.length - 1].content;
             previousUserMessage = this.conversationHistory[this.conversationHistory.length - 2].content;
 
-            // Truncate to first sentence only for SmolLM2 context management
+            // Truncate to first sentence only for Phi-2 context management
             previousUserMessage = this.getFirstSentence(previousUserMessage);
             previousAssistantResponse = this.getFirstSentence(previousAssistantResponse);
         }
 
         // Build prompt for voice-based interaction
         prompt = '<|im_start|>system\n';
-        prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
-        prompt += 'Instructions:\n';
         prompt += systemMessage + '\n\n';
-        prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
         prompt += '<|im_end|>\n\n';
 
         // Add previous turn if exists
@@ -2233,7 +2279,7 @@ class ChatPlayground {
         return prompt;
     }
 
-    // Helper function to build ChatML formatted prompt for SmolLM2
+    // Helper function to build ChatML formatted prompt for Phi-2
     buildChatMLPrompt(userMessage, imageAnalysis = '', fileContent = '') {
         let prompt = '';
 
@@ -2248,7 +2294,7 @@ class ChatPlayground {
             // Clean any image classification from previous user message
             previousUserMessage = previousUserMessage.replace(/\n\n\[Current image shows:.*?\]$/s, '');
 
-            // Truncate to first sentence only for SmolLM2 context management
+            // Truncate to first sentence only for Phi-2 context management
             previousUserMessage = this.getFirstSentence(previousUserMessage);
             previousAssistantResponse = this.getFirstSentence(previousAssistantResponse);
         }
@@ -2257,12 +2303,8 @@ class ChatPlayground {
         if (imageAnalysis) {
             // Format for image analysis
             prompt = '<|im_start|>system\n';
-            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written and answer questions based on the information below.\n\n';
-            prompt += 'Instructions:\n';
             prompt += this.currentSystemMessage + '\n\n';
-            prompt += 'Information:\n';
             prompt += 'The user has uploaded an image containing a ' + imageAnalysis + '. Their question relates to this image.\n\n';
-            prompt += 'Acknowledge these rules by answering the user\'s question correctly based on the information above.\n';
             prompt += '<|im_end|>\n\n';
 
             // Add previous user message only (not response) if exists
@@ -2290,10 +2332,7 @@ class ChatPlayground {
         } else {
             // Default format (no file grounding, no image)
             prompt = '<|im_start|>system\n';
-            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written.\n\n';
-            prompt += 'Instructions:\n';
             prompt += this.currentSystemMessage + '\n\n';
-            prompt += 'Acknowledge these rules by answering the user\'s question correctly.\n';
             prompt += '<|im_end|>\n\n';
 
             // Add previous turn if exists
@@ -2304,7 +2343,7 @@ class ChatPlayground {
 
             // Add current user message
             prompt += '<|im_start|>user\n' + userMessage + '\n\n';
-            prompt += 'Respond concisely and accurately. IMPORTANT: Do not invent facts or make details up.\n<|im_end|>\n\n';
+            prompt += 'Respond concisely and accurately.\n<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
         }
 
@@ -2353,7 +2392,7 @@ class ChatPlayground {
         // Build the ChatML prompt
         const chatMLPrompt = this.buildChatMLPrompt(userMessage, imageAnalysis, fileContentForPrompt);
 
-        console.log('=== CHATML PROMPT FOR SMOLLM2 ===');
+        console.log('=== CHATML PROMPT FOR PHI-2 ===');
         console.log('Conversation history length:', this.conversationHistory.length);
         console.log('File content included:', !!fileContentForPrompt);
         console.log('Image analysis included:', !!imageAnalysis);
@@ -2374,9 +2413,9 @@ class ChatPlayground {
         const wllamaPenalty = Math.max(1.0, Math.min(2.0, this.config.modelParameters.repetition_penalty));
 
         // Log sampling parameters for debugging
-        console.log('SmolLM2 sampling parameters:', {
+        console.log('Phi-2 sampling parameters:', {
             temp: wllamaTemp,
-            top_k: 40,
+            top_k: 20,
             top_p: wllamaTopP,
             penalty_repeat: wllamaPenalty
         });
@@ -2385,21 +2424,13 @@ class ChatPlayground {
         const controller = new AbortController();
         this.currentAbortController = controller;
 
-        // Clear KV cache before generation to ensure clean state
-        try {
-            await this.wllama.kvClear();
-            console.log('KV cache cleared before generation');
-        } catch (error) {
-            console.log('KV cache clear failed:', error.message);
-        }
-
         try {
             const completion = await this.wllama.createCompletion(chatMLPrompt, {
-                nPredict: 300,  // SmolLM2 has 2048 context window
+                nPredict: 200,
                 seed: -1,  // Random seed for variation
                 sampling: {
                     temp: wllamaTemp,
-                    top_k: 40,
+                    top_k: 20,
                     top_p: wllamaTopP,
                     penalty_repeat: wllamaPenalty,
                     mirostat: 0  // Disable mirostat to ensure temperature is used
@@ -3686,7 +3717,7 @@ class ChatPlayground {
         this.isGenerating = true;
 
         // Append instruction for concise response in voice mode
-        const voiceModeUserMessage = userMessage + '\nAnswer in a single, concise sentence.';
+        const voiceModeUserMessage = userMessage;
 
         try {
             let responseText = '';
@@ -4374,32 +4405,37 @@ function updateModalSliderFromSource(sourceId, sourceValueId, value) {
 }
 
 function syncParametersToModal() {
-    // Get values from the left pane sliders
-    const sourceIds = [
-        { source: 'temperature-slider', target: 'modal-temperature-slider', value: 'modal-temperature-value' },
-        { source: 'top-p-slider', target: 'modal-top-p-slider', value: 'modal-top-p-value' },
-        { source: 'max-tokens-slider', target: 'modal-max-tokens-slider', value: 'modal-max-tokens-value' },
-        { source: 'repetition-penalty-slider', target: 'modal-repetition-penalty-slider', value: 'modal-repetition-penalty-value' }
-    ];
+    // Sync modal sliders from the app's config (the authoritative source of truth).
+    // Reading from DOM source elements is avoided because those sidebar sliders
+    // don't exist in the HTML — only the modal-prefixed ones do.
+    const params = window.chatPlaygroundApp ? window.chatPlaygroundApp.config.modelParameters : null;
 
-    sourceIds.forEach(({ source, target, value }) => {
-        const sourceEl = document.getElementById(source);
-        const targetEl = document.getElementById(target);
-        const valueEl = document.getElementById(value);
+    if (params) {
+        const updates = [
+            { target: 'modal-temperature-slider', value: 'modal-temperature-value', param: 'temperature' },
+            { target: 'modal-top-p-slider', value: 'modal-top-p-value', param: 'top_p' },
+            { target: 'modal-max-tokens-slider', value: 'modal-max-tokens-value', param: 'max_tokens' },
+            { target: 'modal-repetition-penalty-slider', value: 'modal-repetition-penalty-value', param: 'repetition_penalty' }
+        ];
 
-        if (sourceEl && targetEl && valueEl) {
-            const currentValue = sourceEl.value;
-            targetEl.value = currentValue;
-            valueEl.textContent = currentValue;
-            targetEl.setAttribute('aria-valuetext', currentValue);
-        }
-    });
+        updates.forEach(({ target, value, param }) => {
+            const targetEl = document.getElementById(target);
+            const valueEl = document.getElementById(value);
+            if (targetEl && valueEl) {
+                targetEl.value = params[param];
+                valueEl.textContent = params[param];
+                targetEl.setAttribute('aria-valuetext', params[param].toString());
+            }
+        });
+    }
 
-    // Add event listeners to modal sliders
+    // Attach event listeners only once per slider element to avoid accumulation
+    // across multiple modal openings.
     ['modal-temperature-slider', 'modal-top-p-slider', 'modal-max-tokens-slider', 'modal-repetition-penalty-slider'].forEach(sliderId => {
         const slider = document.getElementById(sliderId);
-        if (slider) {
+        if (slider && !slider.dataset.listenerAttached) {
             slider.addEventListener('input', handleModalParameterChange);
+            slider.dataset.listenerAttached = 'true';
         }
     });
 }

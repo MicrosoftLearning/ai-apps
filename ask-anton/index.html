@@ -52,13 +52,12 @@
                             </button>
                             <div class="mode-select-container" role="group" aria-labelledby="mode-select-label">
                                 <label class="mode-select-label" id="mode-select-label" for="mode-select">
-                                    <span class="mode-select-icon" aria-hidden="true">&#128306;</span>
                                     <span class="visually-hidden">Choose a response mode</span>
                                 </label>
                                 <select id="mode-select" class="mode-select" aria-label="Choose a response mode">
-                                    <option value="gpu">🟢 GPU</option>
-                                    <option value="cpu">🟠 CPU</option>
-                                    <option value="basic">⚪ Basic</option>
+                                    <option value="gpu">🟢 Phi 3.1 (GPU)</option>
+                                    <option value="cpu">🟠 Phi 2.0 (CPU)</option>
+                                    <option value="basic">⚪ None (Basic Q&A)</option>
                                 </select>
                             </div>
                             <button class="restart-btn" id="restart-btn" title="Restart conversation"
@@ -78,7 +77,8 @@
                         <div class="message-content">
                             <p class="message-author">Anton</p>
                             <p>Hi! I'm Anton, a basic example of an AI assistant to accompany AI training materials.<br>
-                                I'm <u>not</u> a supported Microsoft product or service, or an official component of Microsoft Learn or AI Skills Navigator.<br>
+                                I'm <u>not</u> a supported Microsoft product or service, or an official component of
+                                Microsoft Learn or AI Skills Navigator.<br>
                                 Ask me about AI concepts, and I'll do my best to provide helpful explanations.</p>
                         </div>
                     </div>
@@ -144,7 +144,7 @@
         </div>
 
         <footer role="contentinfo">
-            <p>Powered by Microsoft Phi-3 on WebLLM, SmolLM2 on wllama, and a Basic knowledge-base mode</p>
+            <p>Powered by Microsoft Phi</p>
         </footer>
     </div>
 
@@ -159,14 +159,15 @@
                     type="button">×</button>
             </div>
             <div class="modal-body" id="about-modal-description">
-                <p><strong>Ask Anton</strong> is a sample AI agent for educational purposes. It is not a supported Microsoft product or service, and is provided as-is with no warranty of any kind.</p>
+                <p><strong>Ask Anton</strong> is a sample AI agent for educational purposes. It is not a supported
+                    Microsoft product or service, and is provided as-is with no warranty of any kind.</p>
                 <p>📋 <a href="https://microsoftlearning.github.io/ai-apps/" target="_blank"
                         rel="noopener noreferrer">Important details and AI transparency notes (opens in new window)</a>
                 </p>
                 <h3>Features</h3>
                 <ul>
                     <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3-mini for fast inference),
-                        CPU mode (wllama with SmolLM2 for broader compatibility), and Basic mode (knowledge-base content
+                        CPU mode (wllama with Phi-2 for broader compatibility), and Basic mode (knowledge-base content
                         without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
@@ -206,7 +207,7 @@
                 <p>GPU mode uses WebLLM with the Phi-3-mini model, which requires <strong>WebGPU support</strong> in
                     your browser for fast, GPU-accelerated inference.</p>
 
-                <p>CPU mode uses wllama with SmolLM2 when GPU mode is unavailable or when you prefer a broader
+                <p>CPU mode uses wllama with Phi-2 when GPU mode is unavailable or when you prefer a broader
                     browser-compatible option. Basic mode skips model inference entirely and returns matching content
                     directly from the built-in knowledge base.</p>
 

@@ -320,13 +320,17 @@
 
                     <p>The app uses AI language models for both GPU and CPU modes. For GPU mode, it uses Microsoft's
                         <strong>Phi-3-mini</strong> via WebLLM (requires WebGPU API and GPU). For CPU mode, it uses
-                        <strong>SmolLM2</strong> via wllama/WebAssembly (works on any device). If WebLLM fails to load,
+                        <strong>Phi-2</strong> via wllama/WebAssembly (works on any device). If WebLLM fails to load,
                         the app automatically falls back to CPU mode. You can switch between modes using the Model
                         dropdown.
                     </p>
 
                     <p>The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement
                         image classification.</p>
+
+                    <p>If GPU and CPU model responses are too slow or become unresponsive on older or lower-spec
+                        computers, switch the Model dropdown to <strong>None</strong> as a last-resort option. This
+                        mode skips local language model inference and uses a lightweight fallback experience.</p>
 
                     <h3>Known issues</h3>
                     <ul>
@@ -339,9 +343,9 @@
                                 target="_blank">edge://flags</a> on Microsoft Edge or <a href="chrome://flags"
                                 style="color: #0078d4; text-decoration: underline;" target="_blank">chrome://flags</a>
                             on Google Chrome. Disable it again when finished!</li>
-                        <li>CPU mode (SmolLM2) response times are slower than GPU mode (Phi-3-mini). SmolLM2 is a
-                            smaller 360M parameter model optimized for browser performance. Use the Model dropdown to
-                            select your preferred mode.</li>
+                        <li>CPU mode (Phi-2) response times are slower than GPU mode (Phi-3-mini). Phi-2 is a larger
+                            model running through WebAssembly, so CPU responses can take noticeably longer. Use the
+                            Model dropdown to select your preferred mode.</li>
                         <li>Image analysis is based on MobileNetV3, which is a general-purpose image classification
                             model. It may not accurately identify all images or provide detailed descriptions.</li>
                         <li>Voice mode depends on browser-support for speech recognition. A

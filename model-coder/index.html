@@ -46,8 +46,16 @@
                 <button id="run-btn" type="button" disabled title="Run Code" aria-label="Run code">&#9654;</button>
                 <button id="stop-btn" type="button" class="secondary" disabled title="Stop Run"
                     aria-label="Stop run">&#9209;</button>
-                <button id="mode-toggle-btn" type="button" class="secondary" disabled title="Toggle GPU/CPU mode"
-                    aria-label="Toggle between GPU and CPU mode" aria-pressed="false">GPU</button>
+                <div class="mode-picker">
+                    <label for="mode-select" class="mode-label" title="Choose mode"
+                        aria-label="Choose AI mode">Mode</label>
+                    <select id="mode-select" class="secondary" disabled title="Choose AI mode"
+                        aria-label="Choose AI mode">
+                        <option value="gpu">GPU (Phi-3)</option>
+                        <option value="cpu">CPU (Phi-2)</option>
+                        <option value="basic">Basic Chat (Wikipedia)</option>
+                    </select>
+                </div>
                 <button id="reset-layout-btn" type="button" class="secondary" title="Reset layout"
                     aria-label="Reset pane layout">&#127529;</button>
                 <button id="theme-btn" type="button" class="secondary" title="Theme" aria-label="Toggle color theme"
@@ -113,23 +121,21 @@
                     It lets you experiment with prompts, responses, streaming, and async patterns in a safe environment.
                 </p>
                 <p>
-                    The app runs entirely in your browser using PyScript for Python execution and supports dual-mode inference:
-                </p>
-                <ul>
-                    <li><strong>GPU Mode (WebGPU):</strong> Uses Phi-3-mini-4k-instruct for faster inference on supported GPUs</li>
-                    <li><strong>CPU Mode (wllama):</strong> Uses SmolLM2-360M-Instruct for CPU-only environments</li>
-                </ul>
-                <p>
-                    Toggle between modes using the GPU/CPU button in the toolbar. No prompts, code, or output are sent to external services.
+                    The app runs entirely in your browser using PyScript for Python execution and a local model.
                 </p>
                 <p>
-                    Use the following parameters in your code to connect to the local inference engine:
-                </p>
+                    Use the following parameters to connect to your local model:
                 <ul>
-                    <li><strong>base_url</strong> (the OpenAI-compatible endpoint): <code>https://local/openai</code></li>
-                    <li><strong>api_key</strong> (the authentication key): <code>key123</code></li>
-                    <li><strong>model</strong> (the model name): <code>local-llm</code></li>
+                    <li><strong>base_url</strong> (the endpoint for your local model instance):
+                        <code>https://local/openai</code>
+                    </li>
+                    <li><strong>api_key</strong> (the authentication key for your local model instance):
+                        <code>key123</code>
+                    </li>
+                    <li><strong>model</strong> (the name of the model deployment): <code>local-llm</code></li>
                 </ul>
+
+                </p>
                 <p>
                     Prompts are filtered locally using a moderation word list. If a blocked term is detected,
                     the app returns: <code>I'm sorry. I can't help with that.</code>.

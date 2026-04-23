@@ -12,7 +12,7 @@ This document describes the current implementation and gives a code-trace map fo
 - `app.js`
   - Main UI/runtime controller: template loading, run lifecycle, terminal runner creation, run-id sync, theme/modal behavior, and accessibility helpers.
 - `llm.js`
-  - Local model runtime wrapper supporting dual-mode operation: WebLLM (Phi-3-mini on GPU) with automatic fallback to wllama (SmolLM2 on CPU). Handles initialization, WebGPU detection, request translation to ChatML, streaming chunk queues, session reset/hard reset.
+  - Local model runtime wrapper supporting dual-mode operation: WebLLM (Phi-3-mini on GPU) with automatic fallback to wllama (Phi-2 on CPU). Handles initialization, WebGPU detection, request translation to ChatML, streaming chunk queues, session reset/hard reset.
 - `nopenai.py`
   - Python OpenAI-compatible wrapper used inside PyScript execution, including sync/async APIs and bridge invocation logic.
 - `coi-serviceworker.js`
@@ -173,14 +173,14 @@ This wrapper applies to all user-authored code, not only built-in samples.
 
 ### 7.1 Initialization and stability settings
 
-`_loadModel()` uses:
+`_loadWllamaModel()` uses:
 
-- model: `ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF`
-- file: `smollm2-360m-instruct-q8_0.gguf`
-- `n_ctx: 2048`
-- `n_threads: 1`
+- model: `Felladrin/gguf-sharded-phi-2-orange-v2`
+- file: `phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf`
+- `n_ctx: 384`
+- `n_threads`: dynamic (`max(1, hardwareConcurrency - 2)` when cross-origin isolated; fallback to `1`)
 
-`WASM_PATHS` currently maps both single-thread and multi-thread keys to single-thread wasm for stability.
+`WASM_PATHS` maps single-thread and multi-thread keys to their matching wasm paths.
 
 ### 7.2 Request handling
 

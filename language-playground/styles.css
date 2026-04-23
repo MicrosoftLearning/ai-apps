@@ -121,20 +121,6 @@ body.dark {
 
 /* Dark mode uses CSS variables, no overrides needed */
 
-.model-toggle-wrap {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--muted);
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-.model-label {
-    min-width: 35px;
-    text-align: center;
-}
-
 @keyframes pulse {
 
     0%,

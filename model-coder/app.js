@@ -4,7 +4,7 @@ const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
 const runBtn = document.getElementById("run-btn");
 const stopBtn = document.getElementById("stop-btn");
-const modeToggleBtn = document.getElementById("mode-toggle-btn");
+const modeSelect = document.getElementById("mode-select");
 const retryBtn = document.getElementById("retry-btn");
 const themeBtn = document.getElementById("theme-btn");
 const aboutBtn = document.getElementById("about-btn");
@@ -408,8 +408,8 @@ const state = {
     activeRunId: 0,
     aboutReturnFocus: null,
     switchingTemplate: false,
-    gpuModeAvailable: false,  // Track if GPU mode is available
-    currentlyUsingGPU: false,  // Track current mode
+    availableModes: { gpu: false, cpu: true, basic: true },
+    currentMode: "basic",
     switchingMode: false,  // Track if we're switching modes
 };
 
@@ -652,6 +652,12 @@ function isAppReady() {
 function updateRunState() {
     const appReady = isAppReady();
 
+    if (appReady) {
+        syncModeStateFromRuntime();
+    }
+
+    updateModeSelectDropdown();
+
     if (templateSelect) {
         templateSelect.disabled = !appReady || state.switchingTemplate;
     }
@@ -672,9 +678,8 @@ function updateRunState() {
         retryBtn.disabled = !state.pyReady || appReady || state.running || state.sessionActive;
     }
 
-    if (modeToggleBtn) {
-        // Enable mode toggle only when app is ready, GPU is available, and not switching modes
-        modeToggleBtn.disabled = !appReady || !state.gpuModeAvailable || state.switchingMode || state.running || state.sessionActive;
+    if (modeSelect) {
+        modeSelect.disabled = !appReady || state.switchingMode || state.running || state.sessionActive;
     }
 
     if (topbarControls) {
@@ -704,6 +709,36 @@ function getEditor() {
 
 function getTerminal() {
     return document.getElementById("python-terminal");
+}
+
+function normalizeMode(modeValue) {
+    const value = String(modeValue || "").toLowerCase();
+    if (value === "gpu" || value === "cpu" || value === "basic") {
+        return value;
+    }
+    return "basic";
+}
+
+function syncModeStateFromRuntime() {
+    if (typeof window.modelCoderGetAvailableModes === "function") {
+        const availableModes = window.modelCoderGetAvailableModes();
+        if (availableModes && typeof availableModes === "object") {
+            state.availableModes = {
+                gpu: Boolean(availableModes.gpu),
+                cpu: Boolean(availableModes.cpu),
+                basic: true
+            };
+        }
+    }
+
+    if (typeof window.modelCoderGetCurrentMode === "function") {
+        state.currentMode = normalizeMode(window.modelCoderGetCurrentMode());
+        return;
+    }
+
+    if (typeof window.modelCoderIsUsingCPUMode === "function") {
+        state.currentMode = window.modelCoderIsUsingCPUMode() ? "cpu" : "gpu";
+    }
 }
 
 function getActiveTerminalInstance() {
@@ -1134,27 +1169,13 @@ async function loadSelectedTemplate() {
         if (templateChanged) {
             clearTerminalOutput({ resetModel: false });
 
-            // In GPU mode (WebLLM/Phi-3), just clear conversation history (soft reset)
-            // In CPU mode (wllama/SmolLM2), reload the model (hard reset)
-            const isUsingCPUMode = typeof window.modelCoderIsUsingCPUMode === "function"
-                ? window.modelCoderIsUsingCPUMode()
-                : true; // Default to CPU mode behavior if function not available
+            // Both GPU mode (WebLLM/Phi-3) and CPU mode (wllama/Phi-2) now use soft reset.
+            // Phi-2 is stable enough to avoid expensive model reloads; just clear conversation history and cache.
+            // This was a workaround for SmolLM2's behavior issues and is no longer needed.
+            console.log(`Template switching: soft reset (clear conversation history and cache)`);
 
-            console.log(`Template switching: ${isUsingCPUMode ? 'CPU mode - hard reset (reload model)' : 'GPU mode - soft reset (clear conversation only)'}`);
-
-            if (isUsingCPUMode) {
-                // Hard reset without auto-reinit, then reinitialize in CPU mode to preserve mode
-                await requestModelSessionReset({ hard: true, skipReinit: true });
-                if (typeof window.modelCoderInitWithMode === "function") {
-                    await window.modelCoderInitWithMode('cpu', 3);
-                } else {
-                    // Fallback if new function not available
-                    await window.modelCoderInit(3);
-                }
-            } else {
-                // GPU mode: just soft reset
-                await requestModelSessionReset({ hard: false });
-            }
+            // Soft reset clears conversation history and KV cache without unloading the model
+            await requestModelSessionReset({ hard: false });
         }
 
         const ok = setEditorCode(snippet);
@@ -1296,10 +1317,11 @@ function enableEditorEscapeToTabOut() {
     document.body.dataset.editorEscapeFocusBound = "true";
 }
 
-function buildExecutionCode(userCode, runId) {
+function buildExecutionCode(userCode, runId, isCPUMode) {
     const serializedNopenai = JSON.stringify(state.nopenaiSource || "");
     const serializedUserCode = JSON.stringify(String(userCode || ""));
     const serializedRunId = Number.isFinite(runId) ? runId : -1;
+    const readyMessage = "Model Coder ready. Running script..." + (isCPUMode ? " (responses in CPU mode may be slow)" : "");
     return `
 import sys
 import types
@@ -1352,7 +1374,7 @@ builtins.input = __modelcoder_input
 globals()["__name__"] = "__main__"
 __user_code = ${serializedUserCode}
 __run_id = ${serializedRunId}
-print("Model Coder ready. Running script...")
+print(${JSON.stringify(readyMessage)})
 try:
     exec(__user_code, globals())
 finally:
@@ -1396,7 +1418,13 @@ async function runCurrentCode() {
         state.activeRunId = runId;
         syncActiveRunId();
         state.sessionActive = true;
-        launchTerminalScript(buildExecutionCode(code, runId), runId);
+
+        // Resolve the active mode from runtime right before execution so CPU warning stays accurate.
+        syncModeStateFromRuntime();
+        const isCPUMode = normalizeMode(state.currentMode) === "cpu";
+
+        updateModeSelectDropdown();
+        launchTerminalScript(buildExecutionCode(code, runId, isCPUMode), runId);
     } catch (error) {
         const msg = JSON.stringify(`Execution failed: ${String(error.message || error)}`);
         const runId = state.activeRunId + 1;
@@ -1420,18 +1448,8 @@ async function initializeModel() {
         await window.modelCoderInit(3);
         state.modelReady = true;
 
-        // Check if GPU mode is available and update state
-        if (typeof window.modelCoderIsUsingCPUMode === "function") {
-            const isUsingCPU = window.modelCoderIsUsingCPUMode();
-            state.currentlyUsingGPU = !isUsingCPU;
-
-            // If we got GPU mode, GPU is available
-            if (!isUsingCPU) {
-                state.gpuModeAvailable = true;
-            }
-        }
-
-        updateModeToggleButton();
+        syncModeStateFromRuntime();
+        updateModeSelectDropdown();
         // Status message is set by the status listener callback
     } catch (error) {
         setPill(statusModel, `Model failed: ${error.message}`, "error");
@@ -1441,27 +1459,60 @@ async function initializeModel() {
     updateRunState();
 }
 
-function updateModeToggleButton() {
-    if (!modeToggleBtn) {
+function updateModeSelectDropdown() {
+    const appReady = isAppReady();
+
+    if (!modeSelect) {
         return;
     }
 
-    // Update button text and state
-    if (state.currentlyUsingGPU) {
-        modeToggleBtn.textContent = "GPU";
-        modeToggleBtn.title = "Using GPU mode (Phi-3). Click to switch to CPU mode (SmolLM2)";
-        modeToggleBtn.setAttribute("aria-pressed", "true");
-    } else {
-        modeToggleBtn.textContent = "CPU";
-        modeToggleBtn.title = state.gpuModeAvailable
-            ? "Using CPU mode (SmolLM2). Click to switch to GPU mode (Phi-3)"
-            : "GPU mode not available";
-        modeToggleBtn.setAttribute("aria-pressed", "false");
+    modeSelect.value = normalizeMode(state.currentMode);
+
+    const gpuOption = modeSelect.querySelector('option[value="gpu"]');
+    const cpuOption = modeSelect.querySelector('option[value="cpu"]');
+    const basicOption = modeSelect.querySelector('option[value="basic"]');
+
+    if (gpuOption) {
+        const enabled = Boolean(state.availableModes?.gpu);
+        gpuOption.disabled = !enabled;
+        gpuOption.textContent = enabled ? "GPU (Phi-3)" : "GPU (unavailable)";
     }
+
+    if (cpuOption) {
+        const enabled = Boolean(state.availableModes?.cpu);
+        cpuOption.disabled = !enabled;
+        cpuOption.textContent = enabled ? "CPU (Phi-2)" : "CPU (unavailable)";
+    }
+
+    if (basicOption) {
+        basicOption.disabled = false;
+        basicOption.textContent = "Basic Chat (Wikipedia)";
+    }
+
+    const modeLabel =
+        state.currentMode === "gpu"
+            ? "GPU (Phi-3)"
+            : state.currentMode === "cpu"
+                ? "CPU (Phi-2)"
+                : "Basic Chat (Wikipedia)";
+    modeSelect.title = `AI mode: ${modeLabel}`;
+    modeSelect.setAttribute("aria-label", `Select AI mode. Currently: ${modeLabel}`);
+
 }
 
-async function toggleMode() {
-    if (!state.gpuModeAvailable || state.switchingMode || !state.modelReady) {
+async function switchMode(targetMode) {
+    const normalizedTarget = normalizeMode(targetMode);
+    if (state.switchingMode || !state.modelReady) {
+        return;
+    }
+
+    if (normalizedTarget !== "basic" && !state.availableModes?.[normalizedTarget]) {
+        updateModeSelectDropdown();
+        return;
+    }
+
+    if (normalizedTarget === normalizeMode(state.currentMode)) {
+        updateModeSelectDropdown();
         return;
     }
 
@@ -1469,8 +1520,7 @@ async function toggleMode() {
     updateRunState();
 
     try {
-        const targetMode = state.currentlyUsingGPU ? 'cpu' : 'gpu';
-        console.log(`[Mode Toggle] Switching from ${state.currentlyUsingGPU ? 'GPU' : 'CPU'} to ${targetMode.toUpperCase()} mode`);
+        console.log(`[Mode Select] Switching from ${state.currentMode.toUpperCase()} to ${normalizedTarget.toUpperCase()} mode`);
 
         // Clear terminal and reset model with hard reset but skip auto-reinit
         clearTerminalOutput({ resetModel: false });
@@ -1478,25 +1528,27 @@ async function toggleMode() {
 
         // Re-initialize with the target mode
         if (typeof window.modelCoderInitWithMode === "function") {
-            console.log(`[Mode Toggle] Initializing with mode: ${targetMode}`);
-            await window.modelCoderInitWithMode(targetMode, 3);
+            console.log(`[Mode Select] Initializing with mode: ${normalizedTarget}`);
+            await window.modelCoderInitWithMode(normalizedTarget, 3);
         } else {
             // Fallback to regular init if new function not available
-            console.warn('[Mode Toggle] modelCoderInitWithMode not available, using regular init');
+            console.warn("[Mode Select] modelCoderInitWithMode not available, using regular init");
             await window.modelCoderInit(3);
         }
 
-        // Update state
-        if (typeof window.modelCoderIsUsingCPUMode === "function") {
-            const isUsingCPU = window.modelCoderIsUsingCPUMode();
-            state.currentlyUsingGPU = !isUsingCPU;
-            console.log(`[Mode Toggle] Successfully switched to ${state.currentlyUsingGPU ? 'GPU' : 'CPU'} mode`);
+        syncModeStateFromRuntime();
+        if (!state.currentMode) {
+            state.currentMode = normalizedTarget;
         }
 
-        updateModeToggleButton();
+        console.log(`[Mode Select] Switched to ${state.currentMode.toUpperCase()} mode`);
+        updateModeSelectDropdown();
     } catch (error) {
-        console.error("[Mode Toggle] Failed to switch mode:", error);
+        console.error("[Mode Select] Failed to switch mode:", error);
         setPill(statusModel, `Mode switch failed: ${error.message}`, "error");
+
+        syncModeStateFromRuntime();
+        updateModeSelectDropdown();
     } finally {
         state.switchingMode = false;
         updateRunState();
@@ -1511,10 +1563,15 @@ async function initializeApp() {
     window.modelCoderSetStatusListener(({ kind, message }) => {
         if (kind === "ready") {
             setPill(statusModel, message, "ready");
+            syncModeStateFromRuntime();
+            updateModeSelectDropdown();
+            updateRunState();
             return;
         }
         if (kind === "error") {
             setPill(statusModel, message, "error");
+            syncModeStateFromRuntime();
+            updateModeSelectDropdown();
             return;
         }
         setPill(statusModel, message);
@@ -1542,8 +1599,28 @@ async function initializeApp() {
         });
     }
     retryBtn.addEventListener("click", initializeModel);
-    if (modeToggleBtn) {
-        modeToggleBtn.addEventListener("click", toggleMode);
+    if (modeSelect) {
+        modeSelect.addEventListener("change", (event) => {
+            // Read the chosen value before any state sync can overwrite modeSelect.value.
+            const selectedMode = normalizeMode(event.target?.value);
+
+            // Refresh availability from the runtime so the check below is accurate.
+            syncModeStateFromRuntime();
+
+            // Hard gate: if the option is disabled in the DOM, reject the selection
+            // immediately and restore the current mode without attempting a switch.
+            const selectedOption = modeSelect.querySelector(`option[value="${selectedMode}"]`);
+            const isDisabledInDOM = Boolean(selectedOption?.disabled);
+            const isUnavailableInState = selectedMode !== "basic" && !state.availableModes?.[selectedMode];
+
+            if (isDisabledInDOM || isUnavailableInState) {
+                modeSelect.value = normalizeMode(state.currentMode);
+                updateModeSelectDropdown();
+                return;
+            }
+
+            void switchMode(selectedMode);
+        });
     }
     if (templateSelect) {
         templateSelect.addEventListener("change", () => {
