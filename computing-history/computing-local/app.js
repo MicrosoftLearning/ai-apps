@@ -1824,8 +1824,8 @@ async function generateWithWllama(query) {
             nPredict: 200,
             sampling: {
                 temp: 0.1,
-                top_k: 20,
-                top_p: 0.85,
+                top_k: 40,
+                top_p: 0.9,
                 penalty_repeat: 1.1
             },
             stopTokens: ['<|im_end|>', '<|im_start|>'],
@@ -2617,7 +2617,31 @@ function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
 
-        console.log('Conversation restarted');
+        // Clear conversation history (browser-side cache)
+        conversationHistory = [];
+
+        // In CPU mode, fully reload SmolLM2 so restart begins with a fresh model session.
+        if (currentMode === 'cpu' && availableModes.cpu) {
+            try {
+                await initWllama(null, { forceReload: true });
+                console.log('SmolLM2 model reloaded after restart');
+            } catch (error) {
+                console.error('Failed to reload SmolLM2 after restart:', error);
+                addMessage('Could not reload CPU model after restart. Try switching modes and back to CPU.', 'bot');
+            }
+        } else if (wllama && wllamaReady) {
+            // Non-CPU restarts only need cache clear when a CPU model exists in memory.
+            try {
+                await wllama.kvClear();
+                console.log('Wllama KV cache cleared');
+            } catch (error) {
+                // Silently ignore - kvClear can throw harmless warnings
+                console.debug('KV cache clear warning (harmless):', error);
+            }
+        }
+
+        // Note: WebLLM doesn't maintain persistent state across messages in the same way,
+        // so we just clear the conversation history array
     }
 }
 
