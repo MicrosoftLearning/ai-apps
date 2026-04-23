@@ -143,7 +143,7 @@ function buildClassInfoPrompt(classIndex) {
         return null;
     }
 
-    return `Tell me about the ${className} computer using ONLY the following information:\nINFORMATION:\n---\n${classInfo}\n---\nProvide a concise summary in 2-3 sentences. Do not add any details that are not in the provided information`;
+    return `Provide a concise paragraph describing the ${className} computer using the following information:\nINFORMATION:\n---\n${classInfo}\n---`;
 }
 
 /**
@@ -440,19 +440,27 @@ async function loadModel() {
  * Initializes the Wllama language model for CPU mode text generation
  * @throws {Error} If Wllama initialization fails
  */
-async function initWllama(progressCallback = null) {
+async function initWllama(progressCallback = null, options = {}) {
     try {
+        const { forceReload = false } = options;
+
         // Check if already initialized
-        if (wllama) {
+        if (wllama && !forceReload) {
             console.log('Wllama already initialized');
             return;
+        }
+
+        if (forceReload) {
+            // Reset instance so loadModelFromHF runs again and starts a fresh session.
+            wllama = null;
+            wllamaReady = false;
         }
 
         const isLazyLoad = webGPUAvailable; // If WebGPU is available, this is a lazy load
 
         if (!isLazyLoad) {
             console.log("Initializing wllama...");
-            updateModelName('SmolLM2-360M (CPU)');
+            updateModelName('Phi-2 (CPU)');
             updateLoadingStatus('smollm', 'loading', '10%');
         }
 
@@ -475,10 +483,11 @@ async function initWllama(progressCallback = null) {
             }
         };
 
-        // Try multithreaded (4 threads) first, fall back to single-threaded
+        // Try multithreaded first if cross-origin isolated, fall back to single-threaded
         const useMultiThread = window.crossOriginIsolated === true;
-        const preferredThreads = useMultiThread ? 4 : 1;
-        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
+        const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+        const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+        console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
         try {
             wllama = new Wllama(CONFIG_PATHS);
@@ -487,15 +496,20 @@ async function initWllama(progressCallback = null) {
             }
 
             await wllama.loadModelFromHF(
-                'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                'smollm2-360m-instruct-q8_0.gguf',
+                'Felladrin/gguf-sharded-phi-2-orange-v2',
+                'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                 {
-                    n_ctx: 768,
+                    n_ctx: 384,
                     n_threads: preferredThreads,
                     progressCallback: internalProgressCallback
                 }
             );
             console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+
+            // Warm the cache with system instruction (only on initial load, not on restart)
+            if (!forceReload) {
+                await warmWllamaCache(isLazyLoad, progressCallback);
+            }
         } catch (multiErr) {
             if (preferredThreads > 1) {
                 console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
@@ -505,15 +519,20 @@ async function initWllama(progressCallback = null) {
 
                 wllama = new Wllama(CONFIG_PATHS);
                 await wllama.loadModelFromHF(
-                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                    'smollm2-360m-instruct-q8_0.gguf',
+                    'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                     {
-                        n_ctx: 768,
+                        n_ctx: 384,
                         n_threads: 1,
                         progressCallback: internalProgressCallback
                     }
                 );
                 console.log("Wllama initialized successfully with 1 thread (fallback)");
+
+                // Warm the cache with system instruction (only on initial load, not on restart)
+                if (!forceReload) {
+                    await warmWllamaCache(isLazyLoad, progressCallback);
+                }
             } else {
                 throw multiErr;
             }
@@ -530,6 +549,61 @@ async function initWllama(progressCallback = null) {
         }
         wllamaReady = false;
         throw error;
+    }
+}
+
+/**
+ * Warms the wllama cache with system instruction to improve first response time
+ * @param {boolean} isLazyLoad - Whether this is a lazy load
+ * @param {Function} progressCallback - Optional callback for progress updates
+ */
+async function warmWllamaCache(isLazyLoad = true, progressCallback = null) {
+    if (!wllama) return;
+
+    try {
+        const systemInstruction = '<|im_start|>system\n' +
+            'You are a knowledgeable assistant about computing history. You provide factually correct answers.\n' +
+            '<|im_end|>';
+
+        console.log('Warming cache with system instruction...');
+
+        // Update progress message
+        if (!isLazyLoad) {
+            updateLoadingStatus('smollm', 'loading', '99%');
+            const statusTextElement = document.getElementById('smollmStatusText');
+            if (statusTextElement) {
+                statusTextElement.textContent = 'Optimizing model...';
+            }
+        } else if (progressCallback) {
+            // For lazy loading, pass progress as 0.99
+            progressCallback(0.99);
+        }
+
+        await wllama.createCompletion(systemInstruction, {
+            nPredict: 1,
+            sampling: {
+                temp: 0.0
+            }
+        });
+        console.log('Cache warmed successfully');
+
+        // Restore model name after optimization
+        if (!isLazyLoad) {
+            const statusTextElement = document.getElementById('smollmStatusText');
+            if (statusTextElement) {
+                statusTextElement.textContent = 'Phi-2 (CPU)';
+            }
+        }
+    } catch (error) {
+        console.log('Cache warming failed (non-critical):', error.message);
+
+        // Restore model name even if cache warming failed
+        if (!isLazyLoad) {
+            const statusTextElement = document.getElementById('smollmStatusText');
+            if (statusTextElement) {
+                statusTextElement.textContent = 'Phi-2 (CPU)';
+            }
+        }
     }
 }
 
@@ -600,8 +674,8 @@ function hideLoadingOverlay() {
 function setBubbleContent(bubble, text) {
     if (typeof DOMPurify !== 'undefined') {
         bubble.innerHTML = DOMPurify.sanitize(text, {
-            ALLOWED_TAGS: ['b', 'i', 'br', 'small', 'a'],
-            ALLOWED_ATTR: ['href', 'target', 'style'],
+            ALLOWED_TAGS: ['b', 'i', 'br', 'small', 'a', 'div', 'p'],
+            ALLOWED_ATTR: ['href', 'target', 'style', 'class'],
             ALLOW_DATA_ATTR: false
         });
     } else {
@@ -778,13 +852,27 @@ function showTyping() {
     const div = document.createElement('div');
     div.id = 'typing-indicator';
     div.className = 'message bot';
-    div.innerHTML = `
-        <div class="typing">
-            <div class="dot"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
-        </div>
-    `;
+
+    // Add CPU mode patience message if in CPU mode
+    if (currentMode === 'cpu') {
+        div.innerHTML = `
+            <div class="typing">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>
+        `;
+    } else {
+        div.innerHTML = `
+            <div class="typing">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        `;
+    }
+
     chatContainer.appendChild(div);
     scrollToBottom();
 
@@ -1435,7 +1523,6 @@ async function performClassification(imgEl, userText = "") {
         // Standard prediction message for all other classes
         const confidence = (topMatch.probability * 100).toFixed(1);
         let reply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
-        let hasGeneratedInfoSummary = false;
 
         // Add secondary guess if close
         if (result[1] && result[1].probability > 0.1) {
@@ -1455,20 +1542,34 @@ async function performClassification(imgEl, userText = "") {
             if ([0, 1, 2, 3].includes(classIndex)) {
                 // For GPU mode with streaming, add message and stream into it
                 if (currentMode === 'gpu' && webGPUAvailable && engine) {
-                    const { bubble } = addMessage(reply, "bot", null, { deferCompletion: true });
+                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
                     startResponse();
 
                     try {
+                        // Step 1: Type the classification message slowly
+                        await typeTextInBubble(bubble, reply, 30);
+
+                        if (checkStopResponse()) {
+                            return;
+                        }
+
+                        // Step 2: Add "I'm researching details..." and thinking dots
+                        const researchingMessage = reply + '<br><br>I\'m researching details...<br><br>' +
+                            '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+                        setBubbleContent(bubble, researchingMessage);
+                        scrollToBottom();
+
                         const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
                         const infoPrompt = buildClassInfoPrompt(classIndex);
                         const modelQuery = infoPrompt || topMatch.className;
                         console.log('[Image Classification] Sending query to model:', modelQuery);
 
+                        // Step 3: Stream the response, replacing the researching message and dots
                         let streamedText = '';
                         const summary = await generateComputingInfo(modelQuery, (chunk) => {
                             if (bubble && chunk) {
                                 streamedText += chunk;
-                                setBubbleContent(bubble, reply + `<br>` + escapeHtml(streamedText));
+                                setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(streamedText));
                                 scrollToBottom();
                             }
                         });
@@ -1501,22 +1602,48 @@ async function performClassification(imgEl, userText = "") {
                     return; // Exit early since we already added the message
                 } else {
                     // CPU and Basic modes - use non-streaming approach
-                    showTyping();
+                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                    startResponse();
+
                     try {
+                        // Step 1: Type the classification message slowly
+                        await typeTextInBubble(bubble, reply, 30);
+
+                        if (checkStopResponse()) {
+                            return;
+                        }
+
+                        // Step 2: Add "I'm researching details..." and thinking dots (with CPU patience message if CPU mode)
+                        let researchingMessage = reply + '<br><br>I\'m researching details...<br><br>' +
+                            '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+
+                        if (currentMode === 'cpu') {
+                            researchingMessage += '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+                        }
+
+                        setBubbleContent(bubble, researchingMessage);
+                        scrollToBottom();
+
                         const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
                         const infoPrompt = buildClassInfoPrompt(classIndex);
                         const modelQuery = currentMode === 'basic'
                             ? topMatch.className
                             : (infoPrompt || topMatch.className);
                         console.log('[Image Classification] Sending query to model:', modelQuery);
+
+                        // Step 3: Generate the response
                         const summary = await generateComputingInfo(modelQuery);
+
                         if (checkStopResponse()) {
-                            removeTyping();
                             return;
                         }
+
                         if (summary) {
-                            reply += `<br>${escapeHtml(summary)}`;
-                            hasGeneratedInfoSummary = true;
+                            // Step 4: Replace researching message with the actual response
+                            const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
+                            setBubbleContent(bubble, finalMessage);
+                            scrollToBottom();
+
                             conversationHistory.push({
                                 user: historyUserPrompt,
                                 assistant: truncateToFirstSentence(summary)
@@ -1525,11 +1652,19 @@ async function performClassification(imgEl, userText = "") {
                                 conversationHistory.shift();
                             }
                         }
+
+                        // Handle voice output if needed
+                        if (isVoiceInput) {
+                            speakText(bubble);
+                            isVoiceInput = false;
+                        } else {
+                            endResponse();
+                        }
                     } catch (e) {
                         console.warn("Info generation failed", e);
-                    } finally {
-                        removeTyping();
+                        endResponse();
                     }
+                    return; // Exit early since we already added the message
                 }
             }
 
@@ -1537,26 +1672,6 @@ async function performClassification(imgEl, userText = "") {
             if (classIndex === 4) {
                 reply += `<br><br>Unfortunately, I'm not sure what kind of computer this is.`;
             }
-        }
-
-        // Match text response behavior for CPU/Basic when generated info is included.
-        if ([0, 1, 2, 3].includes(classIndex) && hasGeneratedInfoSummary && (currentMode === 'cpu' || currentMode === 'basic')) {
-            const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
-            startResponse();
-
-            if (isVoiceInput) {
-                const tempEl = document.createElement('div');
-                tempEl.innerHTML = reply;
-                const plainText = (tempEl.textContent || '').replace(/\s+/g, ' ').trim();
-                speakTextContent(plainText);
-                isVoiceInput = false;
-            }
-
-            await typeTextInBubble(bubble, reply, 20);
-
-            if (checkStopResponse()) return;
-            endResponse();
-            return;
         }
 
         addMessage(reply, "bot");
@@ -1676,12 +1791,8 @@ async function generateWithWllama(query) {
     try {
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\n';
-        chatMLPrompt += 'Rules:\n';
-        chatMLPrompt += '- You may discuss computing and technology topics only\n';
-        chatMLPrompt += '- Respond with one or two clear sentences, using simple language\n';
-        chatMLPrompt += '- Focus on key facts and historical context\n';
-        chatMLPrompt += '- You must not provide assistance with activities that are illegal or may cause harm\n';
+        chatMLPrompt += 'You are a knowledgeable assistant about computing history.\n';
+        chatMLPrompt += 'Discuss computing and technology topics only.\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Include conversation history for context (last 2 exchanges)
@@ -1698,7 +1809,7 @@ async function generateWithWllama(query) {
 
         // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n' + "Provide a concise and factually accurate response.\n";
+        chatMLPrompt += query + '\n(Respond with one or two clear sentences, using simple language.)\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
@@ -1710,11 +1821,11 @@ async function generateWithWllama(query) {
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion(chatMLPrompt, {
-            nPredict: 250,
+            nPredict: 200,
             sampling: {
-                temp: 0.3,
-                top_k: 40,
-                top_p: 0.9,
+                temp: 0.1,
+                top_k: 20,
+                top_p: 0.85,
                 penalty_repeat: 1.1
             },
             stopTokens: ['<|im_end|>', '<|im_start|>'],
@@ -1946,23 +2057,29 @@ function selectMode() {
             sendBtn.disabled = true;
             textInput.disabled = true;
             micBtn.disabled = true;
+            uploadBtn.disabled = true;
             const loadingMsg = addMessage('Switching to CPU mode - loading model... 0%', 'bot');
             const loadingBubble = loadingMsg.bubble;
 
             initWllama((progress) => {
                 if (loadingBubble) {
                     const percentage = Math.round(progress * 100);
-                    setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
+                    if (percentage >= 99) {
+                        setBubbleContent(loadingBubble, 'Switching to CPU mode - optimizing model...');
+                    } else {
+                        setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
+                    }
                 }
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to CPU mode (SmolLM2)');
+                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
                 textInput.disabled = false;
                 micBtn.disabled = false;
+                uploadBtn.disabled = false;
                 updateModeSelect();
             }).catch(error => {
                 console.error('Failed to load wllama:', error);
@@ -1983,12 +2100,62 @@ function selectMode() {
                 sendBtn.disabled = false;
                 textInput.disabled = false;
                 micBtn.disabled = false;
+                uploadBtn.disabled = false;
                 updateModeSelect();
             });
             return;
         }
+
+        // Model is loaded, but verify it's ready before enabling input
+        if (!wllamaReady) {
+            // Disable input while we wait for model to be ready
+            modeSelect.disabled = true;
+            sendBtn.disabled = true;
+            textInput.disabled = true;
+            micBtn.disabled = true;
+            uploadBtn.disabled = true;
+            const loadingMsg = addMessage('Switching to CPU mode - preparing model...', 'bot');
+            const loadingBubble = loadingMsg.bubble;
+
+            // Poll for readiness (should be quick since model is already loaded)
+            const checkReady = setInterval(() => {
+                if (wllamaReady) {
+                    clearInterval(checkReady);
+                    currentMode = 'cpu';
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
+                    }
+                    modeSelect.disabled = false;
+                    sendBtn.disabled = false;
+                    textInput.disabled = false;
+                    micBtn.disabled = false;
+                    uploadBtn.disabled = false;
+                    updateModeSelect();
+                }
+            }, 100);
+
+            // Timeout after 5 seconds if model doesn't become ready
+            setTimeout(() => {
+                if (!wllamaReady) {
+                    clearInterval(checkReady);
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'CPU mode unavailable - model not ready');
+                    }
+                    availableModes.cpu = false;
+                    currentMode = availableModes.gpu ? 'gpu' : 'basic';
+                    modeSelect.disabled = false;
+                    sendBtn.disabled = false;
+                    textInput.disabled = false;
+                    micBtn.disabled = false;
+                    uploadBtn.disabled = false;
+                    updateModeSelect();
+                }
+            }, 5000);
+            return;
+        }
+
         currentMode = 'cpu';
-        addMessage('Switched to CPU mode (SmolLM2)', 'bot');
+        addMessage('Switched to CPU mode (Phi 2)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2019,7 +2186,7 @@ function updateModeSelect() {
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟠 CPU (SmolLM2)' : '⚫ CPU (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 2)' : '⚫ CPU (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
@@ -2027,7 +2194,7 @@ function updateModeSelect() {
 
     // Update tooltip to reflect current mode
     const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
-        : currentMode === 'cpu' ? 'CPU (SmolLM2)'
+        : currentMode === 'cpu' ? 'CPU (Phi 2)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
@@ -2433,12 +2600,15 @@ function handleStopResponse() {
 /**
  * Restarts the conversation by clearing chat history and state
  */
-async function restartConversation() {
+function restartConversation() {
     if (confirm('Are you sure you want to clear the conversation history?')) {
         // Stop any ongoing response
         handleStopResponse();
 
-        // Clear the chat UI
+        // Clear conversation history
+        conversationHistory = [];
+
+        // Clear the chat UI (keep welcome message)
         chatContainer.innerHTML = '<div class="welcome-message">Let\'s chat about computing history...</div>';
 
         // Remove any selected image
@@ -2447,22 +2617,7 @@ async function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
 
-        // Clear conversation history (browser-side cache)
-        conversationHistory = [];
-
-        // Clear model's KV cache for Wllama
-        if (wllama && wllamaReady) {
-            try {
-                await wllama.kvClear();
-                console.log('Wllama KV cache cleared');
-            } catch (error) {
-                // Silently ignore - kvClear can throw harmless warnings
-                console.debug('KV cache clear warning (harmless):', error);
-            }
-        }
-
-        // Note: WebLLM doesn't maintain persistent state across messages in the same way,
-        // so we just clear the conversation history array
+        console.log('Conversation restarted');
     }
 }
 
