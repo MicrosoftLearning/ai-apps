@@ -43,9 +43,9 @@ The **Azk Anton** and Azure-based **Computing History** apps use a model that yo
 
 #### Local (in-browser) LLMs
 
-Some apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). No additional training or fine-tuning has been performed on the model. You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
+Some apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
 
-In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [smollm2](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
+In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [Phi 2](https://huggingface.co/microsoft/phi-2) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
 
 All in-browser LLM-based apps include a *minimal* content moderation solution in which the app validates input for common potentially offensive or harmful terms, and returns an appropriate message without submitting the prompt to the model. In some cases, legitimately non-offensive and non-harmful prompts may be blocked by this mechanism.
 

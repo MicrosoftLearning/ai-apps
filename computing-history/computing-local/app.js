@@ -1791,7 +1791,7 @@ async function generateWithWllama(query) {
     try {
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are a knowledgeable assistant about computing history.\n';
+        chatMLPrompt += 'You are a knowledgeable assistant about computing history facts.\n';
         chatMLPrompt += 'Discuss computing and technology topics only.\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
@@ -1809,7 +1809,7 @@ async function generateWithWllama(query) {
 
         // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n(Respond with one or two clear sentences, using simple language.)\n';
+        chatMLPrompt += query + '\n(Respond with one or two factually accurate sentences)\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
