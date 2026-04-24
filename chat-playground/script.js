@@ -2065,7 +2065,9 @@ class ChatPlayground {
         if (!text) return '';
 
         // Find first sentence-ending punctuation: . ! : ?
-        const match = text.match(/^[^.!:?]+[.!:?]/);
+        // Require that it's followed by whitespace, newline, or end of string
+        // This prevents breaking on email addresses like "expenses@contoso.com"
+        const match = text.match(/^[^.!:?]+[.!:?](?=\s|$)/);
         if (match) {
             return match[0];
         }
@@ -2087,7 +2089,15 @@ class ChatPlayground {
 
             const prev = i > 0 ? input[i - 1] : '';
             const next = i < input.length - 1 ? input[i + 1] : '';
+
+            // Skip if period is between digits (e.g., "3.14")
             if (char === '.' && /\d/.test(prev) && /\d/.test(next)) {
+                continue;
+            }
+
+            // Only treat as sentence boundary if followed by space, newline, or end of string
+            // This prevents breaking on email addresses like "expenses@contoso.com"
+            if (next && !/\s/.test(next)) {
                 continue;
             }
 
@@ -2151,6 +2161,7 @@ class ChatPlayground {
             const bestLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
             if (bestLine) {
+                this.fileContentUsedInPrompt = true;
                 return bestLine;
             }
 
@@ -2224,6 +2235,9 @@ class ChatPlayground {
         const assistantMessageEl = this.addMessage('assistant', 'Searching Wikipedia...');
         const contentEl = assistantMessageEl.querySelector('.message-content');
 
+        // Reset file content usage tracking
+        this.fileContentUsedInPrompt = false;
+
         let responseText = await this.generateNoneModeResponse(userMessage, imageAnalysis);
         responseText = this.maybeShortenNoneModeResponse(responseText);
         responseText = this.maybeMutateNoneModeResponse(responseText);
@@ -2232,8 +2246,15 @@ class ChatPlayground {
             return;
         }
 
-        await this.typeResponse(contentEl, responseText);
+        // Append file attribution if a file is uploaded and relevant content was used (for display only)
+        let displayResponse = responseText;
+        if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+            displayResponse = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
+        }
 
+        await this.typeResponse(contentEl, displayResponse);
+
+        // Add to conversation history (without file attribution, to prevent cumulative citations)
         this.conversationHistory.push({ role: 'user', content: userMessage });
         this.conversationHistory.push({ role: 'assistant', content: responseText });
     }
