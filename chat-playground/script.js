@@ -1732,7 +1732,8 @@ class ChatPlayground {
             'perhaps', 'about',
             // Other common words
             'yes', 'no', 'thing', 'something', 'anything', 'nothing',
-            'everything', 'someone', 'anyone', 'everyone'
+            'everything', 'someone', 'anyone', 'everyone', 'understand', 'know',
+            'think', 'believe', 'feel', 'seem', 'appear',
         ]);
 
         // Extract words, convert to lowercase, filter stopwords and short words
