@@ -1709,7 +1709,8 @@ class ChatPlayground {
             'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
             // Pronouns
             'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her',
-            'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their',
+            'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'i\'m',
+            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
             // Determiners and quantifiers
             'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
             'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
@@ -1733,7 +1734,7 @@ class ChatPlayground {
             // Other common words
             'yes', 'no', 'thing', 'something', 'anything', 'nothing',
             'everything', 'someone', 'anyone', 'everyone', 'understand', 'know',
-            'think', 'believe', 'feel', 'seem', 'appear',
+            'think', 'believe', 'feel', 'appear',
         ]);
 
         // Extract words, convert to lowercase, filter stopwords and short words
