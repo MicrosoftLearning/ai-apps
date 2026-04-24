@@ -3769,8 +3769,40 @@ class ChatPlayground {
         try {
             let responseText = '';
 
-            if (this.webllmAvailable && this.engine) {
-                // Use WebLLM
+            // Route to the appropriate engine based on current mode (same as text mode)
+            if (this.currentMode === 'none' || this.usingWikipedia) {
+                // Use Wikipedia/None mode
+                console.log('Using Wikipedia/None mode for response generation');
+                this.fileContentUsedInPrompt = false;
+                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
+                responseText = this.maybeShortenNoneModeResponse(responseText);
+                responseText = this.maybeMutateNoneModeResponse(responseText);
+
+                // Append file attribution if file content was used
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+                    responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                }
+            } else if (this.usingWllama && this.wllama) {
+                // Use wllama (Phi-2 CPU)
+                console.log('Using Wllama for response generation');
+                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
+
+                this.currentAbortController = new AbortController();
+
+                const result = await this.wllama.createCompletion(prompt, {
+                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
+                    sampling: {
+                        temp: this.config.modelParameters.temperature,
+                        top_p: this.config.modelParameters.top_p,
+                        penalty_repeat: this.config.modelParameters.repetition_penalty
+                    },
+                    signal: this.currentAbortController.signal
+                });
+
+                responseText = result.trim();
+                console.log('Wllama completion finished, response length:', responseText.length);
+            } else if (this.webllmAvailable && this.engine) {
+                // Use WebLLM (Phi-3 GPU)
                 console.log('Using WebLLM for response generation');
                 const messages = [
                     { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
@@ -3796,29 +3828,6 @@ class ChatPlayground {
                     }
                 }
                 console.log('WebLLM streaming complete, response length:', responseText.length);
-            } else if (this.usingWllama && this.wllama) {
-                // Use wllama fallback
-                console.log('Using Wllama for response generation');
-                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
-
-                this.currentAbortController = new AbortController();
-
-                const result = await this.wllama.createCompletion(prompt, {
-                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
-                    sampling: {
-                        temp: this.config.modelParameters.temperature,
-                        top_p: this.config.modelParameters.top_p,
-                        penalty_repeat: this.config.modelParameters.repetition_penalty
-                    },
-                    signal: this.currentAbortController.signal
-                });
-
-                responseText = result.trim();
-                console.log('Wllama completion finished, response length:', responseText.length);
-            } else if (this.currentMode === 'none' || this.usingWikipedia) {
-                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
-                responseText = this.maybeShortenNoneModeResponse(responseText);
-                responseText = this.maybeMutateNoneModeResponse(responseText);
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }
