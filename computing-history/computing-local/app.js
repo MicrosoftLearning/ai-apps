@@ -743,6 +743,10 @@ function getBoardIdentificationMessage(text) {
         return 'The Zilog Z-80 processor is common in Sinclair computers, such as the ZX-80, ZX-81, and ZX Spectrum.';
     }
 
+    if ((lowerText.includes('88-') || lowerText.includes('880-')) && lowerText.includes('mits')) {
+        return 'The markings on the board are consistent with an Altair 8800.';
+    }
+
     return "I can't determine what kind of computer this came from.";
 }
 
