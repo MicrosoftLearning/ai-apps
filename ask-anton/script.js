@@ -801,6 +801,10 @@ IMPORTANT: Follow these guidelines when responding:
             return trimmedText.slice(5).trim();
         }
 
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn')) {
+            return trimmedText;
+        }
+
         return null;
     }
 
@@ -808,10 +812,42 @@ IMPORTANT: Follow these guidelines when responding:
         const normalizedText = this.normalizeSearchText(text);
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
-            'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
-            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with', 'explain','describe',
-            'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
-            'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
+            // Articles, prepositions, conjunctions
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'after', 'before', 'between', 'during', 'into', 'through', 'over',
+            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+            // Pronouns
+            'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+            'us', 'them', 'my', 'your', 'his', 'our', 'their', 'i\'m',
+            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
+            // Determiners and quantifiers
+            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+            'own', 'same', 'other', 'another', 'much', 'many',
+            // Verbs (auxiliary, modal, and common generic)
+            'am', 'was', 'were', 'been', 'being', 'have', 'has',
+            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+            'may', 'might', 'must', 'shall', 'ought', 'will',
+            'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+            'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+            'describe', 'define',
+            // Question words
+            'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+            'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
+            'hows',
+            // Common adverbs
+            'also', 'just', 'now', 'here', 'there', 'very', 'too',
+            'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+            'perhaps', 'about',
+            // Other common words
+            'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+            'everything', 'someone', 'anyone', 'everyone', 'understand',
+            'think', 'believe', 'feel', 'appear', 'say',
+            'anton', 'please', 'using', 'search',
+            'documentation', 'learn', 'details', 'overview'
         ]);
         const uniqueWords = [];
         const seenWords = new Set();
@@ -957,14 +993,22 @@ IMPORTANT: Follow these guidelines when responding:
             return { context: null, categories: [], links: [], documents: [] };
         }
 
+        // Rank documents by match quality (documents with longer/better keyword matches come first)
+        const rankedMatches = matches.sort((a, b) => {
+            // Calculate match quality score: sum of matched keyword lengths
+            const aScore = a.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            const bScore = b.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            return bScore - aScore; // Higher score first
+        });
+
         // Build context from all matched documents - use full content, no summarization
-        const contextParts = matches.map(match => {
+        const contextParts = rankedMatches.map(match => {
             return match.document.content;
         });
 
-        const categories = [...new Set(matches.map(m => m.category))];
-        const links = [...new Set(matches.map(m => m.link))];
-        const documents = matches.map(m => m.document);
+        const categories = [...new Set(rankedMatches.map(m => m.category))];
+        const links = [...new Set(rankedMatches.map(m => m.link))];
+        const documents = rankedMatches.map(m => m.document);
 
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
 

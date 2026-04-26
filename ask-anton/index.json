@@ -509,8 +509,8 @@
                 "id": 33,
                 "title": "Microsoft Foundry",
                 "keywords": [
-                    "Foundry",
-                    "Azure"
+                    "foundry",
+                    "azure"
                 ],
                 "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions. I can't provide you with detailed steps about how to use Microsoft Foundry - you should refer to official Microsoft training and documentation."
             },
@@ -573,6 +573,17 @@
                     "visual studio code extension"
                 ],
                 "content": "Visual Studio Code is a popular code editor that supports a wide range of extensions and tools for developers. Developers can use the Foundry Toolkit for Visual Studio Code to build AI apps and agents on Microsoft Foundry. The toolkit provides integration with the Foundry SDK, enabling programmatic access to projects, agents, and other Foundry resources."
+            },
+            {
+                "id": 39,
+                "title": "Foundry IQ",
+                "keywords": [
+                    "foundry iq",
+                    "knowledge source",
+                    "knowledge base",
+                    "azure ai search"
+                ],
+                "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
             }
         ]
     }

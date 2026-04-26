@@ -926,15 +926,42 @@ function checkStopResponse() {
 }
 
 const STOPWORDS = new Set([
-    'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
-    'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
-    'of', 'in', 'on', 'at', 'to', 'from', 'with', 'by', 'for',
-    'about', 'as', 'that', 'this', 'these', 'those', 'it', 'they',
-    'he', 'she', 'we', 'you', 'i', 'me', 'my', 'him', 'her', 'us',
-    'them', 'which', 'who', 'whom', 'whose', 'what', 'where', 'when',
-    'why', 'how', 'can', 'could', 'will', 'would', 'should',
-    'may', 'might', 'must', 'find', 'search', 'show', 'tell', 'look',
-    'ebay', 'sale', 'buy', 'price', 'cost', 'need', 'one'
+    // Articles, prepositions, conjunctions
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+    'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+    'after', 'before', 'between', 'during', 'into', 'through', 'over',
+    'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+    // Pronouns
+    'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+    'us', 'them', 'my', 'your', 'his', 'her', 'our', 'their', 'i\'m',
+    'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
+    // Determiners and quantifiers
+    'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+    'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+    'own', 'same', 'other', 'another', 'much', 'many',
+    // Verbs (auxiliary, modal, and common generic)
+    'am', 'was', 'were', 'been', 'being', 'have', 'has',
+    'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+    'may', 'might', 'must', 'shall', 'ought', 'will',
+    'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+    'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+    'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+    'describe', 'define',
+    // Question words
+    'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+    'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
+    'hows',
+    // Common adverbs
+    'also', 'just', 'now', 'here', 'there', 'very', 'too',
+    'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+    'perhaps', 'about',
+    // Other common words
+    'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+    'everything', 'someone', 'anyone', 'everyone', 'understand',
+    'think', 'believe', 'feel', 'appear',
+    'search', 'look', 'information', 'info',
+    'ebay', 'sale', 'buy', 'price', 'cost', 'one'
 ]);
 
 const SHOPPING_TRIGGERS = ['ebay', 'for sale', 'buy', 'purchase', 'shop'];

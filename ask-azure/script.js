@@ -1074,7 +1074,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         // Unigrams (single words) - filter out very short words and common stop words
-        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give'];
+        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give', 'anton', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'why', 'which', 'whom', 'whose', 'all', 'any', 'this', 'that', 'these', 'those'];
         words.forEach(word => {
             if (word.length >= 2 && !stopWords.includes(word)) {
                 nGrams.push({
@@ -1166,30 +1166,28 @@ IMPORTANT: Follow these guidelines when responding:
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
 
-        // If no matches, fall back to AI Concepts category
+        // If no matches, return empty context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            const aiConceptsCategory = this.indexData.find(cat => cat.category === 'AI Concepts');
-            if (aiConceptsCategory && aiConceptsCategory.documents.length > 0) {
-                const fallbackDoc = aiConceptsCategory.documents[0];
-                return {
-                    context: `[${aiConceptsCategory.category}]\n${fallbackDoc.content}`,
-                    categories: [aiConceptsCategory.category],
-                    links: [aiConceptsCategory.link],
-                    documents: [fallbackDoc]
-                };
-            }
             return { context: null, categories: [], links: [], documents: [] };
         }
 
+        // Rank documents by match quality (documents with longer/better keyword matches come first)
+        const rankedMatches = matches.sort((a, b) => {
+            // Calculate match quality score: sum of matched keyword lengths
+            const aScore = a.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            const bScore = b.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            return bScore - aScore; // Higher score first
+        });
+
         // Build context from all matched documents - use full content, no summarization
-        const contextParts = matches.map(match => {
+        const contextParts = rankedMatches.map(match => {
             return `[${match.category} - ${match.document.title}]\n${match.document.content}`;
         });
 
-        const categories = [...new Set(matches.map(m => m.category))];
-        const links = [...new Set(matches.map(m => m.link))];
-        const documents = matches.map(m => m.document);
+        const categories = [...new Set(rankedMatches.map(m => m.category))];
+        const links = [...new Set(rankedMatches.map(m => m.link))];
+        const documents = rankedMatches.map(m => m.document);
 
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
 
