@@ -846,7 +846,7 @@ IMPORTANT: Follow these guidelines when responding:
             'yes', 'no', 'thing', 'something', 'anything', 'nothing',
             'everything', 'someone', 'anyone', 'everyone', 'understand',
             'think', 'believe', 'feel', 'appear', 'say',
-            'anton', 'please', 'using', 'search',
+            'anton', 'please', 'using', 'search', 'docs',
             'documentation', 'learn', 'details', 'overview'
         ]);
         const uniqueWords = [];
