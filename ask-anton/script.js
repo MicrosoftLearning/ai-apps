@@ -801,7 +801,7 @@ IMPORTANT: Follow these guidelines when responding:
             return trimmedText.slice(5).trim();
         }
 
-        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn')) {
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn')  || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
             return trimmedText;
         }
 
@@ -1337,7 +1337,7 @@ IMPORTANT: Follow these guidelines when responding:
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
         const encodedKeywords = encodeURIComponent(bingKeywords);
         const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
-        const historyAssistantMessage = `OK, I searched for "${bingKeywords}".\nHere's what I found.`;
+        const historyAssistantMessage = `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
         const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
 
         this.isGenerating = true;
