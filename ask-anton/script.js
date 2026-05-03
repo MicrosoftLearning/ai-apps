@@ -264,15 +264,21 @@ IMPORTANT: Follow these guidelines when responding:
                 msgP.textContent = 'Offline speech model ready! Please try your voice input again.';
             }
 
-            this.enableInput();
-            this.elements.micBtn.disabled = false;
+            // Only re-enable inputs if we're not currently loading a model
+            if (!this.isLoadingModel) {
+                this.enableInput();
+                this.elements.micBtn.disabled = false;
+            }
             return true;
         } catch (error) {
             console.error('Error loading Vosk model:', error);
             this.voskLoadingFailed = true;
             this.addSystemMessage('Failed to load offline speech model. Voice input is unavailable.');
-            this.enableInput();
-            this.elements.micBtn.disabled = false;
+            // Only re-enable inputs if we're not currently loading a model
+            if (!this.isLoadingModel) {
+                this.enableInput();
+                this.elements.micBtn.disabled = false;
+            }
             return false;
         }
     }
@@ -801,7 +807,7 @@ IMPORTANT: Follow these guidelines when responding:
             return trimmedText.slice(5).trim();
         }
 
-        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn')  || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
             return trimmedText;
         }
 
@@ -1149,16 +1155,20 @@ IMPORTANT: Follow these guidelines when responding:
                 return;
             }
 
+            this.disableInput();
             this.setCurrentMode('gpu');
             this.updateModeSelector();
             this.addSystemMessage('Switched to GPU mode');
+            this.enableInput();
             return;
         }
 
         if (targetMode === 'basic') {
+            this.disableInput();
             this.setCurrentMode('basic');
             this.updateModeSelector();
             this.addSystemMessage('Switched to Basic mode');
+            this.enableInput();
             return;
         }
 
@@ -1169,9 +1179,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         if (this.wllama) {
+            this.disableInput();
             this.setCurrentMode('cpu');
             this.updateModeSelector();
             this.addSystemMessage('Switched to CPU mode');
+            this.enableInput();
             return;
         }
 
@@ -1579,7 +1591,7 @@ IMPORTANT: Follow these guidelines when responding:
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
-            userPrompt = `${context}\n\nQ: ${userMessage}`;
+            userPrompt = `${userMessage}\nRespond based on the following context:\n${context}\n`;
         }
 
         const recentHistory = this.conversationHistory.slice(-6);
