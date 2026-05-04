@@ -1372,7 +1372,7 @@ IMPORTANT: Follow these guidelines when responding:
             await new Promise(resolve => setTimeout(resolve, 250));
 
             if (usedVoiceInput) {
-                this.playRandomResponseAudio();
+                this.playSearchResultsAudio();
             }
 
             const animationCompleted = await this.animateTyping(
@@ -2057,6 +2057,13 @@ IMPORTANT: Follow these guidelines when responding:
         const audio = new Audio('audio/no_results.wav');
         audio.play().catch(error => {
             console.error('Error playing no results audio:', error);
+        });
+    }
+
+    playSearchResultsAudio() {
+        const audio = new Audio('audio/search_results.wav');
+        audio.play().catch(error => {
+            console.error('Error playing search results audio:', error);
         });
     }
 
