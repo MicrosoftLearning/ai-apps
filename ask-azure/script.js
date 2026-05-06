@@ -59,7 +59,12 @@ class AskAnton {
             entraHelpBtn: document.getElementById('entra-help-btn'),
             entraHelpModal: document.getElementById('entra-help-modal'),
             entraHelpModalClose: document.getElementById('entra-help-modal-close'),
-            entraHelpModalOk: document.getElementById('entra-help-modal-ok')
+            entraHelpModalOk: document.getElementById('entra-help-modal-ok'),
+            videoModal: document.getElementById('video-modal'),
+            videoModalClose: document.getElementById('video-modal-close'),
+            videoModalOk: document.getElementById('video-modal-ok'),
+            videoModalTitle: document.getElementById('video-modal-title'),
+            videoIframe: document.getElementById('video-iframe')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -967,6 +972,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
+        // Video modal handlers
+        this.elements.videoModalClose.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        this.elements.videoModalOk.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        // Close video modal on overlay click
+        this.elements.videoModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.videoModal || e.target.classList.contains('modal-overlay')) {
+                this.hideVideoModal();
+            }
+        });
+
         // Config modal handlers
         this.elements.configCancel.addEventListener('click', () => {
             this.hideConfigModal();
@@ -1020,7 +1041,9 @@ IMPORTANT: Follow these guidelines when responding:
         // Close modals on Escape key (except config modal)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (this.elements.entraHelpModal.style.display === 'flex') {
+                if (this.elements.videoModal.style.display === 'flex') {
+                    this.hideVideoModal();
+                } else if (this.elements.entraHelpModal.style.display === 'flex') {
                     this.hideEntraHelpModal();
                 } else if (this.elements.aboutModal.style.display === 'flex') {
                     this.hideAboutModal();
@@ -1169,7 +1192,7 @@ IMPORTANT: Follow these guidelines when responding:
         // If no matches, return empty context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            return { context: null, categories: [], links: [], documents: [] };
+            return { context: null, categories: [], links: [], documents: [], videos: [] };
         }
 
         // Rank documents by match quality (documents with longer/better keyword matches come first)
@@ -1189,13 +1212,22 @@ IMPORTANT: Follow these guidelines when responding:
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
 
+        // Extract videos from documents that have video_id
+        const videos = documents
+            .filter(doc => doc.video_id)
+            .map(doc => ({
+                video_id: doc.video_id,
+                title: doc.title
+            }));
+
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
 
         return {
             context: contextParts.join('\n\n'),
             categories: categories,
             links: links,
-            documents: documents
+            documents: documents,
+            videos: videos
         };
     }
 
@@ -1371,7 +1403,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
-        const { context, categories, links } = searchResult;
+        const { context, categories, links, videos } = searchResult;
 
         this.isGenerating = true;
 
@@ -1393,6 +1425,21 @@ IMPORTANT: Follow these guidelines when responding:
             // Format and display the response
             let formattedResponse = this.formatAssistantResponse(response);
 
+            // Add video links if available (before Learn more links)
+            if (videos && videos.length > 0) {
+                if (videos.length === 1) {
+                    formattedResponse += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">';
+                    formattedResponse += `<p>Watch this video for more details: <a href="#" class="video-link" data-video-id="${videos[0].video_id}" data-video-title="${videos[0].title}">${videos[0].title}</a></p>`;
+                } else {
+                    formattedResponse += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">';
+                    formattedResponse += '<p><strong>These videos might provide more information:</strong></p><ul>';
+                    videos.forEach(video => {
+                        formattedResponse += `<li><a href="#" class="video-link" data-video-id="${video.video_id}" data-video-title="${video.title}">${video.title}</a></li>`;
+                    });
+                    formattedResponse += '</ul>';
+                }
+            }
+
             // Add learn more links
             if (links && links.length > 0 && categories && categories.length > 0) {
                 const linkHtml = links.map((link, index) => {
@@ -1410,6 +1457,19 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Wait for both to complete
             await Promise.all([typingPromise, speechPromise]);
+
+            // Add event listeners to video links after typing is complete
+            if (videos && videos.length > 0) {
+                const videoLinks = messageTextDiv.querySelectorAll('.video-link');
+                videoLinks.forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const videoId = link.dataset.videoId;
+                        const videoTitle = link.dataset.videoTitle;
+                        this.showVideoModal(videoId, videoTitle);
+                    });
+                });
+            }
 
             // Add to conversation history
             this.conversationHistory.push({
@@ -1961,6 +2021,65 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.entraHelpModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showVideoModal(videoId, videoTitle) {
+        console.log('showVideoModal called with:', { videoId, videoTitle });
+
+        // Handle cases where videoId might be a full URL
+        let actualVideoId = videoId;
+        if (videoId.includes('synthesia.io/')) {
+            // Extract just the ID from the URL
+            const match = videoId.match(/([0-9a-f-]{36})$/i);
+            if (match) {
+                actualVideoId = match[1];
+            }
+        }
+
+        const videoUrl = `https://share.synthesia.io/embeds/videos/${actualVideoId}`;
+        console.log('Video URL:', videoUrl);
+
+        // Set the video title
+        this.elements.videoModalTitle.textContent = videoTitle || 'Video';
+
+        // Set the iframe source
+        this.elements.videoIframe.src = videoUrl;
+        this.elements.videoIframe.title = videoTitle || 'Video';
+
+        // Show the modal
+        this.elements.videoModal.style.display = 'flex';
+        this.currentModal = this.elements.videoModal;
+
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+
+        // Announce modal to screen readers
+        this.elements.videoModal.setAttribute('aria-hidden', 'false');
+
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.videoModalClose.focus();
+            this.setupModalFocusTrap(this.elements.videoModal);
+        }, 100);
+
+        console.log('Video modal displayed');
+    }
+
+    hideVideoModal() {
+        // Clear the iframe source to stop video playback
+        this.elements.videoIframe.src = '';
+
+        this.elements.videoModal.style.display = 'none';
+        this.elements.videoModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+
         // Restore focus to the element that opened the modal
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();

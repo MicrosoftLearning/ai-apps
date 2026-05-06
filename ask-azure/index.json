@@ -18,6 +18,7 @@
             {
                 "id": 2,
                 "title": "Responsible AI",
+                "video_id": "d170e076-b913-424c-a0a0-44a47c0d7ceb",
                 "keywords": [
                     "responsible ai",
                     "ethics",
@@ -43,6 +44,7 @@
             {
                 "id": 3,
                 "title": "Introduction to Machine Learning",
+                "video_id": "12719512-1cb0-430c-b09e-2798d6989012",
                 "keywords": [
                     "machine learning",
                     "ml",
@@ -59,6 +61,7 @@
             {
                 "id": 4,
                 "title": "Regression",
+                "video_id": "951d39cc-8866-41ad-8780-819dab65488f",
                 "keywords": [
                     "regression",
                     "regressor",
@@ -112,6 +115,7 @@
             {
                 "id": 8,
                 "title": "Introduction to Generative AI",
+                "video_id": "904e700e-4549-42ac-8056-7e4dfd505966",
                 "keywords": [
                     "generative ai",
                     "genai",
@@ -124,6 +128,7 @@
             {
                 "id": 9,
                 "title": "Large Language Models",
+                "video_id": "298e27ef-f5b0-4ed7-ade5-623d8465105a",
                 "keywords": [
                     "large language model",
                     "large language models",
@@ -136,6 +141,7 @@
             {
                 "id": 10,
                 "title": "AI Agents",
+                "video_id": "17ea5149-8d84-4d51-8c46-e1a86d21815f",
                 "keywords": [
                     "agents",
                     "agent",
@@ -171,6 +177,7 @@
             {
                 "id": 12,
                 "title": "Prompt Engineering",
+                "video_id": "2330092e-48b9-4d41-905b-e1b4fd002356",
                 "keywords": [
                     "prompt engineering",
                     "prompt",
@@ -185,6 +192,7 @@
             {
                 "id": 13,
                 "title": "Fine-tuning and Custom Models",
+                "video_id": "4955a5e7-d701-469a-a845-93bb0b070003",
                 "keywords": [
                     "fine tuning",
                     "fine-tune",
@@ -197,6 +205,7 @@
             {
                 "id": 14,
                 "title": "Evaluation of Generative AI Models",
+                "video_id": "e24b97c9-21ac-4465-bf20-ec0a35e55ed7",
                 "keywords": [
                     "evaluation",
                     "evaluate",
@@ -212,6 +221,7 @@
             {
                 "id": 15,
                 "title": "Retrieval-Augmented Generation (RAG)",
+                "video_id": "68942c8a-ca1e-490f-840f-6a15d0c7b8f7",
                 "keywords": [
                     "retrieval augmented generation",
                     "rag",
@@ -224,6 +234,7 @@
             {
                 "id": 16,
                 "title": "Model Context Protocol (MCP)",
+                "video_id": "https://share.synthesia.io/6285aa6e-5787-4375-914a-ab4e1f54a400",
                 "keywords": [
                     "model context protocol",
                     "mcp"
@@ -239,6 +250,7 @@
             {
                 "id": 17,
                 "title": "Common Text Analysis Techniques",
+                "video_id": "0ce04283-6436-44f0-9838-1a9b293e5ed1",
                 "keywords": [
                     "text",
                     "text analysis",
@@ -314,6 +326,7 @@
             {
                 "id": 22,
                 "title": "Overview of Speech",
+                "video_id": "882f1af7-944c-4be0-97c3-889dd985df68",
                 "keywords": [
                     "speech",
                     "voice",
@@ -328,6 +341,7 @@
             {
                 "id": 23,
                 "title": "Speech Recognition (Speech to Text)",
+                "video_id": "cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
                 "keywords": [
                     "speech to text",
                     "speech-to-text",
@@ -347,6 +361,7 @@
             {
                 "id": 24,
                 "title": "Speech Synthesis (Text to Speech)",
+                "video_id": "a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
                 "keywords": [
                     "tts",
                     "text to speech",
@@ -371,6 +386,7 @@
             {
                 "id": 25,
                 "title": "Computer Vision Overview",
+                "video_id": "4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
                 "keywords": [
                     "computer vision",
                     "vision",
@@ -389,6 +405,7 @@
             {
                 "id": 26,
                 "title": "Image Processing",
+                "video_id": "a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
                 "keywords": [
                     "image processing",
                     "pixel",
@@ -404,6 +421,7 @@
             {
                 "id": 27,
                 "title": "Convolutional Neural Networks",
+                "video_id": "2fae02ed-55bc-44df-b37f-f7ce2373fe73",
                 "keywords": [
                     "convolutional neural network",
                     "convolutional neural networks",
@@ -419,6 +437,7 @@
             {
                 "id": 28,
                 "title": "Vision Transformers",
+                "video_id": "9157a9d9-290b-4a2a-99c4-a28eab3369ad",
                 "keywords": [
                     "visual transformer",
                     "visual transformers",
@@ -440,6 +459,7 @@
             {
                 "id": 29,
                 "title": "Image Generation",
+                "video_id": "5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
                 "keywords": [
                     "image generation",
                     "diffusion",
@@ -462,6 +482,7 @@
             {
                 "id": 30,
                 "title": "Overview of Information Extraction",
+                "video_id": "a9cbad65-a964-47fe-8bfc-fcb12257fd29",
                 "keywords": [
                     "information extraction",
                     "document processing",
@@ -479,6 +500,7 @@
             {
                 "id": 31,
                 "title": "Optical Character Recognition (OCR)",
+                "video_id": "1c411668-84d6-494f-9d17-1090705e549f",
                 "keywords": [
                     "optical character recognition",
                     "ocr",
@@ -492,6 +514,7 @@
             {
                 "id": 32,
                 "title": "Field Extraction and Mapping",
+                "video_id": "f09417e1-0a82-4667-a7f5-0081f21d6a77",
                 "keywords": [
                     "field mapping",
                     "data extraction",
@@ -508,6 +531,7 @@
             {
                 "id": 33,
                 "title": "Microsoft Foundry",
+                "video_id": "ba14d7e5-71c8-4be0-8895-15db1d726756",
                 "keywords": [
                     "foundry",
                     "azure"
@@ -517,6 +541,7 @@
             {
                 "id": 34,
                 "title": "Foundry Tools",
+                "video_id": "d4d80d65-8863-4184-a738-c5814802a1e7",
                 "keywords": [
                     "foundry tools",
                     "azure language",
@@ -530,6 +555,7 @@
             {
                 "id": 35,
                 "title": "Foundry Models",
+                "video_id": "916a346d-d084-48ae-8db7-2544f1200a9d",
                 "keywords": [
                     "foundry models",
                     "model catalog"
@@ -539,6 +565,7 @@
             {
                 "id": 36,
                 "title": "Foundry Agent Development",
+                "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
                 "keywords": [
                     "foundry agent",
                     "agent framework"
@@ -562,6 +589,7 @@
             {
                 "id": 38,
                 "title": "Foundry Toolkit for Visual Studio Code",
+                "video_id": "e4dd3172-8749-40d1-a009-d4c521424dc7",
                 "keywords": [
                     "foundry toolkit",
                     "visual studio code",
