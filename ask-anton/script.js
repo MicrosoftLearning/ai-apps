@@ -68,7 +68,14 @@ class AskAnton {
             aboutModalOk: document.getElementById('about-modal-ok'),
             aiModeModal: document.getElementById('ai-mode-modal'),
             modalClose: document.getElementById('modal-close'),
-            modalOk: document.getElementById('modal-ok')
+            modalOk: document.getElementById('modal-ok'),
+            videoModal: document.getElementById('video-modal'),
+            videoModalClose: document.getElementById('video-modal-close'),
+            videoModalOk: document.getElementById('video-modal-ok'),
+            videoModalTitle: document.getElementById('video-modal-title'),
+            videoIframe: document.getElementById('video-iframe'),
+            videoErrorMessage: document.getElementById('video-error-message'),
+            videoFallbackLink: document.getElementById('video-fallback-link')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -76,13 +83,9 @@ class AskAnton {
 IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing. For questions outside of these topics, politely decline to answer.
 - Explain concepts clearly and concisely in a single paragraph based only on the provided context.
-- Keep responses short and focused on the question, with no headings.
-- Use examples and analogies when helpful.
 - Use simple language suitable for learners in a conversational, friendly tone.
 - Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- Do not start responses with "A:" or "Q:".
-- Keep your responses concise and to the point, in ONE paragraph.
-- Do NOT provide links for more information (these will be added automatically later).`;
+- Do NOT provide links for more information.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -717,6 +720,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
+        // Video modal handlers
+        this.elements.videoModalClose.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        this.elements.videoModalOk.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        // Close video modal on overlay click
+        this.elements.videoModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.videoModal || e.target.classList.contains('modal-overlay')) {
+                this.hideVideoModal();
+            }
+        });
+
         // Modal handlers
         this.elements.modalClose.addEventListener('click', () => {
             this.hideAiModeModal();
@@ -740,6 +759,8 @@ IMPORTANT: Follow these guidelines when responding:
                     this.hideAiModeModal();
                 } else if (this.elements.aboutModal.style.display === 'flex') {
                     this.hideAboutModal();
+                } else if (this.elements.videoModal.style.display === 'flex') {
+                    this.hideVideoModal();
                 }
             }
         });
@@ -996,7 +1017,7 @@ IMPORTANT: Follow these guidelines when responding:
         // If no matches, return null context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            return { context: null, categories: [], links: [], documents: [] };
+            return { context: null, categories: [], links: [], documents: [], videos: [] };
         }
 
         // Rank documents by match quality (documents with longer/better keyword matches come first)
@@ -1015,6 +1036,10 @@ IMPORTANT: Follow these guidelines when responding:
         const categories = [...new Set(rankedMatches.map(m => m.category))];
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
+        const videos = documents.filter(doc => doc.video_id).map(doc => ({
+            video_id: doc.video_id,
+            title: doc.title
+        }));
 
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
 
@@ -1022,7 +1047,8 @@ IMPORTANT: Follow these guidelines when responding:
             context: contextParts.join('\n\n'),
             categories: categories,
             links: links,
-            documents: documents
+            documents: documents,
+            videos: videos
         };
     }
 
@@ -1316,14 +1342,40 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
-    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], placeholders = {}) {
+    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], videos = [], placeholders = {}) {
         let displayMessage = assistantMessage;
 
+        // Add video links if available (before Learn more links)
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                displayMessage += '\n\nWatch this video for more details: [[VIDEO_LINK_0]]';
+            } else {
+                displayMessage += '\n\nThese videos might provide more information:\n[[VIDEO_LINKS]]';
+            }
+        }
+
+        // Add learn more links after videos
         if (links && links.length > 0 && categories && categories.length > 0) {
             displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
         }
 
         let formattedMessage = this.formatResponse(displayMessage);
+
+        // Replace video links - open in new tab (COEP blocks Synthesia iframe embedding)
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                const video = videos[0];
+                const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
+            } else {
+                const videoLinksHtml = videos.map(video => {
+                    const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                    return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                }).join('<br>');
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
+            }
+        }
 
         if (links && links.length > 0 && categories && categories.length > 0) {
             const linkHtml = links.map((link, index) => {
@@ -1372,7 +1424,7 @@ IMPORTANT: Follow these guidelines when responding:
             await new Promise(resolve => setTimeout(resolve, 250));
 
             if (usedVoiceInput) {
-                this.playRandomResponseAudio();
+                this.playSearchResultsAudio();
             }
 
             const animationCompleted = await this.animateTyping(
@@ -1391,6 +1443,7 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage,
                 searchResult.categories,
                 searchResult.links,
+                searchResult.videos || [],
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
@@ -1417,9 +1470,9 @@ IMPORTANT: Follow these guidelines when responding:
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
         const encodedKeywords = encodeURIComponent(bingKeywords);
-        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
-        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
-        const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
+        const bingUrl = `https://www.bing.com/search?q=${encodedKeywords}`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.`;
+        const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
         const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
 
@@ -1429,7 +1482,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">this link</a>`;
+        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Bing search results</a>`;
 
         if (this.currentMode === 'cpu') {
             messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
@@ -1491,6 +1544,7 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage,
                 [],
                 [],
+                [],
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
@@ -1509,7 +1563,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
-        const { context, categories, links } = searchResult;
+        const { context, categories, links, videos } = searchResult;
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1538,9 +1592,11 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
 
-            // Add learn more links
+            // Add learn more links and videos
             if (links && links.length > 0 && categories && categories.length > 0) {
-                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links);
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
+            } else if (videos && videos.length > 0) {
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, [], [], videos, {});
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
@@ -2060,6 +2116,13 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
+    playSearchResultsAudio() {
+        const audio = new Audio('audio/search_results.wav');
+        audio.play().catch(error => {
+            console.error('Error playing search results audio:', error);
+        });
+    }
+
     // ============================================================================
     // SPEECH RECOGNITION - WEB SPEECH API & VOSK
     // ============================================================================
@@ -2356,6 +2419,119 @@ IMPORTANT: Follow these guidelines when responding:
         this.removeModalFocusTrap();
         this.currentModal = null;
         // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showVideoModal(videoId, videoTitle) {
+        // Set the video iframe src and title
+        const videoUrl = `https://share.synthesia.io/embeds/videos/${videoId}`;
+
+        // Log details for debugging
+        console.log('Opening video modal:');
+        console.log('- Video ID:', videoId);
+        console.log('- Video Title:', videoTitle);
+        console.log('- Video URL:', videoUrl);
+        console.log('- Current domain:', window.location.hostname);
+
+        // Set up fallback link
+        if (this.elements.videoFallbackLink) {
+            this.elements.videoFallbackLink.href = videoUrl;
+        }
+
+        // Hide error message initially
+        if (this.elements.videoErrorMessage) {
+            this.elements.videoErrorMessage.style.display = 'none';
+        }
+
+        // Add error and load handlers to iframe
+        const iframe = this.elements.videoIframe;
+
+        // Remove old listeners if any
+        iframe.onerror = null;
+        iframe.onload = null;
+
+        // Add load handler
+        iframe.onload = () => {
+            console.log('✓ Video iframe loaded successfully');
+        };
+
+        // Add error handler (though this may not catch all iframe errors)
+        iframe.onerror = (error) => {
+            console.error('✗ Video iframe error:', error);
+            if (this.elements.videoErrorMessage) {
+                this.elements.videoErrorMessage.style.display = 'block';
+            }
+        };
+
+        // Monitor for console errors
+        const originalConsoleError = console.error;
+        const errorCapture = (...args) => {
+            if (args.some(arg => String(arg).includes('synthesia'))) {
+                console.log('Captured Synthesia-related error:', ...args);
+            }
+            originalConsoleError.apply(console, args);
+        };
+        console.error = errorCapture;
+
+        setTimeout(() => {
+            console.error = originalConsoleError;
+        }, 5000);
+
+        this.elements.videoIframe.src = videoUrl;
+        this.elements.videoIframe.title = videoTitle;
+        this.elements.videoModalTitle.textContent = videoTitle;
+
+        // Show the modal
+        this.elements.videoModal.style.display = 'flex';
+        this.currentModal = this.elements.videoModal;
+        this.lastFocusedElement = document.activeElement;
+        this.elements.videoModal.setAttribute('aria-hidden', 'false');
+
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.videoModalClose.focus();
+            this.setupModalFocusTrap(this.elements.videoModal);
+        }, 100);
+
+        // Check iframe status after a moment
+        setTimeout(() => {
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                console.log('Iframe content accessible:', !!iframeDoc);
+            } catch (e) {
+                console.log('⚠ Cannot access iframe content (expected if cross-origin):', e.message);
+                console.log('This is normal for cross-origin iframes. Check Network tab for HTTP errors.');
+                console.log('');
+                console.log('📋 Troubleshooting steps:');
+                console.log('1. Open DevTools Network tab');
+                console.log('2. Look for a request to:', videoUrl);
+                console.log('3. Check the Status Code (should be 200)');
+                console.log('4. If blocked, check Response Headers for X-Frame-Options or Content-Security-Policy');
+                console.log('5. If you see "refused to connect", Synthesia may be blocking this domain');
+            }
+        }, 1000);
+    }
+
+    hideVideoModal() {
+        this.elements.videoModal.style.display = 'none';
+        this.elements.videoModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+
+        // Hide error message if shown
+        if (this.elements.videoErrorMessage) {
+            this.elements.videoErrorMessage.style.display = 'none';
+        }
+
+        // Clear the iframe src to stop video playback
+        this.elements.videoIframe.src = '';
+        this.elements.videoIframe.title = '';
+
+        // Restore focus
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();
         } else {
