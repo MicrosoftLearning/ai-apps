@@ -743,10 +743,6 @@ footer {
     animation: modalSlideIn 0.3s ease;
 }
 
-.modal-content-wide {
-    max-width: 900px;
-}
-
 @keyframes modalSlideIn {
     from {
         opacity: 0;
