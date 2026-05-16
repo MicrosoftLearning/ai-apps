@@ -607,14 +607,39 @@
             {
                 "id": 39,
                 "title": "Foundry IQ",
+                "video_id": "7595b77c-7a4e-41ec-9a9c-ccc93a5f4a1c",
                 "keywords": [
                     "foundry iq",
+                    "foundryiq",
                     "knowledge source",
+                    "knowledge sources",
+                    "knowledge retrieval",
+                    "knowledge store",
+                    "knowledge stores",
                     "knowledge base",
+                    "knowledge bases",
                     "azure ai search"
                 ],
                 "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
-            }
+            },
+            {
+                "id": 40,
+                "title": "Open AI models in Foundry",
+                "keywords": [
+                    "openai",
+                    "gpt"
+                ],
+                "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
+            },
+                {
+                    "id": 41,
+                    "title": "Anthropic models in Foundry",
+                    "keywords": [
+                        "anthropic",
+                        "claude"
+                    ],
+                    "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+                }
         ]
     },
     {
@@ -622,7 +647,7 @@
         "link": "https://learn.microsoft.com/credentials/",
         "documents": [
             {
-                "id": 40,
+                "id": 42,
                 "title": "Microsoft AI Certifications",
                 "keywords": [
                     "certification",
@@ -640,7 +665,7 @@
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
             {
-                "id": 41,
+                "id": 43,
                 "title": "Microsoft AI Credentials",
                 "keywords": [
                     "microsoft applied skill",
