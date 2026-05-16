@@ -628,12 +628,12 @@
                     "exam",
                     "exams",
                     "microsoft certified professional",
-                    "ai-102",
-                    "ai-900",
-                    "ai-103",
-                    "ai-901",
-                    "ai-200",
-                    "ai-300"
+                    "ai102",
+                    "ai900",
+                    "ai103",
+                    "ai901",
+                    "ai200",
+                    "ai300"
                 ],
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
@@ -643,10 +643,13 @@
                 "keywords": [
                     "microsoft applied skill",
                     "microsoft applied skills",
+                    "applied skills credential",
+                    "applied skills credentials",
                     "mas",
                     "apl",
                     "microsoft credential",
-                    "microsoft credentials"
+                    "microsoft credentials",
+                    "microsoft ai credentials"
                 ],
                 "content": "Microsoft Applied Skills credentials provide a way to demonstrate your ability to perform specific tasks related to AI. These credentials are designed to be more focused than traditional exam-based certifications, enabling you to showcase your skills in a practical test."
             }
