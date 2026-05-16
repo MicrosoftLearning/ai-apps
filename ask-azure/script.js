@@ -2034,12 +2034,20 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Handle cases where videoId might be a full URL
         let actualVideoId = videoId;
-        if (videoId.includes('synthesia.io/')) {
-            // Extract just the ID from the URL
-            const match = videoId.match(/([0-9a-f-]{36})$/i);
-            if (match) {
-                actualVideoId = match[1];
+        try {
+            const parsedUrl = new URL(videoId);
+            const host = parsedUrl.hostname.toLowerCase();
+            const isTrustedSynthesiaHost = host === 'synthesia.io' || host.endsWith('.synthesia.io');
+
+            if (isTrustedSynthesiaHost) {
+                // Extract just the ID from the URL path
+                const match = parsedUrl.pathname.match(/([0-9a-f-]{36})$/i);
+                if (match) {
+                    actualVideoId = match[1];
+                }
             }
+        } catch (e) {
+            // Not a URL; assume videoId is already a raw ID
         }
 
         const videoUrl = `https://share.synthesia.io/embeds/videos/${actualVideoId}`;
