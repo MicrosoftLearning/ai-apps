@@ -568,9 +568,11 @@
                 "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
                 "keywords": [
                     "foundry agent",
-                    "agent framework"
+                    "foundry agents",
+                    "agent framework",
+                    "agent service"
                 ],
-                "content": "Microsoft Foundry includes an agent framework that enables developers to create AI agents that can perform tasks autonomously. The framework provides tools for defining agent behavior, integrating with external systems, and managing agent interactions."
+                "content": "Microsoft Foundry enables developers to create AI agents that can perform tasks autonomously. The Foundry agent service provides tools and APIs for defining agent behavior, integrating with external systems, and managing agent interactions."
             },
             {
                 "id": 37,
