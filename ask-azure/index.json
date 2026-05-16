@@ -614,5 +614,42 @@
                 "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
             }
         ]
+    },
+    {
+        "category": "Credentials and certification",
+        "link": "https://learn.microsoft.com/credentials/",
+        "documents": [
+            {
+                "id": 40,
+                "title": "Microsoft AI Certifications",
+                "keywords": [
+                    "certification",
+                    "certifications",
+                    "exam",
+                    "exams",
+                    "microsoft certified professional",
+                    "ai-102",
+                    "ai-900",
+                    "ai-103",
+                    "ai-901",
+                    "ai-200",
+                    "ai-300"
+                ],
+                "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certifications include: AI-901: Azure AI Fundamentals, AI-103: Azure AI Apps and Agents Developer, AI-200: Azure AI Cloud Developer, and AI-300: Machine Learning Operations Engineer."
+            },
+            {
+                "id": 41,
+                "title": "Microsoft AI Credentials",
+                "keywords": [
+                    "microsoft applied skill",
+                    "microsoft applied skills",
+                    "mas",
+                    "apl",
+                    "microsoft credential",
+                    "microsoft credentials"
+                ],
+                "content": "Microsoft Applied Skills credentials provide a way to demonstrate your ability to perform specific tasks related to AI. These credentials are designed to be more focused than traditional exam-based certifications, enabling you to showcase your skills in a practical test."
+            }
+        ]
     }
 ]
