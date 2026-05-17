@@ -592,11 +592,11 @@ IMPORTANT: Follow these guidelines when responding:
 
     getModeLabel(mode = this.currentMode) {
         if (mode === 'gpu') {
-            return 'Phi 3.1 (GPU)';
+            return 'Phi 3 (GPU)';
         }
 
         if (mode === 'cpu') {
-            return 'Phi 2.0 (CPU)';
+            return 'Phi 2 (CPU)';
         }
 
         return 'None (Basic Q&A)';
