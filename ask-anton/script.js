@@ -1641,7 +1641,7 @@ IMPORTANT: Follow these guidelines when responding:
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
-            userPrompt = `${userMessage}\nRespond based ONLY on the following information:\n---\n${context}\n---\n`;
+            userPrompt = `${userMessage}\nRespond concisely by summarizing the following information:\n${context}`;
         }
 
         const recentHistory = this.conversationHistory.slice(-6);
