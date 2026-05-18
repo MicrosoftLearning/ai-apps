@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from '@wllama/wllama';
 
 const chatContainer = document.getElementById('chat-messages');
@@ -224,14 +224,30 @@ async function init() {
  */
 async function initializeWebLLM() {
     try {
-        updateModelName('Phi-3-mini (WebGPU)');
+        updateModelName('Phi-3.5-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+        const appConfig = {
+            model_list: [
+                {
+                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    vram_required_MB: 3672.07,
+                    low_resource_required: false,
+                    overrides: {
+                        context_window_size: 4096
+                    }
+                }
+            ]
+        };
 
         engine = await webllm.CreateMLCEngine(
             targetModelId,
             {
+                appConfig: appConfig,
                 initProgressCallback: (progress) => {
                     const percentage = Math.round(progress.progress * 100);
                     updateLoadingStatus('smollm', 'loading', `${percentage}%`);
@@ -1121,6 +1137,9 @@ async function handleSend() {
             }
 
             if (summary) {
+                // Update bubble with cleaned summary (removes incomplete sentences)
+                setBubbleContent(bubble, escapeHtml(summary));
+
                 // Store in conversation history
                 conversationHistory.push({
                     user: truncateToFirstSentence(text),
@@ -1610,6 +1629,9 @@ async function performClassification(imgEl, userText = "") {
                         }
 
                         if (summary) {
+                            // Update bubble with cleaned summary (removes incomplete sentences)
+                            setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(summary));
+
                             conversationHistory.push({
                                 user: historyUserPrompt,
                                 assistant: truncateToFirstSentence(summary)
@@ -2074,7 +2096,7 @@ function selectMode() {
             return;
         }
         currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
+        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
         updateModeSelect();
     } else if (selected === 'cpu') {
         if (!availableModes.cpu) {
@@ -2212,7 +2234,7 @@ function updateModeSelect() {
     if (gpuOption) {
         const gpuReady = availableModes.gpu && webGPUAvailable && engine;
         gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
     }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
@@ -2224,7 +2246,7 @@ function updateModeSelect() {
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
         : currentMode === 'cpu' ? 'CPU (Phi 2)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
@@ -2681,7 +2703,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi-3-mini-4k-instruct (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi-3.5-mini-instruct (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
             modelNameElement.textContent = 'SmolLM2-360M-Instruct (CPU - running locally)';
         } else if (currentMode === 'basic') {

@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
 class AskAnton {
@@ -347,11 +347,28 @@ IMPORTANT: Follow these guidelines when responding:
                 throw new Error('DEBUG: Forced WebGPU initialization failure');
             }
 
-            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+            // Use Phi-3.5-mini with correct model library URL from WebLLM config
+            const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+            const appConfig = {
+                model_list: [
+                    {
+                        model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                        model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                        model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                        vram_required_MB: 3672.07,
+                        low_resource_required: false,
+                        overrides: {
+                            context_window_size: 4096
+                        }
+                    }
+                ]
+            };
 
             this.engine = await webllm.CreateMLCEngine(
                 targetModelId,
                 {
+                    appConfig: appConfig,
                     initProgressCallback: (progress) => {
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         this.updateProgress(
@@ -592,7 +609,7 @@ IMPORTANT: Follow these guidelines when responding:
 
     getModeLabel(mode = this.currentMode) {
         if (mode === 'gpu') {
-            return 'Phi 3 (GPU)';
+            return 'Phi 3.5 (GPU)';
         }
 
         if (mode === 'cpu') {
@@ -1641,7 +1658,7 @@ IMPORTANT: Follow these guidelines when responding:
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
-            userPrompt = `${userMessage}\nRespond concisely by summarizing the following information:\n${context}`;
+            userPrompt = `${userMessage}\nBase your response on the following information:\n${context}`;
         }
 
         const recentHistory = this.conversationHistory.slice(-6);
