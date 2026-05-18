@@ -1,5 +1,5 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 class AskAnton {
     constructor() {
@@ -432,8 +432,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Configure WASM paths for CDN
             const CONFIG_PATHS = {
-                'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
-                'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
             };
 
             // Try multithreaded first if cross-origin isolated, fall back to single-threaded
@@ -471,9 +470,14 @@ IMPORTANT: Follow these guidelines when responding:
 
                 // Load model from HuggingFace with optimized settings
                 await this.wllama.loadModelFromHF(
-                    'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
-                    modelConfig
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
+                    {
+                        ...modelConfig,
+                        progressCallback: modelConfig.progressCallback
+                    }
                 );
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
 
@@ -486,11 +490,14 @@ IMPORTANT: Follow these guidelines when responding:
                     // Retry with single thread
                     this.wllama = new Wllama(CONFIG_PATHS);
                     await this.wllama.loadModelFromHF(
-                        'Felladrin/gguf-sharded-phi-2-orange-v2',
-                        'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
+                        {
+                            repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                            file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                        },
                         {
                             ...modelConfig,
-                            n_threads: 1
+                            n_threads: 1,
+                            progressCallback: modelConfig.progressCallback
                         }
                     );
                     console.log('Wllama initialized successfully with 1 thread (fallback)');
@@ -546,11 +553,11 @@ IMPORTANT: Follow these guidelines when responding:
                 progressCallback(0.99);
             }
 
-            await this.wllama.createCompletion(systemInstruction, {
-                nPredict: 1,
-                sampling: {
-                    temp: 0.0
-                }
+            await this.wllama.createCompletion({
+                prompt: systemInstruction,
+                max_tokens: 1,
+                temperature: 0.0,
+                stream: false
             });
             console.log('Cache warmed successfully');
 
@@ -1900,30 +1907,28 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Use streaming with proper abort support
         try {
-            const completion = await this.wllama.createCompletion(chatMLPrompt, {
-                nPredict: 200,
-                sampling: {
-                    temp: 0.2,
-                    top_k: 40,
-                    top_p: 0.9,
-                    penalty_repeat: 1.1
-                },
-                stopTokens: ['<|im_end|>', '<|im_start|>'],
-                abortSignal: controller.signal,
+            const completion = await this.wllama.createCompletion({
+                prompt: chatMLPrompt,
+                max_tokens: 200,
+                temperature: 0.2,
+                top_k: 40,
+                top_p: 0.9,
+                frequency_penalty: 1.1,
+                stop: ['<|im_end|>', '<|im_start|>'],
                 stream: true
             });
 
             this.currentStream = completion;
 
             for await (const chunk of completion) {
-                if (chunk.currentText) {
+                if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
                     // Play audio on first chunk if voice input was used
                     if (!audioPlayed && usedVoiceInput) {
                         this.playRandomResponseAudio();
                         audioPlayed = true;
                     }
 
-                    assistantMessage = chunk.currentText;
+                    assistantMessage += chunk.choices[0].text;
                     messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                     this.scrollToBottom();
                 }
@@ -1939,26 +1944,12 @@ IMPORTANT: Follow these guidelines when responding:
             // Clear abort controller on successful completion
             this.currentAbortController = null;
 
-            // Clear KV cache after successful generation
-            console.log('Clearing KV cache after generation');
-            await this.wllama.kvClear();
-            console.log('KV cache cleared successfully');
-
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
             if (error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
-                // Clear the partial/corrupted state
-                await this.wllama.kvClear();
-                console.log('KV cache cleared after abort');
             } else {
                 console.log('Wllama generation error:', error.message || 'unknown error');
-                // Clear cache on error too
-                try {
-                    await this.wllama.kvClear();
-                } catch (e) {
-                    console.log('Failed to clear cache after error:', e.message);
-                }
             }
             this.currentAbortController = null;
         }

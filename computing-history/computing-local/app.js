@@ -482,8 +482,7 @@ async function initWllama(progressCallback = null, options = {}) {
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
-            'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
-            'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
+            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
         };
 
         const internalProgressCallback = ({ loaded, total }) => {
@@ -512,8 +511,10 @@ async function initWllama(progressCallback = null, options = {}) {
             }
 
             await wllama.loadModelFromHF(
-                'Felladrin/gguf-sharded-phi-2-orange-v2',
-                'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
+                {
+                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                },
                 {
                     n_ctx: 384,
                     n_threads: preferredThreads,
@@ -535,8 +536,10 @@ async function initWllama(progressCallback = null, options = {}) {
 
                 wllama = new Wllama(CONFIG_PATHS);
                 await wllama.loadModelFromHF(
-                    'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
                     {
                         n_ctx: 384,
                         n_threads: 1,
@@ -595,11 +598,11 @@ async function warmWllamaCache(isLazyLoad = true, progressCallback = null) {
             progressCallback(0.99);
         }
 
-        await wllama.createCompletion(systemInstruction, {
-            nPredict: 1,
-            sampling: {
-                temp: 0.0
-            }
+        await wllama.createCompletion({
+            prompt: systemInstruction,
+            max_tokens: 1,
+            temperature: 0.0,
+            stream: false
         });
         console.log('Cache warmed successfully');
 
@@ -1873,17 +1876,15 @@ async function generateWithWllama(query) {
 
         // Generate response
         let responseText = '';
-        const completion = await wllama.createCompletion(chatMLPrompt, {
-            nPredict: 200,
-            sampling: {
-                temp: 0.1,
-                top_k: 20,
-                top_p: 0.85,
-                penalty_repeat: 1.1
-            },
-            stopTokens: ['<|im_end|>', '<|im_start|>'],
-            stream: true,
-            abortSignal: currentAbortController.signal
+        const completion = await wllama.createCompletion({
+            prompt: chatMLPrompt,
+            max_tokens: 200,
+            temperature: 0.1,
+            top_k: 20,
+            top_p: 0.85,
+            frequency_penalty: 1.1,
+            stop: ['<|im_end|>', '<|im_start|>'],
+            stream: true
         });
 
         for await (const chunk of completion) {
@@ -1891,19 +1892,12 @@ async function generateWithWllama(query) {
                 currentAbortController = null;
                 return null;
             }
-            if (chunk.currentText) {
-                responseText = chunk.currentText;
+            if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                responseText += chunk.choices[0].text;
             }
         }
 
         currentAbortController = null;
-
-        // Clear KV cache after generation
-        try {
-            await wllama.kvClear();
-        } catch (error) {
-            // Silently ignore
-        }
 
         // Clean up the response
         responseText = responseText.trim();
@@ -1929,11 +1923,6 @@ async function generateWithWllama(query) {
         }
         console.error('Error generating info with Wllama:', error);
         currentAbortController = null;
-        try {
-            await wllama.kvClear();
-        } catch (e) {
-            // Silently ignore
-        }
         return null;
     }
 }
