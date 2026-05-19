@@ -1172,7 +1172,6 @@ IMPORTANT: Follow these guidelines when responding:
 
     stopGeneration() {
         this.stopRequested = true;
-        this.isGenerating = false;
 
         // Abort the generation properly using AbortController
         if (this.currentAbortController) {
@@ -1197,12 +1196,70 @@ IMPORTANT: Follow these guidelines when responding:
                         this.currentStream = null;
                     }
                 });
+        } else if (activeStream && this.currentMode === 'cpu') {
+            this.isStoppingGeneration = true;
+            this.safeStopWllamaStream(activeStream)
+                .catch((error) => {
+                    console.warn('Wllama stop cleanup failed:', error);
+                })
+                .finally(() => {
+                    this.isStoppingGeneration = false;
+                    if (this.currentStream === activeStream) {
+                        this.currentStream = null;
+                    }
+                });
         } else {
             this.currentStream = null;
         }
 
         this.updateSendButton(false);
         console.log('Stop requested');
+    }
+
+    async safeStopWllamaStream(stream) {
+        if (!stream) {
+            return;
+        }
+
+        for (let i = 0; i < 2; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 120))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during CPU stop cleanup:', error);
+        }
+
+        await this.resetWllamaInterruptState();
+    }
+
+    async resetWllamaInterruptState() {
+        if (!this.wllama) {
+            return;
+        }
+
+        // Prime a clean prompt after interruption so the next turn does not reuse
+        // an unfinished decode path from the previous streamed generation.
+        try {
+            await this.warmWllamaCache(true, null, false);
+        } catch (error) {
+            console.warn('Wllama reset after interruption failed:', error);
+        }
     }
 
     async safeStopWebLLMStream(stream) {
@@ -2009,14 +2066,15 @@ IMPORTANT: Follow these guidelines when responding:
 
         let assistantMessage = '';
         let audioPlayed = false;
+        let completion = null;
 
-        // Create AbortController for this generation
+        // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
         this.currentAbortController = controller;
 
         // Use streaming with proper abort support
         try {
-            const completion = await this.wllama.createCompletion({
+            completion = await this.wllama.createCompletion({
                 prompt: chatMLPrompt,
                 max_tokens: 200,
                 temperature: 0.2,
@@ -2024,12 +2082,18 @@ IMPORTANT: Follow these guidelines when responding:
                 top_p: 0.9,
                 frequency_penalty: 1.1,
                 stop: ['<|im_end|>', '<|im_start|>'],
+                signal: controller.signal,
                 stream: true
             });
 
             this.currentStream = completion;
 
             for await (const chunk of completion) {
+                if (this.stopRequested) {
+                    console.log('Wllama generation stopped by user');
+                    break;
+                }
+
                 if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
                     // Play audio on first chunk if voice input was used
                     if (!audioPlayed && usedVoiceInput) {
@@ -2055,12 +2119,16 @@ IMPORTANT: Follow these guidelines when responding:
 
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
-            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+            if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
             } else {
                 console.log('Wllama generation error:', error.message || 'unknown error');
             }
             this.currentAbortController = null;
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
+            }
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
