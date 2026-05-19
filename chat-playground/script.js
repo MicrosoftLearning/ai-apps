@@ -1,5 +1,5 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -22,9 +22,11 @@ class ChatPlayground {
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
         this.isGenerating = false;
+        this.isStoppingGeneration = false;
         this.stopRequested = false;
         this.currentStream = null; // Track current streaming completion
         this.currentAbortController = null; // Track abort controller for wllama
+        this.wllamaStateNeedsReset = false; // Track if wllama state needs reset after stop
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
@@ -274,7 +276,7 @@ class ChatPlayground {
                 repetition_penalty: 1.1
             };
         } else {
-            // Phi-3 (GPU mode) - Standard defaults
+            // Phi-3.5 (GPU mode) - Standard defaults
             return {
                 temperature: 0.7,
                 top_p: 0.9,
@@ -1220,7 +1222,7 @@ class ChatPlayground {
             this.currentMode = 'phi3-gpu';
             this.wllamaFailed = false;
 
-            // Set Phi-3 default parameters
+            // Set Phi-3.5 default parameters
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
         } catch (error) {
@@ -1280,48 +1282,52 @@ class ChatPlayground {
         const models = webllm.prebuiltAppConfig.model_list;
         console.log('All available models:', models.map(m => m.model_id));
 
-        // Filter for the specific Phi-3 model only
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-        let availableModels = models.filter(model =>
-            model.model_id === targetModelId
-        );
+        // Use Phi-3.5-mini with correct model library URL from WebLLM config
+        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 
-        if (availableModels.length === 0) {
-            throw new Error('Phi-3-mini-4k-instruct model not found');
-        }
-
-        console.log('Available models for loading:', availableModels.map(m => m.model_id));
+        const appConfig = {
+            model_list: [
+                {
+                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    vram_required_MB: 3672.07,
+                    low_resource_required: false,
+                    overrides: {
+                        context_window_size: 4096
+                    }
+                }
+            ]
+        };
 
         this.updateProgress(10, 'Loading WebLLM model (GPU mode)...');
 
-        // Try to load the first available model
+        // Try to load the model
         let engineCreated = false;
 
-        for (const model of availableModels) {
-            try {
-                console.log(`Trying to load model: ${model.model_id}`);
-                this.updateProgress(15, `Loading ${model.model_id}...`);
+        try {
+            console.log(`Trying to load model: ${targetModelId}`);
+            this.updateProgress(15, `Loading ${targetModelId}...`);
 
-                this.engine = await webllm.CreateMLCEngine(
-                    model.model_id,
-                    {
-                        initProgressCallback: (progress) => {
-                            console.log('Progress:', progress);
-                            const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-                            this.updateProgress(percentage, `Loading ${model.model_id}: ${Math.round(progress.progress * 100)}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
-                        }
+            this.engine = await webllm.CreateMLCEngine(
+                targetModelId,
+                {
+                    appConfig: appConfig,
+                    initProgressCallback: (progress) => {
+                        console.log('Progress:', progress);
+                        const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
+                        this.updateProgress(percentage, `Loading ${targetModelId}: ${Math.round(progress.progress * 100)}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
                     }
-                );
+                }
+            );
 
-                console.log(`Successfully loaded model: ${model.model_id}`);
-                this.currentModelId = model.model_id;
-                engineCreated = true;
-                break;
+            console.log(`Successfully loaded model: ${targetModelId}`);
+            this.currentModelId = targetModelId;
+            engineCreated = true;
 
-            } catch (modelError) {
-                console.error(`Failed to load ${model.model_id}:`, modelError);
-                continue;
-            }
+        } catch (modelError) {
+            console.error(`Failed to load ${targetModelId}:`, modelError);
+            throw modelError;
         }
 
         if (!engineCreated) {
@@ -1355,19 +1361,7 @@ class ChatPlayground {
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
-            'single-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm',
-            'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
-        };
-
-        const internalProgressCallback = ({ loaded, total }) => {
-            if (!isLazyLoad) {
-                const progress = loaded / total;
-                const percentage = Math.round(progress * 100);
-                const adjustedLoaded = Math.round(20 + (percentage * 0.8));
-                updateProgress(adjustedLoaded, 100);
-            } else {
-                updateProgress(loaded, total);
-            }
+            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
         };
 
         // Try multithreaded first if cross-origin isolated, fall back to single-threaded
@@ -1376,6 +1370,21 @@ class ChatPlayground {
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
+        const modelConfig = {
+            n_ctx: 384,      // Smaller context for faster processing
+            n_threads: preferredThreads,
+            progressCallback: ({ loaded, total }) => {
+                if (!isLazyLoad) {
+                    const progress = loaded / total;
+                    const percentage = Math.round(progress * 100);
+                    const adjustedLoaded = Math.round(20 + (percentage * 0.8));
+                    updateProgress(adjustedLoaded, 100);
+                } else {
+                    updateProgress(loaded, total);
+                }
+            }
+        };
+
         try {
             this.wllama = new Wllama(CONFIG_PATHS);
             if (!isLazyLoad) {
@@ -1383,38 +1392,38 @@ class ChatPlayground {
             }
 
             await this.wllama.loadModelFromHF(
-                'Felladrin/gguf-sharded-phi-2-orange-v2',
-                'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                 {
-                    n_ctx: 384,
-                    n_threads: preferredThreads,
-                    progressCallback: internalProgressCallback
+                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                },
+                {
+                    ...modelConfig,
+                    progressCallback: modelConfig.progressCallback
                 }
             );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress);
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
+            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
         } catch (multiErr) {
-            if (preferredThreads > 1) {
-                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                if (!isLazyLoad) {
-                    updateProgress(20, 100);
-                }
-
-                this.wllama = new Wllama(CONFIG_PATHS);
-                await this.wllama.loadModelFromHF(
-                    'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
-                    {
-                        n_ctx: 384,
-                        n_threads: 1,
-                        progressCallback: internalProgressCallback
-                    }
-                );
-                console.log('Wllama initialized successfully with 1 thread (fallback)');
-                await this.warmWllamaCache(isLazyLoad, updateProgress);
-            } else {
-                throw multiErr;
+            console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
+            if (!isLazyLoad) {
+                updateProgress(20, 100);
             }
+
+            // Create fresh instance
+            this.wllama = new Wllama(CONFIG_PATHS);
+            await this.wllama.loadModelFromHF(
+                {
+                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                },
+                {
+                    ...modelConfig,
+                    n_threads: preferredThreads,
+                    progressCallback: modelConfig.progressCallback
+                }
+            );
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
+            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
         }
 
         console.log('Wllama initialized successfully');
@@ -1426,7 +1435,7 @@ class ChatPlayground {
         }, 1000);
     }
 
-    async warmWllamaCache(isLazyLoad = true, progressCallback = null) {
+    async warmWllamaCache(isLazyLoad = true, progressCallback = null, updateFinalProgress = false) {
         if (!this.wllama) return;
 
         try {
@@ -1442,15 +1451,44 @@ class ChatPlayground {
                 progressCallback(99, 100);
             }
 
-            await this.wllama.createCompletion(systemInstruction, {
-                nPredict: 1,
-                sampling: {
-                    temp: 0.0
-                }
+            await this.wllama.createCompletion({
+                prompt: systemInstruction,
+                max_tokens: 1,
+                temperature: 0.0,
+                stream: false
             });
             console.log('Cache warmed successfully');
+
+            // Update to final ready state if requested
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'CPU model ready!');
+            }
         } catch (error) {
-            console.log('Cache warming failed (non-critical):', error.message);
+            const errorMessage = error.message || error.toString();
+
+            // Check if this is a WebGPU-specific error that needs to propagate
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.log('Cache warming failed due to WebGPU error:', errorMessage);
+                // Rethrow WebGPU errors so they can be caught and handled properly
+                throw error;
+            } else {
+                // Non-WebGPU errors are truly non-critical
+                console.log('Cache warming failed (non-critical):', errorMessage);
+                // Still show ready message even if cache warming failed
+                if (!isLazyLoad && updateFinalProgress) {
+                    this.updateProgress(100, 'CPU model ready!');
+                }
+            }
         }
     }
 
@@ -1515,23 +1553,17 @@ class ChatPlayground {
 
         if (selectedValue === 'phi3-gpu') {
             if (!this.webllmAvailable) {
-                alert('Phi-3 (GPU) is not available. WebGPU is not supported on this device.');
+                alert('Phi-3.5 (GPU) is not available. WebGPU is not supported on this device.');
                 this.populateModelDropdown(); // Reset selection
                 return;
-            }
-
-            // Clear wllama KV cache if switching from CPU mode
-            if (previousMode && this.wllama) {
-                await this.wllama.kvClear();
-                console.log('Cleared wllama KV cache when switching to GPU mode');
             }
 
             this.usingWllama = false;
             this.usingWikipedia = false;
             this.currentMode = 'phi3-gpu';
-            this.currentModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+            this.currentModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 
-            // Apply Phi-3 default parameters
+            // Apply Phi-3.5 default parameters
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
             this.setParameterControlsEnabled(true);
@@ -1539,10 +1571,10 @@ class ChatPlayground {
             // Clear chat and restart conversation
             if (previousMode !== this.currentMode) {
                 await this.clearChat();
-                this.showToast('Switched to Phi-3 (GPU) - Conversation restarted');
+                this.showToast('Switched to Phi-3.5 (GPU) - Conversation restarted');
             }
 
-            console.log('Switched to Phi-3 (GPU) mode');
+            console.log('Switched to Phi-3.5 (GPU) mode');
         } else if (selectedValue === 'phi2-cpu') {
             if (this.wllamaFailed) {
                 alert('Phi-2 (CPU) is not available because it previously failed to load.');
@@ -1640,10 +1672,10 @@ class ChatPlayground {
         // Clear existing options
         this.modelSelect.innerHTML = '';
 
-        // Add Phi-3 (GPU) option
+        // Add Phi-3.5 (GPU) option
         const phiOption = document.createElement('option');
         phiOption.value = 'phi3-gpu';
-        phiOption.textContent = 'Phi-3-mini (GPU)';
+        phiOption.textContent = 'Phi-3.5-mini (GPU)';
         phiOption.disabled = !this.webllmAvailable;
         this.modelSelect.appendChild(phiOption);
 
@@ -1776,6 +1808,10 @@ class ChatPlayground {
     }
 
     async handleSendMessage() {
+        if (this.isStoppingGeneration) {
+            return;
+        }
+
         // If already generating, stop instead of sending
         if (this.isGenerating) {
             await this.stopGeneration();
@@ -1881,7 +1917,7 @@ class ChatPlayground {
             this.fileContentUsedInPrompt = false;
             if (this.config.fileUpload.content) {
                 const keywords = this.extractKeywords(userMessage);
-                console.log('Extracted keywords from user prompt (Phi-3 GPU):', keywords);
+                console.log('Extracted keywords from user prompt (Phi-3.5 GPU):', keywords);
 
                 const relevantLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
@@ -1935,7 +1971,7 @@ class ChatPlayground {
                 thinkingIndicator.remove();
             }
 
-            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try again.';
+            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
             const assistantMessageEl = this.addMessage('assistant', '');
             const contentEl = assistantMessageEl.querySelector('.message-content');
 
@@ -1957,36 +1993,52 @@ class ChatPlayground {
 
         const completion = await this.engine.chat.completions.create({
             messages: messages,
-            temperature: this.modelParameters.temperature,
-            top_p: this.modelParameters.top_p,
-            max_tokens: this.modelParameters.max_tokens,
-            repetition_penalty: this.modelParameters.repetition_penalty,
+            temperature: this.config.modelParameters.temperature,
+            max_tokens: this.config.modelParameters.max_tokens,
             stream: true
         });
 
-        for await (const chunk of completion) {
-            if (!this.isGenerating) break;
+        this.currentStream = completion;
 
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-                fullResponse += content;
+        try {
+            for await (const chunk of completion) {
+                if (!this.isGenerating) break;
 
-                // Start output once we have enough content buffered
-                if (!hasStartedOutput && fullResponse.length >= bufferSize) {
-                    // Remove thinking indicator
-                    thinkingIndicator.remove();
+                const content = chunk.choices[0]?.delta?.content || '';
+                if (content) {
+                    fullResponse += content;
 
-                    // Create message container
-                    assistantMessageEl = this.addMessage('assistant', '');
-                    contentEl = assistantMessageEl.querySelector('.message-content');
+                    // Start output once we have enough content buffered
+                    if (!hasStartedOutput && fullResponse.length >= bufferSize) {
+                        // Remove thinking indicator
+                        thinkingIndicator.remove();
 
-                    // Start typing animation
-                    this.startTypingAnimation(contentEl, fullResponse);
-                    hasStartedOutput = true;
-                } else if (hasStartedOutput && contentEl) {
-                    // Update the content for ongoing typing animation
-                    this.updateTypingContent(fullResponse);
+                        // Create message container
+                        assistantMessageEl = this.addMessage('assistant', '');
+                        contentEl = assistantMessageEl.querySelector('.message-content');
+
+                        // Start typing animation
+                        this.startTypingAnimation(contentEl, fullResponse);
+                        hasStartedOutput = true;
+                    } else if (hasStartedOutput && contentEl) {
+                        // Update the content for ongoing typing animation
+                        this.updateTypingContent(fullResponse);
+                    }
                 }
+            }
+        } catch (error) {
+            const isInterrupted = this.stopRequested ||
+                error?.name === 'AbortError' ||
+                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+            if (!isInterrupted) {
+                throw error;
+            }
+
+            console.log('WebLLM streaming interrupted');
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
             }
         }
 
@@ -2371,7 +2423,7 @@ class ChatPlayground {
 
             // Add current user message
             prompt += '<|im_start|>user\n' + userMessage + '\n';
-            prompt += 'Respond ONLY by summarizing the following informatation as a single sentence:\n---\n';
+            prompt += 'Respond ONLY by summarizing the following information as a single sentence:\n---\n';
             prompt += fileContent + '\n\n';
             prompt += '<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
@@ -2401,6 +2453,28 @@ class ChatPlayground {
         // Ensure wllama is loaded
         if (!this.wllama) {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
+        }
+
+        // Reload wllama if WebGPU state was corrupted by previous stop
+        if (this.wllamaStateNeedsReset) {
+            console.log('Reloading wllama due to WebGPU corruption from previous stop...');
+            this.updateProgress(0, 'Reloading CPU model after stop...', true);
+
+            try {
+                // Don't try to exit corrupted instance - just abandon it
+                // (exit() hangs when WebGPU state is corrupted)
+                this.wllama = null;
+
+                // Reload fresh instance
+                await this.initializeWllama();
+                this.progressContainer.style.display = 'none';
+                this.wllamaStateNeedsReset = false;
+                console.log('Wllama reloaded successfully - ready for next prompt');
+            } catch (error) {
+                console.error('Failed to reload wllama:', error);
+                this.progressContainer.style.display = 'none';
+                throw new Error('Failed to reload CPU model after stop. Please refresh the page.');
+            }
         }
 
         // Keep original userMessage for conversation history (without image classification)
@@ -2449,6 +2523,7 @@ class ChatPlayground {
 
         // Use wllama for generation with streaming
         let fullResponse = '';
+        let completion = null;
 
         // Log current model parameters from config
         console.log('Current model parameters from config:', this.config.modelParameters);
@@ -2467,31 +2542,33 @@ class ChatPlayground {
             penalty_repeat: wllamaPenalty
         });
 
-        // Create AbortController for this generation
+        // Create AbortController for proper cancellation
         const controller = new AbortController();
         this.currentAbortController = controller;
 
         try {
-            const completion = await this.wllama.createCompletion(chatMLPrompt, {
-                nPredict: 200,
-                seed: -1,  // Random seed for variation
-                sampling: {
-                    temp: wllamaTemp,
-                    top_k: 20,
-                    top_p: wllamaTopP,
-                    penalty_repeat: wllamaPenalty,
-                    mirostat: 0  // Disable mirostat to ensure temperature is used
-                },
-                stopTokens: ['<|im_end|>', '<|im_start|>'],
-                abortSignal: controller.signal,
+            completion = await this.wllama.createCompletion({
+                prompt: chatMLPrompt,
+                max_tokens: 200,
+                temperature: wllamaTemp,
+                top_k: 20,
+                top_p: wllamaTopP,
+                frequency_penalty: wllamaPenalty,
+                stop: ['<|im_end|>', '<|im_start|>'],
+                signal: controller.signal,
                 stream: true
             });
 
             this.currentStream = completion;
 
             for await (const chunk of completion) {
-                if (chunk.currentText) {
-                    fullResponse = chunk.currentText;
+                if (this.stopRequested) {
+                    console.log('Wllama generation stopped by user');
+                    break;
+                }
+
+                if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                    fullResponse += chunk.choices[0].text;
                     contentEl.textContent = fullResponse;
                     this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
                 }
@@ -2500,18 +2577,13 @@ class ChatPlayground {
             // Clear abort controller on successful completion
             this.currentAbortController = null;
 
-            // Clear KV cache after successful generation
-            console.log('Clearing KV cache after generation');
-            await this.wllama.kvClear();
-            console.log('KV cache cleared successfully');
-
             // Always add to conversation history to maintain context
             // BUT: Do NOT add stopped responses to history (they're incomplete/corrupted)
             if (fullResponse.trim() && !this.stopRequested) {
                 const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
 
                 if (!cleanedResponse) {
-                    contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                    contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.\nIf this happens repeatedly, try switching to a different model.';
                     return;
                 }
 
@@ -2543,16 +2615,13 @@ class ChatPlayground {
 
                 console.log('Stopped response not added to conversation history to prevent corruption');
             } else {
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.\nIf this happens repeatedly, try switching to a different model.';
             }
 
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
-            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+            if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
-                // Clear the partial/corrupted state
-                await this.wllama.kvClear();
-                console.log('KV cache cleared after abort');
 
                 // Display stopped response but don't add to history
                 if (fullResponse.trim()) {
@@ -2566,15 +2635,13 @@ class ChatPlayground {
                 }
             } else {
                 console.error('Error in wllama generation:', error);
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
-                // Clear cache on error too
-                try {
-                    await this.wllama.kvClear();
-                } catch (e) {
-                    console.log('Failed to clear cache after error:', e.message);
-                }
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
             }
             this.currentAbortController = null;
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
+            }
         }
     }
 
@@ -2761,7 +2828,6 @@ class ChatPlayground {
     }
 
     async stopGeneration() {
-        this.isGenerating = false;
         this.stopRequested = true;
 
         // Stop typing animation
@@ -2769,17 +2835,190 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
 
-        // Abort wllama generation properly using AbortController
+        // Abort the generation using AbortController
         if (this.currentAbortController) {
-            console.log('Aborting wllama generation via AbortController');
+            console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
 
-        // Clear current stream reference
-        this.currentStream = null;
+        const activeStream = this.currentStream;
+
+        if (activeStream && this.currentMode === 'phi3-gpu' && this.engine) {
+            this.isStoppingGeneration = true;
+            try {
+                await this.safeStopWebLLMStream(activeStream);
+            } catch (error) {
+                console.warn('WebLLM stop cleanup failed:', error);
+            } finally {
+                this.isStoppingGeneration = false;
+                if (this.currentStream === activeStream) {
+                    this.currentStream = null;
+                }
+            }
+        } else if (activeStream && this.usingWllama) {
+            this.isStoppingGeneration = true;
+            try {
+                await this.safeStopWllamaStream(activeStream);
+            } catch (error) {
+                console.warn('Wllama stop cleanup failed:', error);
+            } finally {
+                this.isStoppingGeneration = false;
+                if (this.currentStream === activeStream) {
+                    this.currentStream = null;
+                }
+            }
+        } else {
+            this.currentStream = null;
+        }
 
         this.updateUIForGeneration(false);
+    }
+
+    async safeStopWebLLMStream(stream) {
+        if (!this.engine || !stream) {
+            return;
+        }
+
+        try {
+            if (typeof this.engine.interruptGenerate === 'function') {
+                await this.engine.interruptGenerate();
+            }
+        } catch (error) {
+            console.warn('engine.interruptGenerate failed:', error);
+        }
+
+        // Workaround for WebLLM lock not always being released immediately.
+        for (let i = 0; i < 3; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 150))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during stop cleanup:', error);
+        }
+
+        await this.resetWebLLMInterruptState();
+    }
+
+    async safeStopWllamaStream(stream) {
+        if (!stream) {
+            return;
+        }
+
+        for (let i = 0; i < 2; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 120))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during CPU stop cleanup:', error);
+        }
+
+        // Try to reset state immediately (like ask-anton does)
+        try {
+            await this.resetWllamaInterruptState();
+            console.log('Wllama state reset successfully after stop');
+        } catch (error) {
+            // Check if this is a WebGPU-specific error that requires reload
+            const errorMessage = error.message || error.toString();
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.warn('WebGPU state corrupted after stop - will reload wllama before next prompt');
+                console.warn('Error:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            } else {
+                console.warn('Unexpected error during state reset:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            }
+        }
+    }
+
+    async resetWllamaInterruptState() {
+        if (!this.wllama) {
+            return;
+        }
+
+        // Prime a clean prompt after interruption so the next turn does not reuse
+        // an unfinished decode path from the previous streamed generation.
+        try {
+            await this.warmWllamaCache(true, null, false);
+        } catch (error) {
+            console.warn('Wllama reset after interruption failed:', error);
+            // Rethrow so caller can handle WebGPU errors appropriately
+            throw error;
+        }
+    }
+
+    async resetWebLLMInterruptState() {
+        if (!this.engine) {
+            return;
+        }
+
+        // Defensive reset for known WebLLM interruption edge cases.
+        if (Object.prototype.hasOwnProperty.call(this.engine, 'interruptSignal')) {
+            this.engine.interruptSignal = false;
+        }
+
+        const lockMap = this.engine.loadedModelIdToLock;
+        if (lockMap && typeof lockMap.values === 'function') {
+            for (const lock of lockMap.values()) {
+                if (lock && lock.acquired && typeof lock.release === 'function') {
+                    try {
+                        await lock.release();
+                    } catch (error) {
+                        console.warn('Failed to release WebLLM lock:', error);
+                    }
+                }
+            }
+        }
+
+        if (typeof this.engine.resetChat === 'function') {
+            try {
+                await this.engine.resetChat();
+            } catch (error) {
+                console.warn('engine.resetChat failed after interruption:', error);
+            }
+        }
     }
 
     async restartConversation(reason = 'user-action') {
@@ -2815,17 +3054,6 @@ class ChatPlayground {
                     <h3>What do you want to chat about?</h3>
                 </div>
             `;
-        }
-
-        // Clear wllama KV cache when resetting chat to start fresh
-        if (this.usingWllama && this.wllama) {
-            try {
-                console.log('Chat reset: Clearing wllama KV cache...');
-                await this.wllama.kvClear();
-                console.log('Chat reset: KV cache cleared - ready for fresh start');
-            } catch (error) {
-                console.error('Error clearing wllama KV cache:', error);
-            }
         }
     }
 
@@ -3764,7 +3992,7 @@ class ChatPlayground {
         this.isGenerating = true;
 
         // Append instruction for concise response in voice mode
-        const voiceModeUserMessage = userMessage;
+        const voiceModeUserMessage = userMessage + '\nRespond with a single, concise paragraph.';
 
         try {
             let responseText = '';
@@ -3774,7 +4002,7 @@ class ChatPlayground {
                 // Use Wikipedia/None mode
                 console.log('Using Wikipedia/None mode for response generation');
                 this.fileContentUsedInPrompt = false;
-                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
+                responseText = await this.generateNoneModeResponse(userMessage);
                 responseText = this.maybeShortenNoneModeResponse(responseText);
                 responseText = this.maybeMutateNoneModeResponse(responseText);
 
@@ -3789,20 +4017,22 @@ class ChatPlayground {
 
                 this.currentAbortController = new AbortController();
 
-                const result = await this.wllama.createCompletion(prompt, {
-                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
-                    sampling: {
-                        temp: this.config.modelParameters.temperature,
-                        top_p: this.config.modelParameters.top_p,
-                        penalty_repeat: this.config.modelParameters.repetition_penalty
-                    },
-                    signal: this.currentAbortController.signal
+                const result = await this.wllama.createCompletion({
+                    prompt: prompt,
+                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 500),
+                    temperature: this.config.modelParameters.temperature,
+                    top_p: this.config.modelParameters.top_p,
+                    frequency_penalty: this.config.modelParameters.repetition_penalty,
+                    stream: false
                 });
 
-                responseText = result.trim();
+                // Extract text from OpenAI-compatible response format
+                responseText = (result.choices && result.choices[0] && result.choices[0].text)
+                    ? result.choices[0].text.trim()
+                    : '';
                 console.log('Wllama completion finished, response length:', responseText.length);
             } else if (this.webllmAvailable && this.engine) {
-                // Use WebLLM (Phi-3 GPU)
+                // Use WebLLM (Phi-3.5 GPU)
                 console.log('Using WebLLM for response generation');
                 const messages = [
                     { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
@@ -3813,18 +4043,34 @@ class ChatPlayground {
                 const completion = await this.engine.chat.completions.create({
                     messages: messages,
                     temperature: this.config.modelParameters.temperature,
-                    top_p: this.config.modelParameters.top_p,
                     max_tokens: Math.min(this.config.modelParameters.max_tokens, 500), // Limit for voice responses
-                    repetition_penalty: this.config.modelParameters.repetition_penalty,
                     stream: true
                 });
 
-                for await (const chunk of completion) {
-                    if (!this.isGenerating) break;
+                this.currentStream = completion;
 
-                    const content = chunk.choices[0]?.delta?.content || '';
-                    if (content) {
-                        responseText += content;
+                try {
+                    for await (const chunk of completion) {
+                        if (!this.isGenerating) break;
+
+                        const content = chunk.choices[0]?.delta?.content || '';
+                        if (content) {
+                            responseText += content;
+                        }
+                    }
+                } catch (error) {
+                    const isInterrupted = this.stopRequested ||
+                        error?.name === 'AbortError' ||
+                        /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+                    if (!isInterrupted) {
+                        throw error;
+                    }
+
+                    console.log('WebLLM voice generation interrupted');
+                } finally {
+                    if (this.currentStream === completion) {
+                        this.currentStream = null;
                     }
                 }
                 console.log('WebLLM streaming complete, response length:', responseText.length);
@@ -4046,10 +4292,9 @@ class ChatPlayground {
 
         // Stop generation if in progress
         if (this.isGenerating) {
-            this.stopRequested = true;
-            if (this.currentAbortController) {
-                this.currentAbortController.abort();
-            }
+            this.stopGeneration().catch((error) => {
+                console.warn('Failed to stop generation during voice cancel:', error);
+            });
         }
 
         // Show all messages when user cancels

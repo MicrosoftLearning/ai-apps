@@ -17,6 +17,7 @@ class AskAnton {
         this.isStoppingGeneration = false;
         this.webGPUAvailable = false;
         this.usingWllama = false;
+        this.wllamaStateNeedsReset = false;
         this.currentMode = 'basic';
         this.availableModes = {
             gpu: false,
@@ -567,10 +568,30 @@ IMPORTANT: Follow these guidelines when responding:
                 this.updateProgress(100, 'Ready to chat! (CPU mode)');
             }
         } catch (error) {
-            console.log('Cache warming failed (non-critical):', error.message);
-            // Still show ready message even if cache warming failed
-            if (!isLazyLoad && updateFinalProgress) {
-                this.updateProgress(100, 'Ready to chat! (CPU mode)');
+            const errorMessage = error.message || error.toString();
+
+            // Check if this is a WebGPU-specific error that needs to propagate
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.log('Cache warming failed due to WebGPU error:', errorMessage);
+                // Rethrow WebGPU errors so they can be caught and handled properly
+                throw error;
+            } else {
+                // Non-WebGPU errors are truly non-critical
+                console.log('Cache warming failed (non-critical):', errorMessage);
+                // Still show ready message even if cache warming failed
+                if (!isLazyLoad && updateFinalProgress) {
+                    this.updateProgress(100, 'Ready to chat! (CPU mode)');
+                }
             }
         }
     }
@@ -1245,7 +1266,32 @@ IMPORTANT: Follow these guidelines when responding:
             console.warn('Stream return failed during CPU stop cleanup:', error);
         }
 
-        await this.resetWllamaInterruptState();
+        // Try to reset state immediately
+        try {
+            await this.resetWllamaInterruptState();
+            console.log('Wllama state reset successfully after stop');
+        } catch (error) {
+            // Check if this is a WebGPU-specific error that requires reload
+            const errorMessage = error.message || error.toString();
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.warn('WebGPU state corrupted after stop - will reload wllama before next prompt');
+                console.warn('Error:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            } else {
+                console.warn('Unexpected error during state reset:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            }
+        }
     }
 
     async resetWllamaInterruptState() {
@@ -1259,6 +1305,8 @@ IMPORTANT: Follow these guidelines when responding:
             await this.warmWllamaCache(true, null, false);
         } catch (error) {
             console.warn('Wllama reset after interruption failed:', error);
+            // Rethrow so caller can handle WebGPU errors appropriately
+            throw error;
         }
     }
 
@@ -2018,6 +2066,43 @@ IMPORTANT: Follow these guidelines when responding:
         // Ensure wllama is loaded
         if (!this.wllama) {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
+        }
+
+        // Reload wllama if WebGPU state was corrupted by previous stop
+        if (this.wllamaStateNeedsReset) {
+            console.log('Reloading wllama due to WebGPU corruption from previous stop...');
+            const loadingMsg = this.addSystemMessage('Reloading CPU model after stop... 0%');
+            const loadingMsgElement = loadingMsg.querySelector('p');
+
+            try {
+                // Don't try to exit corrupted instance - just abandon it
+                // (exit() hangs when WebGPU state is corrupted)
+                this.wllama = null;
+
+                // Reload fresh instance with progress callback
+                await this.initializeWllama((progress) => {
+                    if (loadingMsgElement) {
+                        const percentage = Math.round(progress * 100);
+                        if (percentage >= 99) {
+                            loadingMsgElement.textContent = 'Reloading CPU model after stop - optimizing...';
+                        } else {
+                            loadingMsgElement.textContent = `Reloading CPU model after stop... ${percentage}%`;
+                        }
+                    }
+                });
+
+                this.wllamaStateNeedsReset = false;
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = 'CPU model reloaded successfully';
+                }
+                console.log('Wllama reloaded successfully - ready for next prompt');
+            } catch (error) {
+                console.error('Failed to reload wllama:', error);
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = 'Failed to reload CPU model. Please refresh the page.';
+                }
+                throw new Error('Failed to reload CPU model after stop. Please refresh the page.');
+            }
         }
 
         // Build ChatML formatted prompt
