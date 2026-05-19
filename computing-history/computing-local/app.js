@@ -16,6 +16,7 @@ let pendingFile = null;
 let isVoiceInput = false; // Tracks if current message was spoken
 let isResponding = false; // Tracks if bot is currently responding
 let shouldStopResponse = false; // Flag to cancel ongoing response
+let isStoppingResponse = false; // Prevent new prompts while stream cleanup is running
 let engine = null; // WebLLM engine for GPU mode
 let wllama = null; // Wllama instance for CPU mode
 let wllamaReady = false; // Track if wllama is initialized
@@ -997,6 +998,10 @@ const SEARCH_TRIGGER_WORDS = new Set([
  * Main message handler - processes text input, images, and commands
  */
 async function handleSend() {
+    if (isStoppingResponse) {
+        return;
+    }
+
     const text = textInput.value.trim();
 
     // Check if we have a file or text
@@ -1792,7 +1797,7 @@ async function generateWithWebLLM(query, onChunk = null) {
 
         // Generate with streaming
         let responseText = '';
-        currentStream = await engine.chat.completions.create({
+        const completion = await engine.chat.completions.create({
             messages,
             temperature: 0.3,
             top_p: 0.9,
@@ -1800,21 +1805,41 @@ async function generateWithWebLLM(query, onChunk = null) {
             stream: true
         });
 
-        for await (const chunk of currentStream) {
-            if (shouldStopResponse) {
-                currentStream = null;
-                return null;
-            }
-            const delta = chunk.choices[0]?.delta?.content || '';
-            responseText += delta;
+        currentStream = completion;
 
-            // Call the streaming callback if provided
-            if (onChunk && delta) {
-                onChunk(delta);
+        try {
+            for await (const chunk of completion) {
+                if (shouldStopResponse) {
+                    break;
+                }
+
+                const delta = chunk.choices[0]?.delta?.content || '';
+                responseText += delta;
+
+                // Call the streaming callback if provided
+                if (onChunk && delta) {
+                    onChunk(delta);
+                }
+            }
+        } catch (error) {
+            const isInterrupted = shouldStopResponse ||
+                error?.name === 'AbortError' ||
+                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+            if (!isInterrupted) {
+                throw error;
+            }
+
+            console.log('WebLLM generation interrupted');
+        } finally {
+            if (currentStream === completion) {
+                currentStream = null;
             }
         }
 
-        currentStream = null;
+        if (shouldStopResponse) {
+            return null;
+        }
 
         // Clean up the response
         responseText = responseText.trim();
@@ -2612,12 +2637,19 @@ function speakTextContent(text) {
 /**
  * Stops any ongoing bot response (text generation or speech)
  */
-function handleStopResponse() {
+async function handleStopResponse() {
     // Set flag to stop any ongoing text generation
     shouldStopResponse = true;
+    isStoppingResponse = true;
 
     // Abort WebLLM streaming if active
-    if (currentStream) {
+    const activeStream = currentStream;
+
+    if (activeStream && currentMode === 'gpu' && engine) {
+        await safeStopWebLLMStream(activeStream);
+    }
+
+    if (currentStream === activeStream) {
         currentStream = null;
     }
 
@@ -2636,7 +2668,80 @@ function handleStopResponse() {
     removeTyping();
 
     // Reset button state
+    isStoppingResponse = false;
     endResponse();
+}
+
+async function safeStopWebLLMStream(stream) {
+    if (!engine || !stream) {
+        return;
+    }
+
+    try {
+        if (typeof engine.interruptGenerate === 'function') {
+            await engine.interruptGenerate();
+        }
+    } catch (error) {
+        console.warn('engine.interruptGenerate failed:', error);
+    }
+
+    // Workaround: drain the iterator a few steps so WebLLM can release locks.
+    for (let i = 0; i < 3; i++) {
+        try {
+            const nextPromise = stream.next?.();
+            if (!nextPromise || typeof nextPromise.then !== 'function') {
+                break;
+            }
+
+            await Promise.race([
+                nextPromise,
+                new Promise((resolve) => setTimeout(resolve, 150))
+            ]);
+        } catch (error) {
+            break;
+        }
+    }
+
+    try {
+        if (typeof stream.return === 'function') {
+            await stream.return();
+        }
+    } catch (error) {
+        console.warn('Stream return failed during stop cleanup:', error);
+    }
+
+    await resetWebLLMInterruptState();
+}
+
+async function resetWebLLMInterruptState() {
+    if (!engine) {
+        return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(engine, 'interruptSignal')) {
+        engine.interruptSignal = false;
+    }
+
+    const lockMap = engine.loadedModelIdToLock;
+    if (lockMap && typeof lockMap.values === 'function') {
+        for (const lock of lockMap.values()) {
+            if (lock && lock.acquired && typeof lock.release === 'function') {
+                try {
+                    await lock.release();
+                } catch (error) {
+                    console.warn('Failed to release WebLLM lock:', error);
+                }
+            }
+        }
+    }
+
+    if (typeof engine.resetChat === 'function') {
+        try {
+            await engine.resetChat();
+        } catch (error) {
+            console.warn('engine.resetChat failed after interruption:', error);
+        }
+    }
 }
 
 /**

@@ -14,6 +14,7 @@ class AskAnton {
         this.stopRequested = false;
         this.currentStream = null;
         this.currentAbortController = null;
+        this.isStoppingGeneration = false;
         this.webGPUAvailable = false;
         this.usingWllama = false;
         this.currentMode = 'basic';
@@ -1078,7 +1079,7 @@ IMPORTANT: Follow these guidelines when responding:
         const userMessage = this.elements.userInput.value.trim();
 
         // Validate input
-        if (!userMessage || this.isGenerating || this.isLoadingModel) return;
+        if (!userMessage || this.isGenerating || this.isLoadingModel || this.isStoppingGeneration) return;
 
         // Limit message length to prevent abuse
         const MAX_MESSAGE_LENGTH = 1000;
@@ -1170,9 +1171,8 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     stopGeneration() {
-        this.isGenerating = false;
         this.stopRequested = true;
-        this.currentStream = null;
+        this.isGenerating = false;
 
         // Abort the generation properly using AbortController
         if (this.currentAbortController) {
@@ -1181,8 +1181,101 @@ IMPORTANT: Follow these guidelines when responding:
             this.currentAbortController = null;
         }
 
+        const activeStream = this.currentStream;
+
+        // WebLLM can keep an internal lock after interruption unless the stream is
+        // explicitly drained. This prevents the next prompt from hanging.
+        if (activeStream && this.currentMode === 'gpu' && this.engine) {
+            this.isStoppingGeneration = true;
+            this.safeStopWebLLMStream(activeStream)
+                .catch((error) => {
+                    console.warn('WebLLM stop cleanup failed:', error);
+                })
+                .finally(() => {
+                    this.isStoppingGeneration = false;
+                    if (this.currentStream === activeStream) {
+                        this.currentStream = null;
+                    }
+                });
+        } else {
+            this.currentStream = null;
+        }
+
         this.updateSendButton(false);
         console.log('Stop requested');
+    }
+
+    async safeStopWebLLMStream(stream) {
+        if (!this.engine || !stream) {
+            return;
+        }
+
+        try {
+            if (typeof this.engine.interruptGenerate === 'function') {
+                await this.engine.interruptGenerate();
+            }
+        } catch (error) {
+            console.warn('engine.interruptGenerate failed:', error);
+        }
+
+        // Workaround for WebLLM lock not always being released immediately.
+        for (let i = 0; i < 3; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 150))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during stop cleanup:', error);
+        }
+
+        await this.resetWebLLMInterruptState();
+    }
+
+    async resetWebLLMInterruptState() {
+        if (!this.engine) {
+            return;
+        }
+
+        // Defensive reset for known WebLLM interruption edge cases.
+        if (Object.prototype.hasOwnProperty.call(this.engine, 'interruptSignal')) {
+            this.engine.interruptSignal = false;
+        }
+
+        const lockMap = this.engine.loadedModelIdToLock;
+        if (lockMap && typeof lockMap.values === 'function') {
+            for (const lock of lockMap.values()) {
+                if (lock && lock.acquired && typeof lock.release === 'function') {
+                    try {
+                        await lock.release();
+                    } catch (error) {
+                        console.warn('Failed to release WebLLM lock:', error);
+                    }
+                }
+            }
+        }
+
+        if (typeof this.engine.resetChat === 'function') {
+            try {
+                await this.engine.resetChat();
+            } catch (error) {
+                console.warn('engine.resetChat failed after interruption:', error);
+            }
+        }
     }
 
     async switchMode(targetMode) {
@@ -1690,23 +1783,39 @@ IMPORTANT: Follow these guidelines when responding:
         let assistantMessage = '';
         let audioPlayed = false;
 
-        for await (const chunk of completion) {
-            if (this.stopRequested) {
-                console.log('Generation stopped by user');
-                break;
-            }
-
-            const delta = chunk.choices[0]?.delta?.content;
-            if (delta) {
-                // Play audio on first chunk if voice input was used
-                if (!audioPlayed && usedVoiceInput) {
-                    this.playRandomResponseAudio();
-                    audioPlayed = true;
+        try {
+            for await (const chunk of completion) {
+                if (this.stopRequested) {
+                    console.log('Generation stopped by user');
+                    break;
                 }
 
-                assistantMessage += delta;
-                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                this.scrollToBottom();
+                const delta = chunk.choices[0]?.delta?.content;
+                if (delta) {
+                    // Play audio on first chunk if voice input was used
+                    if (!audioPlayed && usedVoiceInput) {
+                        this.playRandomResponseAudio();
+                        audioPlayed = true;
+                    }
+
+                    assistantMessage += delta;
+                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                    this.scrollToBottom();
+                }
+            }
+        } catch (error) {
+            const isInterrupted = this.stopRequested ||
+                error?.name === 'AbortError' ||
+                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+            if (!isInterrupted) {
+                throw error;
+            }
+
+            console.log('WebLLM generation interrupted');
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
             }
         }
 
