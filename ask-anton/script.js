@@ -1924,6 +1924,14 @@ IMPORTANT: Follow these guidelines when responding:
             }
         }
 
+        // Clean up incomplete sentences after streaming completes
+        const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+        if (cleanedAssistantMessage !== assistantMessage) {
+            assistantMessage = cleanedAssistantMessage;
+            messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+            this.scrollToBottom();
+        }
+
         return assistantMessage;
     }
 
