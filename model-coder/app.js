@@ -68,7 +68,7 @@ def main():
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful AI assistant that answers questions and provides information."
+                        "content": "You are a helpful AI assistant that provides concise responses."
                     },
                     {
                         "role": "user",
@@ -116,7 +116,7 @@ def main():
             # Get a response
             response = openai_client.responses.create(
                         model=model_name,
-                        instructions="You are a helpful AI assistant that answers questions and provides information.",
+                        instructions="You are a helpful AI assistant that provides concise responses.",
                         input=input_text
             )
             print(response.output_text)
@@ -150,7 +150,7 @@ def main():
         conversation_messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful AI assistant that answers questions and provides information."
+                        "content": "You are a helpful AI assistant that provides concise responses."
                     }
         ]
         
@@ -219,7 +219,7 @@ def main():
             # Get a response
             response = openai_client.responses.create(
                         model=model_name,
-                        instructions="You are a helpful AI assistant that answers questions and provides information.",
+                        instructions="You are a helpful AI assistant that provides concise responses.",
                         input=input_text,
                         previous_response_id=last_response_id
             )
@@ -267,7 +267,7 @@ def main():
             # Get a response
             stream = openai_client.responses.create(
                         model=model_name,
-                        instructions="You are a helpful AI assistant that answers questions and provides information.",
+                        instructions="You are a helpful AI assistant that provides concise responses.",
                         input=input_text,
                         previous_response_id=last_response_id,
                         stream=True
@@ -322,7 +322,7 @@ async def main():
             # Await an asynchronous response
             response = await async_client.responses.create(
                         model=model_name,
-                        instructions="You are a helpful AI assistant that answers questions and provides information.",
+                        instructions="You are a helpful AI assistant that provides concise responses.",
                         input=input_text,
                         previous_response_id=last_response_id
             )
@@ -373,7 +373,7 @@ async def main():
             # Await an asynchronous stream response
             stream = await async_client.responses.create(
                         model=model_name,
-                        instructions="You are a helpful AI assistant that answers questions and provides information.",
+                        instructions="You are a helpful AI assistant that provides concise responses.",
                         input=input_text,
                         previous_response_id=last_response_id,
                         stream=True
