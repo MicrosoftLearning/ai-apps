@@ -966,3 +966,92 @@ footer {
         padding: 6px 10px;
     }
 }
+
+/* Mobile Layout - Applied when mobile device is detected on startup */
+body.mobile-layout header {
+    padding: 12px 0;
+}
+
+body.mobile-layout header h1 {
+    font-size: 1.6em;
+    margin-bottom: 2px;
+}
+
+body.mobile-layout .subtitle {
+    display: none;
+}
+
+body.mobile-layout .container {
+    padding: 8px;
+}
+
+body.mobile-layout .chat-wrapper {
+    border-radius: 12px;
+    margin-bottom: 12px;
+}
+
+body.mobile-layout .chat-container {
+    height: 70vh;
+    min-height: 400px;
+}
+
+body.mobile-layout .chat-header {
+    padding: 10px 15px;
+}
+
+body.mobile-layout .chat-header h2 {
+    font-size: 1.2em;
+}
+
+body.mobile-layout .header-buttons {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+body.mobile-layout .about-btn {
+    display: none;
+}
+
+body.mobile-layout .restart-btn,
+body.mobile-layout .mode-select {
+    font-size: 0.8em;
+    padding: 6px 12px;
+}
+
+body.mobile-layout .example-questions {
+    display: none;
+}
+
+body.mobile-layout .input-info {
+    display: none;
+}
+
+body.mobile-layout .chat-messages {
+    padding: 12px;
+}
+
+body.mobile-layout .chat-input-area {
+    padding: 10px 12px 6px 12px;
+}
+
+body.mobile-layout #user-input {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 10px 14px;
+}
+
+body.mobile-layout .mic-btn,
+body.mobile-layout .send-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.2em;
+}
+
+body.mobile-layout .message-content {
+    max-width: 90%;
+}
+
+body.mobile-layout footer {
+    padding: 10px;
+    font-size: 0.8em;
+}

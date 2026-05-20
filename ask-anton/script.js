@@ -296,6 +296,25 @@ IMPORTANT: Follow these guidelines when responding:
         return true;
     }
 
+    isLikelyMobileDevice() {
+        // Prefer userAgentData when available, then fall back to UA + touch heuristics.
+        if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+            return navigator.userAgentData.mobile;
+        }
+
+        const ua = navigator.userAgent || '';
+        const mobileUaPattern = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|EdgA/i;
+        const isMobileUa = mobileUaPattern.test(ua);
+        const isTouchMac = /Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+        const hasTouch = (navigator.maxTouchPoints || 0) > 0 || ('ontouchstart' in window);
+        const hasCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+        const shortestScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+        const isSmallScreen = shortestScreenSide > 0 && shortestScreenSide <= 900;
+        const isTouchSmallScreen = hasTouch && hasCoarsePointer && isSmallScreen;
+
+        return isMobileUa || isTouchMac || isTouchSmallScreen;
+    }
+
     async initializeEngine() {
         // 🧪 DEBUG: Force Basic mode for testing
         if (this.debugConfig.enabled && this.debugConfig.forceBasicMode) {
@@ -303,6 +322,18 @@ IMPORTANT: Follow these guidelines when responding:
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
                 '🧪 DEBUG: Running in forced Basic mode for testing.'
+            );
+            return;
+        }
+
+        const isMobileDevice = this.isLikelyMobileDevice();
+        if (isMobileDevice) {
+            this.availableModes.gpu = this.checkWebGPUSupport();
+            console.log('Mobile device detected on startup. Defaulting to Basic mode.');
+            document.body.classList.add('mobile-layout');
+            this.initializeBasicMode(
+                'Ready to chat! (Basic mode)',
+                'Basic mode was selected automatically for mobile startup. You can switch modes anytime from the mode selector.'
             );
             return;
         }
