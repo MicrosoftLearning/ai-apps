@@ -778,6 +778,29 @@ footer {
     color: #856404;
 }
 
+.modal-body .config-note {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-left: 3px solid #0078d4;
+    border-radius: 6px;
+    background: #eef6ff;
+    color: #1f3f5b;
+    font-size: 0.92em;
+}
+
+.modal-body .config-note a {
+    color: #005a9e;
+    font-weight: 600;
+}
+
+.modal-body .config-note a:hover {
+    text-decoration: underline;
+}
+
+.modal-body .config-intro {
+    font-size: 0.92em;
+}
+
 .modal-footer {
     padding: 12px 30px 15px;
     border-top: 1px solid #e9ecef;
