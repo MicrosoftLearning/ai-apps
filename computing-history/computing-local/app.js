@@ -29,6 +29,9 @@ const availableModes = { gpu: false, cpu: true, basic: true }; // Track which mo
 let currentAbortController = null; // Track abort controller for wllama
 let currentStream = null; // Track current streaming completion
 let typingAnimationsInProgress = 0; // Track active typewriter animations
+const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode. If this keeps happening, please try switching to CPU mode or Basic mode.";
+const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode. If this keeps happening, please try switching to Basic mode.";
+let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -1165,12 +1168,12 @@ async function handleSend() {
                     endResponse();
                 }
             } else {
-                setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
+                setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
                 endResponse();
             }
         } catch (e) {
             if (checkStopResponse()) return;
-            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + escapeHtml(e.message));
+            setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
             endResponse();
         }
     } else {
@@ -1212,7 +1215,11 @@ async function handleSend() {
                     conversationHistory.shift();
                 }
             } else {
-                addMessage(`I'm sorry. I don't know about that topic.`, "bot");
+                if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
+                    addMessage(CPU_MODE_FAILURE_MESSAGE, "bot");
+                } else {
+                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
+                }
             }
         } catch (e) {
             removeTyping();
@@ -1647,6 +1654,8 @@ async function performClassification(imgEl, userText = "") {
                             if (conversationHistory.length > 2) {
                                 conversationHistory.shift();
                             }
+                        } else {
+                            setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
                         }
 
                         // Handle voice output if needed
@@ -1658,6 +1667,7 @@ async function performClassification(imgEl, userText = "") {
                         }
                     } catch (e) {
                         console.warn("Info generation failed", e);
+                        setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
                         endResponse();
                     }
                     return; // Exit early since we already added the message
@@ -1712,6 +1722,8 @@ async function performClassification(imgEl, userText = "") {
                             if (conversationHistory.length > 2) {
                                 conversationHistory.shift();
                             }
+                        } else if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
+                            setBubbleContent(bubble, reply + `<br><br>${CPU_MODE_FAILURE_MESSAGE}`);
                         }
 
                         // Handle voice output if needed
@@ -1870,6 +1882,8 @@ async function generateWithWebLLM(query, onChunk = null) {
  */
 async function generateWithWllama(query) {
     try {
+        lastWllamaCompletionErrored = false;
+
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
         chatMLPrompt += 'You are a knowledgeable assistant about computing history facts.\n';
@@ -1944,10 +1958,12 @@ async function generateWithWllama(query) {
     } catch (error) {
         if (error.name === 'AbortError') {
             console.log('Generation aborted by user');
+            lastWllamaCompletionErrored = false;
             return null;
         }
         console.error('Error generating info with Wllama:', error);
         currentAbortController = null;
+        lastWllamaCompletionErrored = true;
         return null;
     }
 }

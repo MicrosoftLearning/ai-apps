@@ -31,6 +31,10 @@ class AskAnton {
         this.videoPopupWidth = 800;
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
+        this.gpuModeFailureMessage = "I'm sorry, something went wrong in GPU mode. If this keeps happening, please try switching to CPU mode or Basic mode.";
+        this.cpuModeFailureMessage = "I'm sorry, something went wrong in CPU mode. If this keeps happening, please try switching to Basic mode.";
+        this.lastWebLLMCompletionErrored = false;
+        this.lastWllamaCompletionErrored = false;
 
         // Vosk speech recognition (lazy-loaded fallback)
         this.voskModel = null;
@@ -1769,6 +1773,16 @@ IMPORTANT: Follow these guidelines when responding:
                     });
                     return;
                 }
+
+                if (this.currentMode === 'gpu' && this.lastWebLLMCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.gpuModeFailureMessage);
+                    return;
+                }
+
+                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+                    return;
+                }
             }
 
             if (usedVoiceInput) {
@@ -1839,6 +1853,18 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
 
+            if (!assistantMessage.trim()) {
+                if (this.currentMode === 'gpu' && this.lastWebLLMCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.gpuModeFailureMessage);
+                    return;
+                }
+
+                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+                    return;
+                }
+            }
+
             // Add learn more links and videos
             if (links && links.length > 0 && categories && categories.length > 0) {
                 this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
@@ -1866,9 +1892,9 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Suggest switching to CPU mode if currently in GPU mode
             if (this.currentMode === 'gpu') {
-                this.addMessage('assistant', 'Sorry, I encountered an error in GPU mode. Try switching to CPU or Basic mode using the list at the top, then ask your question again.');
+                this.addMessage('assistant', this.gpuModeFailureMessage);
             } else if (this.currentMode === 'cpu') {
-                this.addMessage('assistant', 'Sorry, I encountered an error in CPU mode. Try switching to Basic mode using the list at the top, then ask your question again.');
+                this.addMessage('assistant', this.cpuModeFailureMessage);
             } else {
                 this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             }
@@ -1892,6 +1918,8 @@ IMPORTANT: Follow these guidelines when responding:
 
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+        this.lastWebLLMCompletionErrored = false;
+
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
             userPrompt = `${userMessage}\nBase your response on the following information:\n${context}`;
@@ -1945,7 +1973,9 @@ IMPORTANT: Follow these guidelines when responding:
                 /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
 
             if (!isInterrupted) {
-                throw error;
+                this.lastWebLLMCompletionErrored = true;
+                console.error('WebLLM generation error:', error);
+                return '';
             }
 
             console.log('WebLLM generation interrupted');
@@ -2102,6 +2132,8 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+        this.lastWllamaCompletionErrored = false;
+
         // Ensure wllama is loaded
         if (!this.wllama) {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
@@ -2245,8 +2277,10 @@ IMPORTANT: Follow these guidelines when responding:
             // Check if this was an abort (expected when user clicks stop)
             if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
+                this.lastWllamaCompletionErrored = false;
             } else {
                 console.log('Wllama generation error:', error.message || 'unknown error');
+                this.lastWllamaCompletionErrored = true;
             }
             this.currentAbortController = null;
         } finally {
