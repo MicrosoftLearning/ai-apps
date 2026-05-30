@@ -390,6 +390,15 @@ header h1 {
     font-style: italic;
 }
 
+.mcp-results {
+    margin: 6px 0 0 20px;
+    padding: 0;
+}
+
+.mcp-results li {
+    margin-bottom: 4px;
+}
+
 .message-text a {
     color: #0078d4;
     text-decoration: none;

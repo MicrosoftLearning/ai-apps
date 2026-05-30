@@ -1647,13 +1647,195 @@ IMPORTANT: Follow these guidelines when responding:
         return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
     }
 
+    // === Microsoft Learn MCP server integration ============================
+    // Mirrors the streamable HTTP client used by learn-mcp-client: lazy
+    // initialize → tools/list → tools/call, parses the returned JSON envelope,
+    // and returns up to `max` deduplicated {title, url} article references.
+
+    async queryLearnMcp(query, max = 5) {
+        if (!query || !query.trim()) return [];
+        const tool = await this.ensureLearnMcpReady();
+        if (!tool) return [];
+
+        const args = this.buildLearnMcpArgs(tool, query.trim());
+        const result = await this.mcpRpc('tools/call', { name: tool.name, arguments: args });
+
+        const items = this.extractLearnMcpItems(result);
+        const links = [];
+        const seenBase = new Set();
+        for (const item of items) {
+            const url = item.contentUrl || item.url || item.uri || item.link || '';
+            if (!url) continue;
+            const base = url.split('#')[0];
+            if (seenBase.has(base)) continue;
+            seenBase.add(base);
+            const title = item.title || item.name || item.heading || base;
+            links.push({ title, url: base });
+            if (links.length >= max) break;
+        }
+        return links;
+    }
+
+    async ensureLearnMcpReady() {
+        if (!this._mcp) {
+            this._mcp = {
+                endpoint: 'https://learn.microsoft.com/api/mcp',
+                protocolVersion: '2025-06-18',
+                sessionId: null,
+                nextId: 1,
+                tool: null,
+                initPromise: null,
+            };
+        }
+        if (this._mcp.tool) return this._mcp.tool;
+        if (!this._mcp.initPromise) {
+            this._mcp.initPromise = (async () => {
+                await this.mcpRpc('initialize', {
+                    protocolVersion: this._mcp.protocolVersion,
+                    capabilities: {},
+                    clientInfo: { name: 'ask-anton', version: '0.1.0' },
+                });
+                await this.mcpRpc('notifications/initialized', undefined, { isNotification: true });
+                const listed = await this.mcpRpc('tools/list', {});
+                const tools = (listed && listed.tools) || [];
+                this._mcp.tool = tools.find(t => /search/i.test(t.name)) || tools[0] || null;
+                return this._mcp.tool;
+            })().catch(err => {
+                // Reset so a later question can retry.
+                this._mcp.initPromise = null;
+                throw err;
+            });
+        }
+        return this._mcp.initPromise;
+    }
+
+    buildLearnMcpArgs(tool, query) {
+        const props = (tool.inputSchema && tool.inputSchema.properties) || {};
+        const candidates = ['query', 'question', 'q', 'search', 'searchQuery', 'text', 'prompt'];
+        const key = candidates.find(k => k in props) || Object.keys(props)[0];
+        const args = {};
+        if (key) args[key] = query;
+        return args;
+    }
+
+    extractLearnMcpItems(result) {
+        const items = [];
+        const parts = (result && result.content) || [];
+        for (const part of parts) {
+            if (part.type !== 'text' || typeof part.text !== 'string') continue;
+            const trimmed = part.text.trim();
+            let parsed = null;
+            if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+                try { parsed = JSON.parse(trimmed); } catch { /* not JSON */ }
+            }
+            if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+                for (const key of ['results', 'items', 'data', 'value', 'hits', 'documents']) {
+                    if (Array.isArray(parsed[key])) { parsed = parsed[key]; break; }
+                }
+            }
+            if (Array.isArray(parsed)) items.push(...parsed);
+            else if (parsed && typeof parsed === 'object') items.push(parsed);
+        }
+        return items;
+    }
+
+    async mcpRpc(method, params, { isNotification = false } = {}) {
+        const id = isNotification ? undefined : this._mcp.nextId++;
+        const body = { jsonrpc: '2.0', method, ...(params !== undefined ? { params } : {}) };
+        if (!isNotification) body.id = id;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'MCP-Protocol-Version': this._mcp.protocolVersion,
+        };
+        if (this._mcp.sessionId) headers['Mcp-Session-Id'] = this._mcp.sessionId;
+
+        const res = await fetch(this._mcp.endpoint, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+        });
+
+        const sid = res.headers.get('Mcp-Session-Id') || res.headers.get('mcp-session-id');
+        if (sid) this._mcp.sessionId = sid;
+
+        if (isNotification) {
+            if (!res.ok && res.status !== 202) {
+                throw new Error(`MCP notification ${method} failed: ${res.status}`);
+            }
+            return null;
+        }
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`MCP ${method} failed: ${res.status} ${res.statusText} ${text}`);
+        }
+
+        const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+        if (ct.includes('text/event-stream')) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                    const evt = buffer.slice(0, idx);
+                    buffer = buffer.slice(idx + 2);
+                    const data = evt.split('\n')
+                        .filter(l => l.startsWith('data:'))
+                        .map(l => l.slice(5).trimStart())
+                        .join('\n');
+                    if (!data) continue;
+                    let msg;
+                    try { msg = JSON.parse(data); } catch { continue; }
+                    if (msg.id === id) {
+                        if (msg.error) throw new Error(`MCP ${method}: ${msg.error.message}`);
+                        return msg.result;
+                    }
+                }
+            }
+            throw new Error(`MCP ${method}: stream ended without a response`);
+        }
+
+        const msg = await res.json();
+        if (msg.error) throw new Error(`MCP ${method}: ${msg.error.message}`);
+        return msg.result;
+    }
+    // === end MCP integration ===============================================
+
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
         const encodedKeywords = encodeURIComponent(bingKeywords);
         const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
-        const historyAssistantMessage = `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
-        const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
+
+        // Try the Microsoft Learn MCP server first to get specific article links.
+        let mcpLinks = [];
+        try {
+            mcpLinks = await this.queryLearnMcp(searchQuery, 5);
+        } catch (err) {
+            console.warn('Learn MCP query failed, falling back to search link:', err);
+        }
+
+        const useMcp = mcpLinks.length > 0;
+        const historyAssistantMessage = useMcp
+            ? `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nCheck out the following documentation articles:`
+            : `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
+        const assistantMessage = useMcp
+            ? historyAssistantMessage.replace('Check out the following documentation articles:', '[[SEARCH_RESULT_LINK]]')
+            : historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
+
+        const searchLinkHtml = useMcp
+            ? 'Check out the following documentation articles:<ul class="mcp-results">' +
+              mcpLinks.map(l =>
+                  `<li><a href="${this.escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(l.title)}</a></li>`
+              ).join('') +
+              '</ul>'
+            : `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1661,7 +1843,6 @@ IMPORTANT: Follow these guidelines when responding:
 
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
 
         if (this.currentMode === 'cpu') {
             messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
