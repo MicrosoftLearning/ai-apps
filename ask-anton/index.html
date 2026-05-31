@@ -83,8 +83,11 @@
                             <p class="message-author">Anton</p>
                             <p>Hi! I'm Anton, a basic example of an AI assistant to accompany AI training materials.<br>
                                 I'm <u>not</u> a supported Microsoft product or service, or an official component of
-                                Microsoft Learn or AI Skills Navigator; but ask me about AI concepts, and I'll do my
-                                best to provide helpful explanations.</p>
+                                Microsoft Learn or AI Skills Navigator; but you can ask me about AI concepts, and I'll
+                                do my best to provide helpful explanations.</p>
+                            <p>I use a Microsoft Phi model to generate AI responses. On older, or lower-spec devices, my
+                                responses may be slow. You can switch the model to "None" (Basic QnA mode) for simpler,
+                                but faster responses.</p>
                         </div>
                     </div>
                 </div>
@@ -112,8 +115,7 @@
                             <button class="example-btn" data-question="What's an agent?" aria-label="Ask about agents">
                                 What's an agent?
                             </button>
-                            <button class="example-btn" data-question="Explain RAG"
-                                aria-label="Ask about RAG">
+                            <button class="example-btn" data-question="Explain RAG" aria-label="Ask about RAG">
                                 Explain RAG
                             </button>
                             <button class="example-btn" data-question="What's computer vision?"
@@ -172,7 +174,8 @@
                 </p>
                 <h3>Features</h3>
                 <ul>
-                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast inference),
+                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast
+                        inference),
                         CPU mode (wllama with Phi-2 for broader compatibility), and Basic mode (knowledge-base content
                         without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
