@@ -716,37 +716,13 @@ async function initWllama(progressCallback = null, options = {}) {
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
-        try {
-            wllama = new Wllama(CONFIG_PATHS);
-            if (!isLazyLoad) {
-                updateLoadingStatus('smollm', 'loading', '20%');
-            }
-
-            await wllama.loadModelFromHF(
-                {
-                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                },
-                {
-                    n_ctx: 384,
-                    n_threads: preferredThreads,
-                    progressCallback: internalProgressCallback
-                }
-            );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-
-            // Warm the cache with system instruction (only on initial load, not on restart)
-            if (!forceReload) {
-                await warmWllamaCache(isLazyLoad, progressCallback);
-            }
-        } catch (multiErr) {
-            if (preferredThreads > 1) {
-                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+        await withWebGpuDisabledForWorkers(async () => {
+            try {
+                wllama = new Wllama(CONFIG_PATHS);
                 if (!isLazyLoad) {
                     updateLoadingStatus('smollm', 'loading', '20%');
                 }
 
-                wllama = new Wllama(CONFIG_PATHS);
                 await wllama.loadModelFromHF(
                     {
                         repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
@@ -754,20 +730,50 @@ async function initWllama(progressCallback = null, options = {}) {
                     },
                     {
                         n_ctx: 384,
-                        n_threads: 1,
+                        n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
+                        offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
+                        n_threads: preferredThreads,
                         progressCallback: internalProgressCallback
                     }
                 );
-                console.log("Wllama initialized successfully with 1 thread (fallback)");
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
 
                 // Warm the cache with system instruction (only on initial load, not on restart)
                 if (!forceReload) {
                     await warmWllamaCache(isLazyLoad, progressCallback);
                 }
-            } else {
-                throw multiErr;
+            } catch (multiErr) {
+                if (preferredThreads > 1) {
+                    console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
+                    if (!isLazyLoad) {
+                        updateLoadingStatus('smollm', 'loading', '20%');
+                    }
+
+                    wllama = new Wllama(CONFIG_PATHS);
+                    await wllama.loadModelFromHF(
+                        {
+                            repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                            file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                        },
+                        {
+                            n_ctx: 384,
+                            n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
+                            offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
+                            n_threads: 1,
+                            progressCallback: internalProgressCallback
+                        }
+                    );
+                    console.log("Wllama initialized successfully with 1 thread (fallback)");
+
+                    // Warm the cache with system instruction (only on initial load, not on restart)
+                    if (!forceReload) {
+                        await warmWllamaCache(isLazyLoad, progressCallback);
+                    }
+                } else {
+                    throw multiErr;
+                }
             }
-        }
+        });
 
         wllamaReady = true;
         if (!isLazyLoad) {
@@ -780,6 +786,93 @@ async function initWllama(progressCallback = null, options = {}) {
         }
         wllamaReady = false;
         throw error;
+    }
+}
+
+async function withWebGpuTemporarilyDisabled(task) {
+    const nav = navigator;
+    const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
+    const ownGpuDescriptor = hadOwnGpu ? Object.getOwnPropertyDescriptor(nav, 'gpu') : null;
+    let gpuMasked = false;
+
+    const unavailableGpu = {
+        requestAdapter: async () => null
+    };
+
+    try {
+        Object.defineProperty(nav, 'gpu', {
+            configurable: true,
+            enumerable: false,
+            get: () => unavailableGpu
+        });
+        gpuMasked = true;
+        console.log('Temporarily stubbed navigator.gpu as unavailable for wllama initialization');
+    } catch (error) {
+        console.warn('Unable to mask navigator.gpu during wllama initialization:', error);
+    }
+
+    try {
+        return await task();
+    } finally {
+        if (!gpuMasked) {
+            return;
+        }
+
+        try {
+            if (hadOwnGpu && ownGpuDescriptor) {
+                Object.defineProperty(nav, 'gpu', ownGpuDescriptor);
+            } else {
+                delete nav.gpu;
+            }
+            console.log('Restored navigator.gpu after wllama initialization');
+        } catch (error) {
+            console.warn('Unable to restore navigator.gpu after wllama initialization:', error);
+        }
+    }
+}
+
+async function withWebGpuDisabledForWorkers(task) {
+    const NativeWorker = window.Worker;
+    let workerPatched = false;
+
+    try {
+        if (typeof NativeWorker === 'function') {
+            window.Worker = class WorkerWithoutWebGPU extends NativeWorker {
+                constructor(scriptURL, options) {
+                    let wrappedURL = scriptURL;
+                    let createdWrappedBlobUrl = false;
+
+                    try {
+                        const workerType = options?.type === 'module' ? 'module' : 'classic';
+                        const source = workerType === 'module'
+                            ? `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimport ${JSON.stringify(String(scriptURL))};`
+                            : `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimportScripts(${JSON.stringify(String(scriptURL))});`;
+
+                        wrappedURL = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+                        createdWrappedBlobUrl = true;
+                    } catch (error) {
+                        wrappedURL = scriptURL;
+                        createdWrappedBlobUrl = false;
+                    }
+
+                    super(wrappedURL, options);
+
+                    if (createdWrappedBlobUrl) {
+                        setTimeout(() => URL.revokeObjectURL(wrappedURL), 0);
+                    }
+                }
+            };
+
+            workerPatched = true;
+            console.log('Temporarily patched Worker to disable WebGPU inside wllama workers');
+        }
+
+        return await withWebGpuTemporarilyDisabled(task);
+    } finally {
+        if (workerPatched) {
+            window.Worker = NativeWorker;
+            console.log('Restored Worker after wllama initialization');
+        }
     }
 }
 
