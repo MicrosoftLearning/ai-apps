@@ -1904,7 +1904,7 @@ async function generateWithWllama(query) {
 
         // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n(Respond with one or two factually accurate sentences)\n';
+        chatMLPrompt += query + '\n(Respond with one or two sentences)\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
