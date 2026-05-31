@@ -396,7 +396,7 @@ IMPORTANT: Follow these guidelines when responding:
                         vram_required_MB: 3672.07,
                         low_resource_required: false,
                         overrides: {
-                            context_window_size: 4096
+                            context_window_size: 2048
                         }
                     }
                 ]
