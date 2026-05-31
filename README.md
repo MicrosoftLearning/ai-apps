@@ -1,6 +1,6 @@
 # Microsoft Learning AI Apps
 
-This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft Learn](https://learn.microsoft.com) and are <u>not</u> intended (or supported) for use in production solutions.
+This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft Learn](https://learn.microsoft.com) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
 
 > **Important**: These apps are <u>not</u> supported Microsoft services or products. They are educational materials to support practical exercises in training courses; and are provided as-is without warranty of any kind.
 
@@ -43,9 +43,9 @@ The Azure-based **Ask Anton** and **Computing History** apps use a model that yo
 
 #### Local (in-browser) LLMs
 
-Browser-based apps use the [Microsoft Phi-3-mini-4k-instruct](https://azure.microsoft.com/products/phi/) generative AI model (specifically *Microsoft Phi-3-mini-4k-instruct-q4f16_1-MLC*). You can view the [model card](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) for this model for details, including considerations for responsible use. The model is run in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module, with no server-side processing.
+Browser-based apps use the [Microsoft Phi 3.5-mini](https://azure.microsoft.com/products/phi/) generative AI model. The model is loaded in-browser using the [WebLLM](https://webllm.mlc.ai/) JavaScript module running on WebGPU.
 
-In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [Phi 2](https://huggingface.co/microsoft/phi-2) model running in the [WLLAMA](https://www.jsdelivr.com/package/npm/@wllama/wllama) CPU-based runtime is used.
+In cases where no GPU is available, or WebGPU is not supported, a fallback mode using the [Phi 2](https://huggingface.co/microsoft/phi-2) model running in the [wllama](https://www.jsdelivr.com/package/npm/@wllama/wllama) WASM-based runtime is used.
 
 All in-browser LLM-based apps include a *minimal* content moderation solution in which the app validates input for common potentially offensive or harmful terms, and returns an appropriate message without submitting the prompt to the model. In some cases, legitimately non-offensive and non-harmful prompts may be blocked by this mechanism.
 
