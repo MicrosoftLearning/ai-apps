@@ -886,7 +886,7 @@ async function warmWllamaCache(isLazyLoad = true, progressCallback = null) {
 
     try {
         const systemInstruction = '<|im_start|>system\n' +
-            'You are a knowledgeable assistant about computing history. You provide factually correct answers.\n' +
+            'You are a knowledgeable assistant about computing history. You provide concise answers.\n' +
             '<|im_end|>';
 
         console.log('Warming cache with system instruction...');
@@ -2248,7 +2248,7 @@ async function generateWithWllama(query) {
 
         // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n(Respond with one or two sentences)\n';
+        chatMLPrompt += query + '\n(Respond concisely)\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
@@ -3157,9 +3157,9 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi-3.5-mini-instruct (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'SmolLM2-360M-Instruct (CPU - running locally)';
+            modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
         } else {
