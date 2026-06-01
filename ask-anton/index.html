@@ -57,9 +57,9 @@
                             </a>
                             <div class="mode-select-container" role="group" aria-labelledby="mode-select-label">
                                 <label class="mode-select-label" id="mode-select-label" for="mode-select">
-                                    <span class="visually-hidden">Choose a response mode</span>
+                                    <span class="visually-hidden">Choose a model</span>
                                 </label>
-                                <select id="mode-select" class="mode-select" aria-label="Choose a response mode">
+                                <select id="mode-select" class="mode-select" aria-label="Choose a model">
                                     <option value="gpu">🟢 Phi 3.5 (GPU)</option>
                                     <option value="cpu">🟠 Phi 2 (CPU)</option>
                                     <option value="basic">⚪ None (Basic Q&A)</option>
@@ -81,10 +81,15 @@
                         </div>
                         <div class="message-content">
                             <p class="message-author">Anton</p>
-                            <p>Hi! I'm Anton, a basic example of an AI assistant to accompany AI training materials.<br>
-                                I'm <u>not</u> a supported Microsoft product or service, or an official component of
-                                Microsoft Learn or AI Skills Navigator; but ask me about AI concepts, and I'll do my
-                                best to provide helpful explanations.</p>
+                            <p>Hi! I'm Anton, a basic example of an AI assistant.<br>
+                                I'm <u>not</u> a supported Microsoft product, or an official component of
+                                Microsoft Learn or AI Skills Navigator; but ask me about AI concepts, and I'll
+                                do my best to answer.</p>
+                            <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">I use a
+                                Microsoft Phi model to generate AI responses. On older, or lower-spec devices, my
+                                responses may be slow.<br>You can switch the model to "None (Basic Q&A)" for simpler,
+                                but
+                                faster responses.</p>
                         </div>
                     </div>
                 </div>
@@ -112,8 +117,7 @@
                             <button class="example-btn" data-question="What's an agent?" aria-label="Ask about agents">
                                 What's an agent?
                             </button>
-                            <button class="example-btn" data-question="Explain RAG"
-                                aria-label="Ask about RAG">
+                            <button class="example-btn" data-question="Explain RAG" aria-label="Ask about RAG">
                                 Explain RAG
                             </button>
                             <button class="example-btn" data-question="What's computer vision?"
@@ -172,7 +176,8 @@
                 </p>
                 <h3>Features</h3>
                 <ul>
-                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast inference),
+                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast
+                        inference),
                         CPU mode (wllama with Phi-2 for broader compatibility), and Basic mode (knowledge-base content
                         without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
@@ -244,7 +249,7 @@
     </div>
 
     <!-- Scripts -->
-    <script type="module" src="script.js?v=63"></script>
+    <script type="module" src="script.js?v=66"></script>
 </body>
 
 </html>
