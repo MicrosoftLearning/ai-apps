@@ -1624,14 +1624,14 @@ class AskAnton {
         this.isLoadingModel = true;
         this.elements.modeSelect.disabled = true;
         this.disableInput();
-        const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0% (may take a few minutes on first load)');
+        const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0% (first-time download may take a few minutes)');
         const loadingMsgElement = loadingMsg.querySelector('p');
 
         try {
             await this.initializeWllama((progress) => {
                 if (loadingMsgElement) {
                     const percentage = Math.round(progress * 100);
-                    loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}% (may take a few minutes on first load)`;
+                    loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}% (first-time download may take a few minutes)`;
                 }
             }, {
                 activateMode: true,
