@@ -35,7 +35,7 @@
                         <div class="progress-fill" id="progress-fill"></div>
                     </div>
                     <p class="progress-text" id="progress-text">Loading model: 0%</p>
-                    <p class="progress-info" aria-live="polite">This may take a minute or longer on first load</p>
+                    <p class="progress-info" aria-live="polite">This may take a few minutes on first load...</p>
                 </div>
             </div>
 
@@ -61,7 +61,7 @@
                                 </label>
                                 <select id="mode-select" class="mode-select" aria-label="Choose a model">
                                     <option value="gpu">🟢 Phi 3.5 (GPU)</option>
-                                    <option value="cpu">🟠 Phi 2 (CPU)</option>
+                                    <option value="cpu">🟠 Phi 3.1 (CPU)</option>
                                     <option value="basic">⚪ None (Basic Q&A)</option>
                                 </select>
                             </div>
@@ -178,7 +178,7 @@
                 <ul>
                     <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast
                         inference),
-                        CPU mode (wllama with Phi-2 for broader compatibility), and Basic mode (knowledge-base content
+                        CPU mode (wllama with Phi-3.1 for broader compatibility), and Basic mode (knowledge-base content
                         without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
@@ -221,10 +221,10 @@
                     type="button">×</button>
             </div>
             <div class="modal-body" id="ai-mode-modal-description">
-                <p>GPU mode uses WebLLM with the Phi-3-mini model, which requires <strong>WebGPU support</strong> in
+                <p>GPU mode uses WebLLM with the Phi-3.5-mini model, which requires <strong>WebGPU support</strong> in
                     your browser for fast, GPU-accelerated inference.</p>
 
-                <p>CPU mode uses wllama with Phi-2 when GPU mode is unavailable or when you prefer a broader
+                <p>CPU mode uses wllama with Phi-3.1 when GPU mode is unavailable or when you prefer a broader
                     browser-compatible option. Basic mode skips model inference entirely and returns matching content
                     directly from the built-in knowledge base.</p>
 

@@ -14,7 +14,7 @@
                     "define ai",
                     "cognitive computing"
                 ],
-                "content": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think, learn, and solve problems. It encompasses a broad range of technologies and approaches aimed at enabling computers to perform tasks that typically require human cognition. AI is built on the foundation of machine learning, and includes sub-areas such as generative AI, text analysis, speech, computer vision, and information extraction."
+                "content": "Artificial Intelligence (AI) refers to the simulation of human intelligence in computer software. It encompasses a broad range of technologies and approaches aimed at enabling computers to perform tasks that typically require human cognition. AI is built on the foundation of machine learning, and includes sub-areas such as generative AI, text analysis, speech, computer vision, and information extraction."
             },
             {
                 "id": 2,
@@ -22,6 +22,7 @@
                 "video_id": "d170e076-b913-424c-a0a0-44a47c0d7ceb",
                 "keywords": [
                     "responsible ai",
+                    "rai",
                     "ethics",
                     "ethical",
                     "safety",
@@ -34,7 +35,7 @@
                     "guardrails",
                     "content filters"
                 ],
-                "content": "Responsible AI involves the development and deployment of artificial intelligence systems in a manner that is ethical, transparent, and accountable. It emphasizes the importance of ensuring that AI technologies are designed to respect human rights, promote fairness, and mitigate potential risks associated with their use. Responsible AI practices include considerations for privacy, bias reduction, and the overall societal impact of AI applications. Microsoft defines a set of principles to guide the responsible development and use of AI technologies, including fairness, reliability and safety, privacy and security, inclusiveness, transparency, and accountability."
+                "content": "Responsible AI involves the development and deployment of artificial intelligence systems in a manner that mitigates potentially harmful or biased outcomes. Microsoft principles for responsible AI include fairness, reliability and safety, privacy and security, inclusiveness, transparency, and accountability."
             }
         ]
     },
@@ -57,7 +58,7 @@
                     "features",
                     "label"
                 ],
-                "content": "Machine Learning (ML) is the foundation for modern AI. It's a subset of data science that focuses on the development of algorithms and statistical models that enable computers to learn from and make predictions or decisions based on data. The input values for a machine learning model are 'features' of an observed entity (for example, the number of rooms in a house and its size in square feet). The mode encapsulates a mathematical function that is applied to the features to calculate a predicted 'label' (for example, the price of the house). ML can be broadly categorized into two types: supervised learning, where models are trained on labeled data; and unsupervised learning, which involves finding patterns in unlabeled data."
+                "content": "Machine Learning (ML) is the foundation for modern AI. It's a subset of data science that focuses on the development of algorithms and statistical models that enable computers to learn from and make predictions or decisions based on data. ML can be broadly categorized into two types: supervised learning, where models are trained on labeled data; and unsupervised learning, which involves finding patterns in unlabeled data."
             },
             {
                 "id": 4,
@@ -69,7 +70,7 @@
                     "regressors",
                     "linear regression"
                 ],
-                "content": "Regression is a type of supervised machine learning technique used to predict continuous numerical values based on input features. For example, you might use regression to predict the number of ice creams sold on a given day based on the temperature. Regression involves modeling the relationship between a dependent variable (the value to be predicted) and one or more independent variables (the input features). Linear regression, one of the simplest forms of regression, assumes a linear relationship between the input features and the output. More complex regression techniques can capture non-linear relationships and interactions among features."
+                "content": "Regression is a type of supervised machine learning technique used to predict continuous numerical values based on input features. For example, predicting the number of ice creams sold on a given day based on the temperature."
             },
             {
                 "id": 5,
@@ -82,7 +83,7 @@
                     "multiclass classification",
                     "logistic regression"
                 ],
-                "content": "Classification is a supervised machine learning technique used to categorize entities into predefined categories, or 'classes'. Binary classification is used to predict one of two possible outcomes (true/false, yes/no), while multiclass classification involves predicting one of three or more classes. For example, you might use binary classification to predict whether or not a patient has a particular disease based on symptoms and clinical metrics, while you might use multiclass classification to predict which of three species a penguin is based on its size, weight, and other measurements. Classification models learn from labeled training data to identify patterns that can be used to calculate the probability of each possible label based on the feature values."
+                "content": "Classification is a supervised machine learning technique used to categorize entities into predefined categories, or 'classes'. Binary classification is used to predict one of two possible outcomes (true/false, yes/no), while multiclass classification involves predicting one of three or more classes. For example, you might use binary classification to predict whether or not a patient has a particular disease based on symptoms and clinical metrics, while you might use multiclass classification to predict which of three species a penguin is based on its size, weight, and other measurements."
             },
             {
                 "id": 6,
@@ -93,7 +94,7 @@
                     "clusters",
                     "k-means"
                 ],
-                "content": "Clustering is an unsupervised machine learning technique used to group similar entities into clusters based on their features. Unlike supervised learning techniques such as classification, clustering does not rely on labeled data; instead, it identifies inherent patterns and structures within the data. For example, clustering can be used in customer segmentation to group customers with similar purchasing behaviors or demographics. Common clustering algorithms include K-means and hierarchical clustering. Clustering helps in discovering natural groupings in data, which can be useful for various applications such as market research, image segmentation, and anomaly detection."
+                "content": "Clustering is an unsupervised machine learning technique used to group similar entities into clusters based on their features. Unlike supervised learning techniques such as classification, clustering does not rely on labeled data; instead, it identifies inherent patterns and structures within the data. For example, clustering can be used in customer segmentation to group customers with similar purchasing behaviors or demographics. Common clustering algorithms include K-means and hierarchical clustering."
             },
             {
                 "id": 7,
@@ -105,7 +106,7 @@
                     "fully connected network",
                     "multi layer perceptron"
                 ],
-                "content": "Deep Learning is a specialized subset of machine learning that utilizes artificial neural networks with multiple layers (hence 'deep') to model complex patterns in data. Neural networks are inspired by the structure and function of the human brain, consisting of interconnected nodes (neurons) that process information. Deep learning has been particularly successful in tasks such as image and speech recognition, natural language processing, and game playing. Neural networks are trained by adjusting the 'weights' applied to input values in each neuron based on the difference between predicted and actual outcomes (known as the 'loss' in the model)."
+                "content": "Deep Learning is a specialized subset of machine learning that utilizes artificial neural networks with multiple layers (hence 'deep') to model complex patterns in data. Neural networks are inspired by the structure and function of the human brain, consisting of interconnected nodes (neurons) that process information. Neural networks are trained by adjusting the 'weights' applied to input values in each neuron based on the difference between predicted and actual outcomes (known as the 'loss' in the model)."
             }
         ]
     },
@@ -124,7 +125,7 @@
                     "prompts",
                     "prompt engineering"
                 ],
-                "content": "Generative AI refers to a class of artificial intelligence models that are capable of generating new content, such as text, images, audio, or video, based on the data they have been trained on. These models are typically large language models (LLMs) that use deep learning techniques, particularly transformer architectures with attention mechanisms, to define a vocabulary of semantically meaningful tokens and generate coherent and contextually relevant outputs. The input to a generative AI model is a natural language 'prompt', containing instructions or questions that guide the model in producing the desired content. Prompt engineering is the process of crafting effective prompts to elicit high-quality responses from generative AI models."
+                "content": "Generative AI refers to a class of artificial intelligence models that are capable of generating new content, such as text, images, audio, or video in response to a natural language 'prompt'. These models are typically large language models (LLMs) that use transformer architectures with attention mechanisms to define a vocabulary of semantically meaningful tokens and generate coherent and contextually relevant outputs."
             },
             {
                 "id": 9,
@@ -152,7 +153,7 @@
                     "ai agents",
                     "multi-agent"
                 ],
-                "content": "AI agents are generative AI apps designed to perform tasks or make decisions on behalf of users. AI agents typically consist of (a.) a large language model (LLM) that acts as the agent's 'brain', (b.) instructions that define the agent's job description and expected behavior, and (c.) tools that the agent can use to interact with external systems to retrieve information or initiate tasks. For example, an AI agent might be designed to assist with finding information about expense limits and policies, and submitting expense claims."
+                "content": "AI agents are generative AI assistants designed to find information and perform actions  using a large language model (LLM) for language understanding and generation, instructions that define the agent's job description, and tools that the agent can use to interact with external systems. For example, an AI agent might be designed to assist with finding information about expense limits and policies, and submitting expense claims."
             },
             {
                 "id": 11,
@@ -173,7 +174,7 @@
                     "tokens",
                     "token"
                 ],
-                "content": "Transformer models evolved from natural language processing (NLP) and are now widely used in generative AI applications. They work by decomposing training data into 'tokens' (often words, or parts of words) and mapping the tokens to vectors (like [120, 245, 89, ...]) in which each numeric dimension represents a semantic characteristic of the token. The vectors are calculated based on how the tokens appear in context to one another using self-attention mechanisms that allow the model to weigh the influence of each token on the tokens around it This process embeds semantic meaning into the vectors, so they're generally referred to as 'embeddings'. Multi-head attention enables the model to focus on multiple aspects of the input simultaneously, improving its ability to capture complex relationships. Transformers consist of encoder and decoder components that work together to process input data and generate outputs. This architecture has revolutionized AI by enabling more effective handling of sequential data and long-range dependencies when making 'next word' predictions."
+                "content": "Transformer models evolved from natural language processing (NLP) and work by decomposing training data into 'tokens' (often words, or parts of words) and mapping the tokens to vectors (like [120, 245, 89, ...]) in which each numeric dimension represents a semantic characteristic of the token. The vectors are calculated based on how the tokens appear in context to one another using self-attention mechanisms that allow the model to weigh the influence of each token on the tokens around it This process embeds semantic meaning into the vectors, so they're generally referred to as 'embeddings'. Multi-head attention enables the model to focus on multiple aspects of the input simultaneously, improving its ability to capture complex relationships. Transformers consist of encoder and decoder components that work together to process input data and generate outputs. This architecture has revolutionized AI by enabling more effective handling of sequential data and long-range dependencies when making 'next word' predictions."
             },
             {
                 "id": 12,
@@ -221,7 +222,7 @@
             },
             {
                 "id": 15,
-                "title": "Retrieval-Augmented Generation (RAG)",
+                "title": "Retrieval Augmented Generation (RAG)",
                 "video_id": "68942c8a-ca1e-490f-840f-6a15d0c7b8f7",
                 "keywords": [
                     "retrieval augmented generation",
@@ -230,7 +231,7 @@
                     "external knowledge",
                     "contextual information"
                 ],
-                "content": "Retrieval-Augmented Generation (RAG) combines generative AI models with external knowledge sources to improve the accuracy and relevance of generated content. By retrieving relevant information from databases, documents, or the web; and using it to augment the prompt, RAG systems provide contextual information that enhances the model's responses. This approach is particularly useful for tasks requiring up-to-date or domain-specific knowledge, enabling more informed and reliable outputs. RAG integrates retrieval mechanisms with generation capabilities, offering a powerful solution for applications like question answering, summarization, and personalized content creation."
+                "content": "Retrieval Augmented Generation (RAG) is a technique that integrates data from knowledge sources into prompts for large language models (LLMs), to improve the accuracy and relevance of generated content. By retrieving relevant information from databases, documents, or the web; and using it to augment the prompt, RAG systems provide contextual information that enhances the model's responses. This approach is particularly useful for tasks requiring up-to-date or domain-specific knowledge, enabling more informed and reliable outputs. RAG integrates retrieval mechanisms with generation capabilities, offering a powerful solution for applications like question answering, summarization, and personalized content creation."
             },
             {
                 "id": 16,
@@ -240,7 +241,7 @@
                     "model context protocol",
                     "mcp"
                 ],
-                "content": "To find and connect to tools, agents can use the Model Context Protocol (MCP). MCP is a standardized way for AI agents to discover and interact with external tools and services. By adhering to MCP, agents can seamlessly integrate various functionalities, such as accessing databases, APIs, or other resources, to enhance their capabilities and perform complex tasks more effectively."
+                "content": "To find and connect to tools, agents can use the Model Context Protocol (MCP) - a standardized way for AI agents to discover and interact with external tools and services. By adhering to MCP, agents can seamlessly integrate various functionalities, such as accessing databases, APIs, or other resources, to enhance their capabilities and perform complex tasks more effectively."
             }
         ]
     },
@@ -266,7 +267,7 @@
                     "pos tagging",
                     "tokenization"
                 ],
-                "content": "Text Analysis encompasses various techniques for processing and extracting insights from textual data. Term Frequency (TF) measures how often a term appears in a document, while TF-IDF (Term Frequency-Inverse Document Frequency) weighs terms by their importance across a corpus of documents. Stemming and lemmatization are techniques for reducing words to their base or root form (for example, 'running' to 'run'), helping to normalize text for analysis. Parts-of-speech (POS) tagging identifies the grammatical role of each word in a sentence (noun, verb, adjective, etc.), which is useful for understanding sentence structure and meaning."
+                "content": "Text Analysis encompasses statistical and semantic modeling techniques for processing and extracting insights from textual data. Term Frequency (TF) measures how often a term appears in a document, while TF-IDF (Term Frequency-Inverse Document Frequency) weighs terms by their importance across a corpus of documents. Stemming and lemmatization are techniques for reducing words to their base or root form (for example, 'running' to 'run'), helping to normalize text for analysis. Parts-of-speech (POS) tagging identifies the grammatical role of each word in a sentence (noun, verb, adjective, etc.), which is useful for understanding sentence structure and meaning."
             },
             {
                 "id": 18,
@@ -337,7 +338,7 @@
                     "talk",
                     "talking"
                 ],
-                "content": "Speech technologies enable computers to understand and generate human speech. Common use cases include voice assistants, transcription services that convert spoken words to text, accessibility tools for people with disabilities, language translation, and automated customer service systems. Speech processing involves two main tasks: Speech Recognition (converting spoken words to text) and Speech Synthesis (converting text to spoken words). These technologies have become increasingly accurate and natural-sounding with advances in deep learning and neural networks."
+                "content": "AI technologies like speech recognition and speech synthesis enable you to communicate with computers using your voice. Common use cases include voice assistants, transcription services that convert spoken words to text, accessibility tools for people with disabilities, language translation, and automated customer service systems. Speech processing involves two main tasks: Speech Recognition (converting spoken words to text) and Speech Synthesis (converting text to spoken words). These technologies have become increasingly accurate and natural-sounding with advances in deep learning and neural networks."
             },
             {
                 "id": 23,
@@ -632,15 +633,15 @@
                 ],
                 "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
             },
-                {
-                    "id": 41,
-                    "title": "Anthropic models in Foundry",
-                    "keywords": [
-                        "anthropic",
-                        "claude"
-                    ],
-                    "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
-                }
+            {
+                "id": 41,
+                "title": "Anthropic models in Foundry",
+                "keywords": [
+                    "anthropic",
+                    "claude"
+                ],
+                "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+            }
         ]
     },
     {
