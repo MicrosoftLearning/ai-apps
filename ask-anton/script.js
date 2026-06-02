@@ -138,7 +138,7 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are an AI tutor that provides learner-friendly answers to questions about AI. You pilotely decline to discuss topics not related to AI or computing.`;
+        this.SYSTEM_PROMPT = `You are an AI tutor that provides learner-friendly answers to questions about AI. You politely decline to discuss topics not related to AI or computing.`;
 
         this.PROMPT_WITH_CONTEXT = `Respond based on the following information:`;
         this.PROMPT_WITHOUT_CONTEXT = `Continue the conversation, keeping responses concise and focused on AI topics. If you don't know the answer, say you don't know.`;
