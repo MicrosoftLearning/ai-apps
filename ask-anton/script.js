@@ -1836,6 +1836,7 @@ class AskAnton {
         });
 
         messageTextDiv.innerHTML = formattedMessage;
+        this.scrollToBottom();
     }
 
     /** @returns {boolean} true if at least one user turn exists in history. */
