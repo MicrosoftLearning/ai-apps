@@ -74,6 +74,24 @@ def _run_sync(coro):
         if loop is not None and not loop.is_running():
             return loop.run_until_complete(coro)
 
+        # Best-effort: cancel the orphan coroutine so Pyodide doesn't log a
+        # "coroutine was never awaited" warning on top of the real error below.
+        try:
+            coro.close()
+        except Exception:
+            pass
+
+        running_in_worker = bool(getattr(_pyscript, "RUNNING_IN_WORKER", False)) if _pyscript is not None else False
+        if not running_in_worker:
+            raise RuntimeError(
+                "This page isn't fully cross-origin isolated yet, so the synchronous "
+                "OpenAI client can't run here. Reload the page once and try again. "
+                "If the problem persists, open the page in a normal (non-private) "
+                "browser window — private/incognito mode and some embedded contexts "
+                "block the cross-origin isolation that PyScript worker mode requires. "
+                "As a workaround you can switch your code to AsyncOpenAI."
+            ) from exc
+
         raise RuntimeError(
             "Synchronous OpenAI calls cannot run inside the active event loop in this runtime. "
             "Use AsyncOpenAI in async code paths."
