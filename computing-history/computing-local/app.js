@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm";
 import { Wllama } from '@wllama/wllama';
 
 const chatContainer = document.getElementById('chat-messages');
@@ -28,7 +28,6 @@ let webGPUAvailable = false; // Track if WebGPU is available
 let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
 const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
-let currentStream = null; // Track current streaming completion
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
@@ -167,7 +166,7 @@ function checkWebGPUSupport() {
  */
 async function init() {
     // Show loading overlay
-    updateLoadingStatus('mobilenet', 'ready', 'On demand');
+    updateLoadingStatus('mobilenet', 'loading', 'Loading...');
     updateLoadingStatus('smollm', 'loading', 'Loading...');
 
     // Pin TFJS to the CPU backend before any tf.* calls so it never grabs a
@@ -183,10 +182,16 @@ async function init() {
         console.warn('Failed to pin TFJS to CPU backend:', backendErr);
     }
 
-    // MobileNet load is deferred until the first image upload (see
-    // ensureImageModelLoaded). Only moderation data is needed up front.
     try {
         await loadInappropriateWords();
+
+        // Pre-load MobileNet + classifier up front so the first image upload
+        // doesn't have to wait for it (and so any load failure surfaces here
+        // rather than partway through a classification flow). Failure is
+        // non-fatal: ensureImageModelLoaded will retry on demand.
+        ensureImageModelLoaded().catch(err => {
+            console.warn('Image model preload failed (will retry on demand):', err);
+        });
 
         // Check for WebGPU support
         const hasWebGPU = checkWebGPUSupport();
@@ -240,21 +245,21 @@ async function init() {
  */
 async function initializeWebLLM() {
     try {
-        updateModelName('Phi-3.5-mini (WebGPU)');
+        updateModelName('Phi-3-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k';
 
         const appConfig = {
             model_list: [
                 {
-                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
-                    vram_required_MB: 3672.07,
-                    low_resource_required: false,
+                    model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    vram_required_MB: 2520.07,
+                    low_resource_required: true,
                     overrides: {
-                        context_window_size: 2048
+                        context_window_size: 1024
                     }
                 }
             ]
@@ -343,11 +348,7 @@ async function recoverGpuModeOrFallback() {
                 await initWllama((progress) => {
                     if (loadingBubble) {
                         const percentage = Math.round(progress * 100);
-                        if (percentage >= 99) {
-                            setBubbleContent(loadingBubble, 'GPU mode unavailable. Optimizing CPU model...');
-                        } else {
-                            setBubbleContent(loadingBubble, `GPU mode unavailable. Loading CPU model... ${percentage}%`);
-                        }
+                        setBubbleContent(loadingBubble, `GPU mode unavailable. Loading CPU model... ${percentage}%`);
                     }
                 });
             }
@@ -386,12 +387,10 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     startResponse();
     const prefixHtml = replyPrefix ? replyPrefix + '<br><br>' : '';
 
-    // CPU mode generation doesn't stream, and can be slow, so use the typing
-    // indicator (which includes the CPU patience message) instead of writing
-    // into a bubble incrementally. Voice input also skips streaming so that
-    // per-token DOM updates don't contend with the GPU. Other modes stream
-    // into a bubble.
-    const useTypingIndicator = currentMode === 'cpu' || isVoiceInput;
+    // CPU and GPU modes use the typing indicator instead of streaming into a
+    // bubble incrementally. Voice input also skips streaming so that per-token
+    // DOM updates don't contend with the GPU. Basic mode streams into a bubble.
+    const useTypingIndicator = currentMode === 'cpu' || currentMode === 'gpu' || isVoiceInput;
     let bubble = null;
     if (!useTypingIndicator) {
         bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
@@ -403,14 +402,9 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     }
 
     try {
-        let streamedText = '';
-        const summary = await generateComputingInfo(query, (chunk) => {
-            if (bubble && chunk) {
-                streamedText += chunk;
-                setBubbleContent(bubble, prefixHtml + escapeHtml(streamedText));
-                scrollToBottom();
-            }
-        });
+        const writer = useTypingIndicator ? null : createBatchedStreamWriter(bubble, prefixHtml);
+        const summary = await generateComputingInfo(query, writer);
+        writer?.cancel();
 
         if (useTypingIndicator) {
             removeTyping();
@@ -575,7 +569,8 @@ function escapeRegex(text) {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    // Replace newlines with <br> tags for proper display in HTML
+    return div.innerHTML.replace(/\n/g, '<br>');
 }
 
 async function loadInappropriateWords() {
@@ -737,11 +732,6 @@ async function initWllama(progressCallback = null, options = {}) {
                     }
                 );
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-
-                // Warm the cache with system instruction (only on initial load, not on restart)
-                if (!forceReload) {
-                    await warmWllamaCache(isLazyLoad, progressCallback);
-                }
             } catch (multiErr) {
                 if (preferredThreads > 1) {
                     console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
@@ -764,11 +754,6 @@ async function initWllama(progressCallback = null, options = {}) {
                         }
                     );
                     console.log("Wllama initialized successfully with 1 thread (fallback)");
-
-                    // Warm the cache with system instruction (only on initial load, not on restart)
-                    if (!forceReload) {
-                        await warmWllamaCache(isLazyLoad, progressCallback);
-                    }
                 } else {
                     throw multiErr;
                 }
@@ -877,61 +862,6 @@ async function withWebGpuDisabledForWorkers(task) {
 }
 
 /**
- * Warms the wllama cache with system instruction to improve first response time
- * @param {boolean} isLazyLoad - Whether this is a lazy load
- * @param {Function} progressCallback - Optional callback for progress updates
- */
-async function warmWllamaCache(isLazyLoad = true, progressCallback = null) {
-    if (!wllama) return;
-
-    try {
-        const systemInstruction = '<|im_start|>system\n' +
-            'You are a knowledgeable assistant about computing history. You provide concise answers.\n' +
-            '<|im_end|>';
-
-        console.log('Warming cache with system instruction...');
-
-        // Update progress message
-        if (!isLazyLoad) {
-            updateLoadingStatus('smollm', 'loading', '99%');
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Optimizing model...';
-            }
-        } else if (progressCallback) {
-            // For lazy loading, pass progress as 0.99
-            progressCallback(0.99);
-        }
-
-        await wllama.createCompletion({
-            prompt: systemInstruction,
-            max_tokens: 1,
-            temperature: 0.0,
-            stream: false
-        });
-        console.log('Cache warmed successfully');
-
-        // Restore model name after optimization
-        if (!isLazyLoad) {
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Phi-2 (CPU)';
-            }
-        }
-    } catch (error) {
-        console.log('Cache warming failed (non-critical):', error.message);
-
-        // Restore model name even if cache warming failed
-        if (!isLazyLoad) {
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Phi-2 (CPU)';
-            }
-        }
-    }
-}
-
-/**
  * Updates the model name in the loading status
  * @param {string} modelName - The name of the model being loaded
  */
@@ -1005,6 +935,42 @@ function setBubbleContent(bubble, text) {
     } else {
         bubble.textContent = text;
     }
+}
+
+/**
+ * Returns a writer that accumulates streamed chunks and flushes them to the
+ * bubble at most once per animation frame. This avoids per-token DOM updates
+ * that contend with WebLLM for the GPU on tight-VRAM systems and can
+ * contribute to device-lost errors. Call writer.cancel() after the stream
+ * resolves so any pending flush doesn't overwrite the cleaned final text.
+ */
+function createBatchedStreamWriter(bubble, prefixHtml = '') {
+    let accumulated = '';
+    let rafId = 0;
+
+    const flush = () => {
+        rafId = 0;
+        if (!bubble) return;
+        setBubbleContent(bubble, prefixHtml + escapeHtml(accumulated));
+        scrollToBottom();
+    };
+
+    const writer = (chunk) => {
+        if (!chunk || !bubble) return;
+        accumulated += chunk;
+        if (!rafId) {
+            rafId = requestAnimationFrame(flush);
+        }
+    };
+
+    writer.cancel = () => {
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = 0;
+        }
+    };
+
+    return writer;
 }
 
 function addMessage(text, sender, imageUrl = null, options = {}) {
@@ -1181,9 +1147,12 @@ function showTyping() {
     div.id = 'typing-indicator';
     div.className = 'message bot';
 
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
     // Add CPU mode patience message if in CPU mode
     if (currentMode === 'cpu') {
-        div.innerHTML = `
+        bubble.innerHTML = `
             <div class="typing">
                 <div class="dot"></div>
                 <div class="dot"></div>
@@ -1192,7 +1161,7 @@ function showTyping() {
             <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>
         `;
     } else {
-        div.innerHTML = `
+        bubble.innerHTML = `
             <div class="typing">
                 <div class="dot"></div>
                 <div class="dot"></div>
@@ -1201,6 +1170,7 @@ function showTyping() {
         `;
     }
 
+    div.appendChild(bubble);
     chatContainer.appendChild(div);
     scrollToBottom();
 
@@ -1317,7 +1287,7 @@ async function handleSend() {
 
     // 1. Text Processing
     if (text) {
-        addMessage(text, "user");
+        addMessage(escapeHtml(text), "user");
 
         // Check for inappropriate content
         const lowerText = text.toLowerCase();
@@ -1331,63 +1301,88 @@ async function handleSend() {
             return;
         }
 
-        // Check for Summarization Command
-        const lines = text.split('\n');
-        if (lines.length > 1 && lines[0].trim().toLowerCase().startsWith('summarize')) {
-            const contentToSummarize = lines.slice(1).join('\n');
-            showTyping();
-            // Simulate "reading"
-            setTimeout(() => {
-                // Check if user stopped the response
-                if (checkStopResponse()) {
+        // Text Analysis (Basic mode only - GPU and CPU modes send to model)
+        if (currentMode === 'basic') {
+            const lines = text.split('\n');
+            const firstLine = lines[0].trim().toLowerCase();
+
+            // Check for Summarization Command
+            if (lines.length > 1 && firstLine.startsWith('summarize')) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                // Simulate "reading"
+                setTimeout(() => {
+                    // Check if user stopped the response
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
+
+                    const summary = summarizeText(contentToAnalyze);
                     removeTyping();
-                    return;
-                }
+                    addMessage(`<b>Summary:</b><br><br>${summary}`, "bot");
+                }, 1000);
 
-                const summary = summarizeText(contentToSummarize);
+                return;
+            }
 
-                // Entity Extraction
-                const doc = nlp(contentToSummarize);
-                const people = doc.people().out('array');
-                const places = doc.places().out('array');
-                // Use .match for dates
-                let dates = doc.match('#Date').out('array');
+            // Check for People Extraction Command
+            const peoplePattern = /^(list|extract).*(people|persons|names).*in this text:$/i;
+            if (lines.length > 1 && peoplePattern.test(firstLine)) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                setTimeout(() => {
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
 
-                // Custom regex for years (4 digits between 1900 and current year, allowing 's' suffix)
-                const currentYear = new Date().getFullYear();
-                const yearRegex = /\b(19\d{2}|20\d{2})s?\b/g;
-                const matches = contentToSummarize.match(yearRegex);
+                    const doc = nlp(contentToAnalyze);
+                    const people = doc.people().out('array');
+                    const uniquePeople = [...new Set(people)];
 
-                if (matches) {
-                    matches.forEach(item => {
-                        // Remove 's' for numeric check
-                        const yearNum = parseInt(item.replace('s', ''));
-                        if (yearNum >= 1900 && yearNum <= currentYear) {
-                            dates.push(item);
-                        }
-                    });
-                }
+                    let response = "<b>People mentioned:</b><br><br>";
+                    if (uniquePeople.length > 0) {
+                        response += uniquePeople.join(', ');
+                    } else {
+                        response += "No people found in the text.";
+                    }
 
-                // Deduplicate and Sort
-                dates = [...new Set(dates)].sort();
+                    removeTyping();
+                    addMessage(response, "bot");
+                }, 1000);
 
-                let entityInfo = "";
+                return;
+            }
 
-                if (people.length > 0) {
-                    entityInfo += `<br><b>People:</b> ${[...new Set(people)].join(', ')}`;
-                }
-                if (places.length > 0) {
-                    entityInfo += `<br><b>Places:</b> ${[...new Set(places)].join(', ')}`;
-                }
-                if (dates.length > 0) {
-                    entityInfo += `<br><b>Dates/Years:</b> ${dates.join(', ')}`;
-                }
+            // Check for Places/Locations Extraction Command
+            const placesPattern = /^(list|extract).*(places|locations).*in this text:$/i;
+            if (lines.length > 1 && placesPattern.test(firstLine)) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                setTimeout(() => {
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
 
-                removeTyping();
-                addMessage(`<b>Summary:</b><br><br>${summary}<br><br><b>Entities Found:</b>${entityInfo}`, "bot");
-            }, 1000);
+                    const doc = nlp(contentToAnalyze);
+                    const places = doc.places().out('array');
+                    const uniquePlaces = [...new Set(places)];
 
-            return;
+                    let response = "<b>Places/Locations mentioned:</b><br><br>";
+                    if (uniquePlaces.length > 0) {
+                        response += uniquePlaces.join(', ');
+                    } else {
+                        response += "No places or locations found in the text.";
+                    }
+
+                    removeTyping();
+                    addMessage(response, "bot");
+                }, 1000);
+
+                return;
+            }
         }
     }
 
@@ -1437,41 +1432,18 @@ async function handleSend() {
         return;
     }
 
-    // For GPU mode with streaming, create message first
+    // For GPU mode, use typing indicator (non-streaming)
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        // For voice input, skip streaming entirely: per-token DOM updates
-        // share the GPU with WebLLM and on tight-VRAM systems can trigger a
-        // device-lost. The user only hears the final answer anyway.
-        const voiceInputForThisQuery = isVoiceInput;
-        let bubble = null;
-        if (voiceInputForThisQuery) {
-            showTyping();
-        } else {
-            bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
-        }
-        startResponse();
+        showTyping();
 
         try {
-            const summary = await generateComputingInfo(text, voiceInputForThisQuery ? null : (chunk) => {
-                if (bubble && chunk) {
-                    const currentText = bubble.textContent || '';
-                    setBubbleContent(bubble, escapeHtml(currentText + chunk));
-                    scrollToBottom();
-                }
-            });
+            const summary = await generateComputingInfo(text);
+            removeTyping();
 
-            if (checkStopResponse()) {
-                removeTyping();
-                return;
-            }
+            if (checkStopResponse()) return;
 
             if (summary) {
-                if (voiceInputForThisQuery) {
-                    removeTyping();
-                    bubble = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true }).bubble;
-                } else {
-                    setBubbleContent(bubble, escapeHtml(summary));
-                }
+                const { bubble } = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true });
 
                 // Store in conversation history
                 conversationHistory.push({
@@ -1490,24 +1462,18 @@ async function handleSend() {
                     endResponse();
                 }
             } else {
-                if (voiceInputForThisQuery) {
-                    removeTyping();
-                    bubble = addMessage(GPU_MODE_FAILURE_MESSAGE, "bot", null, { deferCompletion: true }).bubble;
-                } else {
-                    setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
-                }
+                removeTyping();
+                // If summary is null, it could be an error or just an empty response
+                // Check console logs to determine if GPU is actually failing
+                console.warn('GPU mode returned null/empty summary for query:', text);
+                addMessage("I'm sorry, I couldn't generate a response. Please try again.", "bot");
                 endResponse();
-                const newMode = await recoverGpuModeOrFallback();
-                if (newMode) await retryQueryAfterRecovery(text);
             }
         } catch (e) {
+            removeTyping();
             if (checkStopResponse()) return;
-            if (voiceInputForThisQuery) {
-                removeTyping();
-                addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
-            } else {
-                setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
-            }
+            console.error('GPU mode error:', e);
+            addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
             endResponse();
             const newMode = await recoverGpuModeOrFallback();
             if (newMode) await retryQueryAfterRecovery(text);
@@ -1965,19 +1931,8 @@ async function performClassification(imgEl, userText = "") {
                         const modelQuery = infoPrompt || topMatch.className;
                         console.log('[Image Classification] Sending query to model:', modelQuery);
 
-                        // Step 3: Generate the response. For voice input, skip
-                        // streaming entirely (per-token DOM updates contend
-                        // with WebLLM for the GPU and the user only hears the
-                        // final answer); keep the researching dots until done.
-                        const voiceInputForThisQuery = isVoiceInput;
-                        let streamedText = '';
-                        const summary = await generateComputingInfo(modelQuery, voiceInputForThisQuery ? null : (chunk) => {
-                            if (bubble && chunk) {
-                                streamedText += chunk;
-                                setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(streamedText));
-                                scrollToBottom();
-                            }
-                        });
+                        // Step 3: Generate the response without streaming (complete response at once)
+                        const summary = await generateComputingInfo(modelQuery);
 
                         if (checkStopResponse()) {
                             return;
@@ -1995,9 +1950,8 @@ async function performClassification(imgEl, userText = "") {
                                 conversationHistory.shift();
                             }
                         } else {
-                            setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
-                            const newMode = await recoverGpuModeOrFallback();
-                            if (newMode) await retryQueryAfterRecovery(modelQuery, { replyPrefix: reply, historyUserPrompt });
+                            console.warn('GPU mode returned null/empty summary for image classification');
+                            setBubbleContent(bubble, reply + `<br><br>I'm sorry, I couldn't generate additional details.`);
                         }
 
                         // Handle voice output if needed
@@ -2008,7 +1962,7 @@ async function performClassification(imgEl, userText = "") {
                             endResponse();
                         }
                     } catch (e) {
-                        console.warn("Info generation failed", e);
+                        console.error("GPU mode error during image classification:", e);
                         setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
                         endResponse();
                         const newMode = await recoverGpuModeOrFallback();
@@ -2100,20 +2054,39 @@ async function performClassification(imgEl, userText = "") {
     }
 }
 
+// Long user prompts inflate the prefill pass (the largest single GPU job in a
+// generation), which on tight-VRAM systems is a common trigger for WebGPU
+// device-lost / driver TDR. Cap incoming queries at a safe length and cut at
+// a word boundary when possible so we don't slice mid-word.
+const MAX_QUERY_CHARS = 900;
+
+function clampQueryLength(query) {
+    if (typeof query !== 'string' || query.length <= MAX_QUERY_CHARS) {
+        return query;
+    }
+    const slice = query.slice(0, MAX_QUERY_CHARS);
+    const lastSpace = slice.lastIndexOf(' ');
+    const cut = lastSpace > MAX_QUERY_CHARS - 100 ? slice.slice(0, lastSpace) : slice;
+    console.log(`Truncated query from ${query.length} to ${cut.length} chars`);
+    return cut.trim();
+}
+
 /**
  * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Optional callback for streaming chunks (GPU mode only)
+ * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
 async function generateComputingInfo(query, onChunk = null) {
+    const safeQuery = clampQueryLength(query);
+
     // Use WebLLM if available and enabled, otherwise use wllama
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        return await generateWithWebLLM(query, onChunk);
+        return await generateWithWebLLM(safeQuery, onChunk);
     } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-        return await generateWithWllama(query);
+        return await generateWithWllama(safeQuery);
     } else if (currentMode === 'basic') {
-        return await generateWithWikipedia(query);
+        return await generateWithWikipedia(safeQuery);
     } else {
         console.warn("No AI engine ready, skipping generation");
         return null;
@@ -2121,12 +2094,25 @@ async function generateComputingInfo(query, onChunk = null) {
 }
 
 /**
- * Generates text using WebLLM (GPU mode) with streaming support
+ * Generates text using WebLLM (GPU mode) without streaming
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Optional callback for streaming chunks
+ * @param {Function} onChunk - Deprecated parameter, no longer used
  */
 async function generateWithWebLLM(query, onChunk = null) {
     try {
+        // Force a clean KV cache each turn. We rebuild the full message list
+        // (system + history + current query) below, so WebLLM's cross-turn KV
+        // reuse buys us nothing but does grow VRAM usage and can contribute to
+        // device-lost errors over a session. resetChat is best-effort.
+        try {
+            if (engine && typeof engine.resetChat === 'function') {
+                await engine.resetChat();
+                console.log('WebLLM chat state reset before generation');
+            }
+        } catch (resetErr) {
+            console.warn('engine.resetChat before generation failed (continuing):', resetErr);
+        }
+
         // Build messages array for WebLLM chat format
         const messages = [
             {
@@ -2151,72 +2137,88 @@ async function generateWithWebLLM(query, onChunk = null) {
 
         console.log('Generating info with WebLLM for:', query);
 
-        // Generate with streaming
-        let responseText = '';
+        // Generate without streaming (complete response at once)
         const completion = await engine.chat.completions.create({
             messages,
             temperature: 0.3,
             top_p: 0.9,
-            max_tokens: 250,
-            stream: true
+            max_tokens: 150,
+            stream: false
         });
-
-        currentStream = completion;
-
-        try {
-            for await (const chunk of completion) {
-                if (shouldStopResponse) {
-                    break;
-                }
-
-                const delta = chunk.choices[0]?.delta?.content || '';
-                responseText += delta;
-
-                // Call the streaming callback if provided
-                if (onChunk && delta) {
-                    onChunk(delta);
-                }
-            }
-        } catch (error) {
-            const isInterrupted = shouldStopResponse ||
-                error?.name === 'AbortError' ||
-                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
-
-            if (!isInterrupted) {
-                throw error;
-            }
-
-            console.log('WebLLM generation interrupted');
-        } finally {
-            if (currentStream === completion) {
-                currentStream = null;
-            }
-        }
 
         if (shouldStopResponse) {
             return null;
         }
 
+        let responseText = completion.choices[0]?.message?.content || '';
+
+        console.log('WebLLM raw response:', responseText);
+
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence
-        if (responseText && !responseText.match(/[.!?]$/)) {
-            const lastCompleteMatch = responseText.match(/(.*[.!?])/);
-            if (lastCompleteMatch) {
-                responseText = lastCompleteMatch[1].trim();
+        // Only trim incomplete sentences if the response looks genuinely cut off
+        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
+        // that end with proper names or numbers
+        if (responseText && responseText.length > 20) {
+            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
+
+            if (endsWithIncompleteMarker) {
+                // Find the last complete sentence
+                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
+                if (lastCompleteMatch) {
+                    const originalLength = responseText.length;
+                    responseText = lastCompleteMatch[1].trim();
+                    console.log(`Trimmed incomplete sentence: ${originalLength} -> ${responseText.length} chars`);
+                }
             }
         }
 
-        if (!responseText || responseText.length < 10) {
-            return null;
+        if (!responseText || responseText.length < 5) {
+            console.warn('WebLLM response too short or empty after cleanup:', responseText);
+
+            // If we get an empty response, it might be due to stale engine state
+            // (e.g., after an interrupt). Try resetting and regenerating once.
+            if (!responseText && engine && typeof engine.resetChat === 'function') {
+                console.log('Attempting recovery: resetting chat state and retrying generation...');
+                try {
+                    await engine.resetChat();
+                    // Small delay to let the engine settle
+                    await new Promise(resolve => setTimeout(resolve, 100));
+
+                    // Retry the generation
+                    const retryCompletion = await engine.chat.completions.create({
+                        messages,
+                        temperature: 0.3,
+                        top_p: 0.9,
+                        max_tokens: 150,
+                        stream: false
+                    });
+
+                    const retryResponse = retryCompletion.choices[0]?.message?.content || '';
+                    console.log('WebLLM retry response:', retryResponse);
+
+                    if (retryResponse && retryResponse.trim().length >= 5) {
+                        responseText = retryResponse.trim();
+                        console.log('Recovery successful, using retry response');
+                    } else {
+                        console.warn('Retry also returned empty response');
+                        return null;
+                    }
+                } catch (retryErr) {
+                    console.error('Retry generation failed:', retryErr);
+                    return null;
+                }
+            } else {
+                return null;
+            }
         }
 
+        console.log('WebLLM final response:', responseText);
         return responseText;
 
     } catch (error) {
         console.error('Error generating info with WebLLM:', error);
-        currentStream = null;
         return null;
     }
 }
@@ -2285,11 +2287,18 @@ async function generateWithWllama(query) {
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence
-        if (responseText && !responseText.match(/[.!?]$/)) {
-            const lastCompleteMatch = responseText.match(/(.*[.!?])/);
-            if (lastCompleteMatch) {
-                responseText = lastCompleteMatch[1].trim();
+        // Only trim incomplete sentences if the response looks genuinely cut off
+        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
+        // that end with proper names or numbers
+        if (responseText && responseText.length > 20) {
+            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
+
+            if (endsWithIncompleteMarker) {
+                // Find the last complete sentence
+                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
+                if (lastCompleteMatch) {
+                    responseText = lastCompleteMatch[1].trim();
+                }
             }
         }
 
@@ -2470,7 +2479,7 @@ function selectMode() {
             return;
         }
         currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
+        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
         updateModeSelect();
     } else if (selected === 'cpu') {
         if (!availableModes.cpu) {
@@ -2491,11 +2500,7 @@ function selectMode() {
             initWllama((progress) => {
                 if (loadingBubble) {
                     const percentage = Math.round(progress * 100);
-                    if (percentage >= 99) {
-                        setBubbleContent(loadingBubble, 'Switching to CPU mode - optimizing model...');
-                    } else {
-                        setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
-                    }
+                    setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
                 }
             }).then(() => {
                 currentMode = 'cpu';
@@ -2608,7 +2613,7 @@ function updateModeSelect() {
     if (gpuOption) {
         const gpuReady = availableModes.gpu && webGPUAvailable && engine;
         gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
     }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
@@ -2620,7 +2625,7 @@ function updateModeSelect() {
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
         : currentMode === 'cpu' ? 'CPU (Phi 2)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
@@ -3002,15 +3007,15 @@ async function handleStopResponse() {
     shouldStopResponse = true;
     isStoppingResponse = true;
 
-    // Abort WebLLM streaming if active
-    const activeStream = currentStream;
-
-    if (activeStream && currentMode === 'gpu' && engine) {
-        await safeStopWebLLMStream(activeStream);
-    }
-
-    if (currentStream === activeStream) {
-        currentStream = null;
+    // Interrupt WebLLM generation if active (works for both streaming and non-streaming)
+    if (currentMode === 'gpu' && engine) {
+        try {
+            if (typeof engine.interruptGenerate === 'function') {
+                await engine.interruptGenerate();
+            }
+        } catch (error) {
+            console.warn('engine.interruptGenerate failed:', error);
+        }
     }
 
     // Abort Wllama generation if active
@@ -3032,85 +3037,13 @@ async function handleStopResponse() {
     endResponse();
 }
 
-async function safeStopWebLLMStream(stream) {
-    if (!engine || !stream) {
-        return;
-    }
-
-    try {
-        if (typeof engine.interruptGenerate === 'function') {
-            await engine.interruptGenerate();
-        }
-    } catch (error) {
-        console.warn('engine.interruptGenerate failed:', error);
-    }
-
-    // Workaround: drain the iterator a few steps so WebLLM can release locks.
-    for (let i = 0; i < 3; i++) {
-        try {
-            const nextPromise = stream.next?.();
-            if (!nextPromise || typeof nextPromise.then !== 'function') {
-                break;
-            }
-
-            await Promise.race([
-                nextPromise,
-                new Promise((resolve) => setTimeout(resolve, 150))
-            ]);
-        } catch (error) {
-            break;
-        }
-    }
-
-    try {
-        if (typeof stream.return === 'function') {
-            await stream.return();
-        }
-    } catch (error) {
-        console.warn('Stream return failed during stop cleanup:', error);
-    }
-
-    await resetWebLLMInterruptState();
-}
-
-async function resetWebLLMInterruptState() {
-    if (!engine) {
-        return;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(engine, 'interruptSignal')) {
-        engine.interruptSignal = false;
-    }
-
-    const lockMap = engine.loadedModelIdToLock;
-    if (lockMap && typeof lockMap.values === 'function') {
-        for (const lock of lockMap.values()) {
-            if (lock && lock.acquired && typeof lock.release === 'function') {
-                try {
-                    await lock.release();
-                } catch (error) {
-                    console.warn('Failed to release WebLLM lock:', error);
-                }
-            }
-        }
-    }
-
-    if (typeof engine.resetChat === 'function') {
-        try {
-            await engine.resetChat();
-        } catch (error) {
-            console.warn('engine.resetChat failed after interruption:', error);
-        }
-    }
-}
-
 /**
  * Restarts the conversation by clearing chat history and state
  */
-function restartConversation() {
+async function restartConversation() {
     if (confirm('Are you sure you want to clear the conversation history?')) {
         // Stop any ongoing response
-        handleStopResponse();
+        await handleStopResponse();
 
         // Clear conversation history
         conversationHistory = [];
@@ -3124,7 +3057,49 @@ function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
 
-        console.log('Conversation restarted');
+        // For GPU mode, fully reload the engine to clear all internal state
+        if (currentMode === 'gpu' && engine) {
+            // Disable all inputs during reload
+            sendBtn.disabled = true;
+            textInput.disabled = true;
+            micBtn.disabled = true;
+            uploadBtn.disabled = true;
+            if (modeSelect) modeSelect.disabled = true;
+
+            const loadingMsg = addMessage('Reloading AI model...', 'bot');
+            const loadingBubble = loadingMsg.bubble;
+
+            try {
+                // Dispose the old engine
+                if (typeof engine.unload === 'function') {
+                    await engine.unload();
+                }
+                engine = null;
+
+                // Reinitialize WebLLM
+                await initializeWebLLM();
+
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'AI model reloaded. Ready to chat!');
+                }
+
+                console.log('Conversation restarted with fresh GPU engine');
+            } catch (error) {
+                console.error('Failed to reload GPU model:', error);
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'Failed to reload model. Please refresh the page.');
+                }
+            } finally {
+                // Re-enable inputs
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                uploadBtn.disabled = false;
+                if (modeSelect) modeSelect.disabled = false;
+            }
+        } else {
+            console.log('Conversation restarted');
+        }
     }
 }
 
@@ -3157,7 +3132,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi 3 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
             modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
         } else if (currentMode === 'basic') {
