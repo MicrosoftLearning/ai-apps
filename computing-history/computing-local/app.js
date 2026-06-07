@@ -28,10 +28,15 @@ let webGPUAvailable = false; // Track if WebGPU is available
 let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
 const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
+let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
+
+// Shared prompt constants for both WebLLM and Wllama
+const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
+const USER_PROMPT_SUFFIX = '\nProvide a concise and factually accurate response.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -48,7 +53,7 @@ let noSpeechTimer = null;
 let lastSpeechTime = null;
 let hasSpeech = false;
 const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
-const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
+const noSpeechTimeout = 7000; // Cancel after 7 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 let voskLoadingMessage = null; // Track the loading message for Vosk
 
@@ -245,21 +250,21 @@ async function init() {
  */
 async function initializeWebLLM() {
     try {
-        updateModelName('Phi-3-mini (WebGPU)');
+        updateModelName('Phi-3.5-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k';
+        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 
         const appConfig = {
             model_list: [
                 {
-                    model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
-                    vram_required_MB: 2520.07,
-                    low_resource_required: true,
+                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    vram_required_MB: 3672.07,
+                    low_resource_required: false,
                     overrides: {
-                        context_window_size: 1024
+                        context_window_size: 2048
                     }
                 }
             ]
@@ -354,7 +359,7 @@ async function recoverGpuModeOrFallback() {
             }
             currentMode = 'cpu';
             if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 2).');
+                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 3.1-mini).');
             }
         } catch (cpuErr) {
             console.error('CPU fallback also failed:', cpuErr);
@@ -403,17 +408,41 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
 
     try {
         const writer = useTypingIndicator ? null : createBatchedStreamWriter(bubble, prefixHtml);
-        const summary = await generateComputingInfo(query, writer);
+
+        // For CPU mode with typing indicator, pass the bubble to generateComputingInfo
+        let cpuBubble = null;
+        if (currentMode === 'cpu' && useTypingIndicator) {
+            removeTyping();
+            cpuBubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
+        }
+
+        const summary = await generateComputingInfo(
+            query,
+            writer,
+            cpuBubble,
+            prefixHtml
+        );
         writer?.cancel();
 
-        if (useTypingIndicator) {
+        if (useTypingIndicator && !cpuBubble) {
             removeTyping();
         }
         if (checkStopResponse()) return;
 
         if (summary) {
             if (useTypingIndicator) {
-                bubble = addMessage(prefixHtml + escapeHtml(summary), 'bot').bubble;
+                // Use existing CPU bubble if available, otherwise create new one for GPU/CPU mode
+                if (cpuBubble) {
+                    bubble = cpuBubble;
+                } else {
+                    bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
+                    // Animate the text being typed (escape HTML and convert newlines to <br>)
+                    if (prefixHtml) {
+                        setBubbleContent(bubble, prefixHtml);
+                    }
+                    await typeTextInBubble(bubble, escapeHtml(summary), 20, prefixHtml);
+                    if (checkStopResponse()) return;
+                }
             } else {
                 setBubbleContent(bubble, prefixHtml + escapeHtml(summary));
             }
@@ -683,7 +712,7 @@ async function initWllama(progressCallback = null, options = {}) {
 
         if (!isLazyLoad) {
             console.log("Initializing wllama...");
-            updateModelName('Phi-2 (CPU)');
+            updateModelName('Phi 3.1-mini (CPU)');
             updateLoadingStatus('smollm', 'loading', '10%');
         }
 
@@ -720,11 +749,11 @@ async function initWllama(progressCallback = null, options = {}) {
 
                 await wllama.loadModelFromHF(
                     {
-                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                        repo: 'ngxson/wllama-split-models',
+                        file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
                     },
                     {
-                        n_ctx: 384,
+                        n_ctx: 512,
                         n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
                         offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
                         n_threads: preferredThreads,
@@ -742,11 +771,11 @@ async function initWllama(progressCallback = null, options = {}) {
                     wllama = new Wllama(CONFIG_PATHS);
                     await wllama.loadModelFromHF(
                         {
-                            repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                            file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                            repo: 'ngxson/wllama-split-models',
+                            file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
                         },
                         {
-                            n_ctx: 384,
+                            n_ctx: 512,
                             n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
                             offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
                             n_threads: 1,
@@ -1443,7 +1472,21 @@ async function handleSend() {
             if (checkStopResponse()) return;
 
             if (summary) {
-                const { bubble } = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true });
+                const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                startResponse();
+
+                // In voice mode, speak immediately while the text animates.
+                if (isVoiceInput) {
+                    speakTextContent(summary);
+                    isVoiceInput = false;
+                }
+
+                // Animate the response text (escape HTML and convert newlines to <br>)
+                await typeTextInBubble(bubble, escapeHtml(summary), 20);
+
+                if (checkStopResponse()) return;
+
+                endResponse();
 
                 // Store in conversation history
                 conversationHistory.push({
@@ -1452,14 +1495,6 @@ async function handleSend() {
                 });
                 if (conversationHistory.length > 2) {
                     conversationHistory.shift();
-                }
-
-                // Handle voice output if needed
-                if (isVoiceInput) {
-                    speakText(bubble);
-                    isVoiceInput = false;
-                } else {
-                    endResponse();
                 }
             } else {
                 removeTyping();
@@ -1483,14 +1518,52 @@ async function handleSend() {
         showTyping();
 
         try {
-            const summary = await generateComputingInfo(text);
-            removeTyping();
+            let bubble = null;
 
-            if (checkStopResponse()) return;
+            // For CPU mode, create the bubble before calling generateComputingInfo
+            // so it can update it with the waiting message if needed
+            if (currentMode === 'cpu') {
+                removeTyping();
+                const msgResult = addMessage('', "bot", null, { deferCompletion: true });
+                bubble = msgResult.bubble;
+                startResponse();
 
-            if (summary) {
-                if (currentMode === 'basic' || currentMode === 'cpu') {
-                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                // Show initial message with typing indicator and CPU patience note
+                let initialMessage = '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
+                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+                setBubbleContent(bubble, initialMessage);
+                scrollToBottom();
+
+                const summary = await generateComputingInfo(text, null, bubble, '');
+
+                if (checkStopResponse()) return;
+
+                if (summary) {
+                    // Summary already streamed to bubble, just finalize
+                    // Handle voice output if needed
+                    if (isVoiceInput) {
+                        speakText(bubble);
+                        isVoiceInput = false;
+                    }
+
+                    endResponse();
+                } else {
+                    if (lastWllamaCompletionErrored) {
+                        setBubbleContent(bubble, CPU_MODE_FAILURE_MESSAGE);
+                    } else {
+                        setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
+                    }
+                    endResponse();
+                }
+            } else {
+                // Basic mode - original behavior
+                const summary = await generateComputingInfo(text);
+                removeTyping();
+
+                if (checkStopResponse()) return;
+
+                if (summary) {
+                    bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
                     startResponse();
 
                     // In voice mode, speak immediately while the text animates.
@@ -1499,28 +1572,26 @@ async function handleSend() {
                         isVoiceInput = false;
                     }
 
-                    await typeTextInBubble(bubble, `${summary}`, 20);
+                    // Animate the response text (escape HTML and convert newlines to <br>)
+                    await typeTextInBubble(bubble, escapeHtml(summary), 20);
 
                     if (checkStopResponse()) return;
 
                     endResponse();
                 } else {
-                    addMessage(`${summary}`, "bot");
+                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
                 }
+            }
 
-                // Store in conversation history
+            // Store in conversation history (if we got a summary)
+            if (bubble && bubble.textContent && bubble.textContent.trim().length > 0) {
+                const summary = bubble.textContent.trim();
                 conversationHistory.push({
                     user: truncateToFirstSentence(text),
                     assistant: truncateToFirstSentence(summary)
                 });
                 if (conversationHistory.length > 2) {
                     conversationHistory.shift();
-                }
-            } else {
-                if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
-                    addMessage(CPU_MODE_FAILURE_MESSAGE, "bot");
-                } else {
-                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
                 }
             }
         } catch (e) {
@@ -1939,8 +2010,14 @@ async function performClassification(imgEl, userText = "") {
                         }
 
                         if (summary) {
-                            // Update bubble with cleaned summary (removes incomplete sentences)
-                            setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(summary));
+                            // Animate typing the summary after the classification
+                            const finalPrefix = reply + `<br><br>`;
+                            setBubbleContent(bubble, finalPrefix);
+                            await typeTextInBubble(bubble, escapeHtml(summary), 20, finalPrefix);
+
+                            if (checkStopResponse()) {
+                                return;
+                            }
 
                             conversationHistory.push({
                                 user: historyUserPrompt,
@@ -2001,17 +2078,26 @@ async function performClassification(imgEl, userText = "") {
                         console.log('[Image Classification] Sending query to model:', modelQuery);
 
                         // Step 3: Generate the response
-                        const summary = await generateComputingInfo(modelQuery);
+                        // For CPU mode, pass bubble and prefix so waiting message can be shown
+                        const summary = await generateComputingInfo(
+                            modelQuery,
+                            null,
+                            currentMode === 'cpu' ? bubble : null,
+                            currentMode === 'cpu' ? reply + '<br><br>' : ''
+                        );
 
                         if (checkStopResponse()) {
                             return;
                         }
 
                         if (summary) {
-                            // Step 4: Replace researching message with the actual response
-                            const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
-                            setBubbleContent(bubble, finalMessage);
-                            scrollToBottom();
+                            // For Basic mode, update bubble with final result
+                            // For CPU mode, already streamed to bubble
+                            if (currentMode === 'basic') {
+                                const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
+                                setBubbleContent(bubble, finalMessage);
+                                scrollToBottom();
+                            }
 
                             conversationHistory.push({
                                 user: historyUserPrompt,
@@ -2058,7 +2144,7 @@ async function performClassification(imgEl, userText = "") {
 // generation), which on tight-VRAM systems is a common trigger for WebGPU
 // device-lost / driver TDR. Cap incoming queries at a safe length and cut at
 // a word boundary when possible so we don't slice mid-word.
-const MAX_QUERY_CHARS = 900;
+const MAX_QUERY_CHARS = 1000;
 
 function clampQueryLength(query) {
     if (typeof query !== 'string' || query.length <= MAX_QUERY_CHARS) {
@@ -2075,16 +2161,18 @@ function clampQueryLength(query) {
  * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
  * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
+ * @param {HTMLElement} bubbleElement - Optional bubble element for CPU mode waiting message
+ * @param {string} bubblePrefix - Optional HTML prefix for bubble (e.g., classification result)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
-async function generateComputingInfo(query, onChunk = null) {
+async function generateComputingInfo(query, onChunk = null, bubbleElement = null, bubblePrefix = '') {
     const safeQuery = clampQueryLength(query);
 
     // Use WebLLM if available and enabled, otherwise use wllama
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
         return await generateWithWebLLM(safeQuery, onChunk);
     } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-        return await generateWithWllama(safeQuery);
+        return await generateWithWllama(safeQuery, bubbleElement, bubblePrefix);
     } else if (currentMode === 'basic') {
         return await generateWithWikipedia(safeQuery);
     } else {
@@ -2117,7 +2205,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         const messages = [
             {
                 role: "system",
-                content: 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\nRules:\n- You may discuss computing and technology topics only\n- Respond with one or two clear sentences, using simple language. \n- Focus on key facts and historical context\n- You must not provide assistance with activities that are illegal or may cause harm'
+                content: SYSTEM_PROMPT
             }
         ];
 
@@ -2132,7 +2220,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Add current query
         messages.push({
             role: "user",
-            content: query + "\nProvide a concise and factually accurate response."
+            content: query + USER_PROMPT_SUFFIX
         });
 
         console.log('Generating info with WebLLM for:', query);
@@ -2142,7 +2230,7 @@ async function generateWithWebLLM(query, onChunk = null) {
             messages,
             temperature: 0.3,
             top_p: 0.9,
-            max_tokens: 150,
+            max_tokens: 250,
             stream: false
         });
 
@@ -2191,7 +2279,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                         messages,
                         temperature: 0.3,
                         top_p: 0.9,
-                        max_tokens: 150,
+                        max_tokens: 250,
                         stream: false
                     });
 
@@ -2225,64 +2313,121 @@ async function generateWithWebLLM(query, onChunk = null) {
 
 /**
  * Generates text using Wllama (CPU mode)
+ * @param {string} query - The query to generate information about
+ * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
+ * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWllama(query) {
+async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
     try {
         lastWllamaCompletionErrored = false;
 
-        // Build ChatML formatted prompt
-        let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are a knowledgeable assistant about computing history facts.\n';
-        chatMLPrompt += 'Discuss computing and technology topics only.\n';
-        chatMLPrompt += '<|im_end|>\n\n';
+        // Build messages array (same structure as WebLLM)
+        const messages = [
+            {
+                role: "system",
+                content: SYSTEM_PROMPT
+            }
+        ];
 
         // Include conversation history for context (last 2 exchanges)
         if (conversationHistory.length > 0) {
             conversationHistory.forEach(exchange => {
-                chatMLPrompt += '<|im_start|>user\n';
-                chatMLPrompt += exchange.user + '\n';
-                chatMLPrompt += '<|im_end|>\n\n';
-                chatMLPrompt += '<|im_start|>assistant\n';
-                chatMLPrompt += exchange.assistant + '\n';
-                chatMLPrompt += '<|im_end|>\n\n';
+                messages.push({ role: "user", content: exchange.user });
+                messages.push({ role: "assistant", content: exchange.assistant });
             });
         }
 
-        // Add current user query
-        chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n(Respond concisely)\n';
-        chatMLPrompt += '<|im_end|>\n\n';
-        chatMLPrompt += '<|im_start|>assistant\n';
+        // Add current query
+        messages.push({
+            role: "user",
+            content: query + USER_PROMPT_SUFFIX
+        });
+
+        // Convert messages array to simple prompt format (same logical structure as WebLLM)
+        let prompt = messages[0].content + '\n\n'; // System message
+
+        // Add conversation history
+        for (let i = 1; i < messages.length; i++) {
+            const msg = messages[i];
+            const role = msg.role === 'user' ? 'User' : 'Assistant';
+            prompt += `${role}: ${msg.content}\n\n`;
+        }
+
+        prompt += 'Assistant:';
 
         console.log('Generating info with Wllama for:', query);
 
         // Create AbortController for cancellation
         currentAbortController = new AbortController();
 
+        // Track if first chunk has been received
+        let firstChunkReceived = false;
+        let waitingMessageShown = false;
+
+        // Set up 20-second timeout for slow responses
+        const slowResponseTimeout = setTimeout(() => {
+            if (!firstChunkReceived && !shouldStopResponse && bubbleElement) {
+                waitingMessageShown = true;
+                const waitingHtml = bubblePrefix + '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
+                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">I\'m working on a response. Please continue to wait...</p>';
+                setBubbleContent(bubbleElement, waitingHtml);
+                scrollToBottom();
+                console.log('Wllama slow response: showing waiting message after 20 seconds');
+            }
+        }, 20000);
+
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion({
-            prompt: chatMLPrompt,
-            max_tokens: 200,
+            prompt: prompt,
+            max_tokens: 250,
             temperature: 0.1,
-            top_k: 20,
-            top_p: 0.85,
+            top_k: 40,
+            top_p: 0.9,
             frequency_penalty: 1.1,
-            stop: ['<|im_end|>', '<|im_start|>'],
+            stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:', '\n---'],
+            signal: currentAbortController.signal,
             stream: true
         });
 
+        // Store stream reference for cleanup
+        currentStream = completion;
+
         for await (const chunk of completion) {
             if (shouldStopResponse) {
-                currentAbortController = null;
-                return null;
+                console.log('Wllama generation stopped by user');
+                break;
             }
             if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                // Clear timeout on first chunk
+                if (!firstChunkReceived) {
+                    clearTimeout(slowResponseTimeout);
+                    firstChunkReceived = true;
+                    // If we showed the waiting message, clear it before showing the real response
+                    if (waitingMessageShown && bubbleElement) {
+                        setBubbleContent(bubbleElement, bubblePrefix);
+                    }
+                }
                 responseText += chunk.choices[0].text;
+
+                // Stream to bubble if provided
+                if (bubbleElement) {
+                    setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+                    scrollToBottom();
+                }
             }
         }
 
         currentAbortController = null;
+        currentStream = null;
+
+        // Clear timeout if still pending
+        clearTimeout(slowResponseTimeout);
+
+        // If stopped by user, return null
+        if (shouldStopResponse) {
+            return null;
+        }
 
         // Clean up the response
         responseText = responseText.trim();
@@ -2306,9 +2451,11 @@ async function generateWithWllama(query) {
             return null;
         }
 
+        console.log('Wllama final response:', responseText);
         return responseText;
 
     } catch (error) {
+        clearTimeout(slowResponseTimeout);
         if (error.name === 'AbortError') {
             console.log('Generation aborted by user');
             lastWllamaCompletionErrored = false;
@@ -2318,6 +2465,42 @@ async function generateWithWllama(query) {
         currentAbortController = null;
         lastWllamaCompletionErrored = true;
         return null;
+    }
+}
+
+/**
+ * Safely stop and drain a wllama stream to leave WASM state clean
+ * @param {AsyncIterator} stream - The wllama completion stream to stop
+ */
+async function safeStopWllamaStream(stream) {
+    if (!stream) {
+        return;
+    }
+
+    // Try to drain a couple pending chunks
+    for (let i = 0; i < 2; i++) {
+        try {
+            const nextPromise = stream.next?.();
+            if (!nextPromise || typeof nextPromise.then !== 'function') {
+                break;
+            }
+
+            await Promise.race([
+                nextPromise,
+                new Promise((resolve) => setTimeout(resolve, 120))
+            ]);
+        } catch (error) {
+            break;
+        }
+    }
+
+    // Call return() to properly close the iterator
+    try {
+        if (typeof stream.return === 'function') {
+            await stream.return();
+        }
+    } catch (error) {
+        console.warn('Stream return() failed:', error);
     }
 }
 
@@ -2479,7 +2662,7 @@ function selectMode() {
             return;
         }
         currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
+        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
         updateModeSelect();
     } else if (selected === 'cpu') {
         if (!availableModes.cpu) {
@@ -2505,7 +2688,7 @@ function selectMode() {
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
+                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2555,7 +2738,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
+                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -2587,7 +2770,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to CPU mode (Phi 2)', 'bot');
+        addMessage('Switched to CPU mode (Phi 3.1-mini)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2613,20 +2796,20 @@ function updateModeSelect() {
     if (gpuOption) {
         const gpuReady = availableModes.gpu && webGPUAvailable && engine;
         gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
     }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 2)' : '⚫ CPU (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 3.1-mini)' : '⚫ CPU (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
-        : currentMode === 'cpu' ? 'CPU (Phi 2)'
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
+        : currentMode === 'cpu' ? 'CPU (Phi 3.1-mini)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
@@ -2706,7 +2889,7 @@ async function tryWebSpeech() {
 
             // Start no-speech timeout
             noSpeechTimer = setTimeout(() => {
-                console.log('No speech detected in 5 seconds, cancelling...');
+                console.log('No speech detected, cancelling...');
                 recognition.stop();
                 // Don't resolve here - let the error handler or onend handle it
             }, noSpeechTimeout);
@@ -3024,6 +3207,15 @@ async function handleStopResponse() {
         currentAbortController = null;
     }
 
+    // Drain wllama stream to clean up WASM state
+    if (currentStream && currentMode === 'cpu') {
+        safeStopWllamaStream(currentStream).catch(err => {
+            console.warn('Wllama stream cleanup failed:', err);
+        }).finally(() => {
+            currentStream = null;
+        });
+    }
+
     // Stop speech if playing
     if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
@@ -3132,9 +3324,9 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi 3 mini (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.1-mini (CPU - running locally)';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
         } else {
