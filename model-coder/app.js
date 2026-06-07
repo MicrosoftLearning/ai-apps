@@ -32,6 +32,40 @@ function shouldUseTerminalWorker() {
     return Boolean(window.crossOriginIsolated);
 }
 
+// Wait briefly for the COI service worker to take control (which triggers a reload).
+// Resolves to whether the page is now cross-origin isolated.
+function waitForCrossOriginIsolation(timeoutMs = 5000) {
+    if (window.crossOriginIsolated) {
+        return Promise.resolve(true);
+    }
+
+    if (!window.isSecureContext || !("serviceWorker" in navigator)) {
+        return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+        const finish = () => {
+            cleanup();
+            resolve(Boolean(window.crossOriginIsolated));
+        };
+
+        const onControllerChange = () => {
+            // The COI service worker reloads the page on controllerchange, so this
+            // resolution path is mostly defensive in case the reload is suppressed.
+            finish();
+        };
+
+        const timer = setTimeout(finish, timeoutMs);
+
+        function cleanup() {
+            clearTimeout(timer);
+            navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+        }
+
+        navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    });
+}
+
 const TEMPLATE_SNIPPETS = {
     "blank-page": "",
     "simple-chat-chatcompletions": String.raw`# import namespace
@@ -1559,6 +1593,30 @@ async function initializeApp() {
     setPill(statusRuntime, "PyScript loading...");
     setPill(statusModel, "Model initializing...");
     updateRunState();
+
+    // Synchronous OpenAI calls in user code rely on PyScript worker mode, which in turn
+    // requires the page to be cross-origin isolated. The COI service worker normally
+    // takes control on first load and reloads the page; if that hasn't happened by the
+    // time we get here we wait briefly, then fail loudly so users don't hit cryptic
+    // "coroutine was never awaited" errors at run time.
+    setPill(statusRuntime, "Waiting for cross-origin isolation...");
+    const coiReady = await waitForCrossOriginIsolation();
+    if (!coiReady) {
+        setPill(
+            statusRuntime,
+            "Cross-origin isolation unavailable. Reload the page; if that fails, try a normal (non-private) browser window.",
+            "error"
+        );
+        setPill(statusModel, "Disabled (cross-origin isolation required)", "error");
+        if (runBtn) {
+            runBtn.disabled = true;
+        }
+        if (retryBtn) {
+            retryBtn.disabled = true;
+        }
+        return;
+    }
+    setPill(statusRuntime, "PyScript loading...");
 
     window.modelCoderSetStatusListener(({ kind, message }) => {
         if (kind === "ready") {
