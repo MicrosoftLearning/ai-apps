@@ -1894,9 +1894,9 @@ class ChatPlayground {
                 { role: "system", content: this.getEffectiveSystemMessage() }
             ];
 
-            // Add last 10 conversation pairs
+            // Add last 2 conversation pairs
             // Remove any previous image classifications from history to avoid confusion
-            const recentHistory = this.conversationHistory.slice(-20).map(msg => {
+            const recentHistory = this.conversationHistory.slice(-4).map(msg => {
                 if (msg.role === 'user') {
                     return {
                         ...msg,
