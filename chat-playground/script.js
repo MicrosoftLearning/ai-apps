@@ -1825,7 +1825,7 @@ class ChatPlayground {
         if (!userMessage) userMessage = ""; // Allow empty message if there's an image
 
         const currentSystemPrompt = (this.systemMessage?.value ?? this.currentSystemMessage).trim();
-        this.currentSystemMessage = currentSystemPrompt;
+        this.currentSystemMessage = currentSystemPrompt + '\n(Obey these instructions strictly for ALL responses.)';
 
         const hasProhibitedSystemPrompt = currentSystemPrompt && this.containsProhibitedContent(currentSystemPrompt);
         const hasProhibitedUserPrompt = userMessage && this.containsProhibitedContent(userMessage);
