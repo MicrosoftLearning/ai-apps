@@ -242,446 +242,473 @@
                     "mcp"
                 ],
                 "content": "To find and connect to tools, agents can use the Model Context Protocol (MCP) - a standardized way for AI agents to discover and interact with external tools and services. By adhering to MCP, agents can seamlessly integrate various functionalities, such as accessing databases, APIs, or other resources, to enhance their capabilities and perform complex tasks more effectively."
-            }
-        ]
-    },
-    {
-        "category": "Text Analysis",
-        "link": "https://aka.ms/mslearn-nlp",
-        "documents": [
+            },
             {
                 "id": 17,
-                "title": "Common Text Analysis Techniques",
-                "video_id": "0ce04283-6436-44f0-9838-1a9b293e5ed1",
+                "title": "Agent Skills",
                 "keywords": [
-                    "text",
-                    "text analysis",
-                    "text analytics",
-                    "analyze text",
-                    "term frequency",
-                    "tf-idf",
-                    "tfidf",
-                    "stemming",
-                    "lemmatization",
-                    "parts of speech",
-                    "pos tagging",
-                    "tokenization"
+                    "skill",
+                    "skills",
+                    "skill.md"
                 ],
-                "content": "Text Analysis encompasses statistical and semantic modeling techniques for processing and extracting insights from textual data. Term Frequency (TF) measures how often a term appears in a document, while TF-IDF (Term Frequency-Inverse Document Frequency) weighs terms by their importance across a corpus of documents. Stemming and lemmatization are techniques for reducing words to their base or root form (for example, 'running' to 'run'), helping to normalize text for analysis. Parts-of-speech (POS) tagging identifies the grammatical role of each word in a sentence (noun, verb, adjective, etc.), which is useful for understanding sentence structure and meaning."
+                "content": "Agent skills are modular components that define instructions for how an agent should perform a specific task or set of tasks. Skills are often stored in markdown files (skill.md) that include the necessary information for the agent to understand how to use the skill, such as the purpose of the skill, input and output formats, and any relevant constraints or guidelines."
             },
             {
                 "id": 18,
-                "title": "Natural Language Processing",
+                "title": "Agent Tools",
                 "keywords": [
-                    "natural language processing",
-                    "nlp"
+                    "tool",
+                    "tools"
                 ],
-                "content": "Natural Language Processing (NLP) is a field of artificial intelligence that focuses on the interaction between computers and human language. It involves the development of algorithms and models that enable machines to understand, interpret, and generate human language in a meaningful way; including generative AI large language models. NLP techniques are used in various text analysis applications such as keyword extraction, sentiment analysis, and summarization."
-            },
-            {
-                "id": 19,
-                "title": "Text Summarization",
-                "keywords": [
-                    "text summarization",
-                    "summarization",
-                    "extractive summarization",
-                    "abstractive summarization",
-                    "textrank",
-                    "summary"
-                ],
-                "content": "Text Summarization is the process of creating a concise and coherent summary of a longer text document while preserving its key information. There are two main approaches: Extractive Summarization selects and combines the most important sentences from the original text without modification. TextRank is a popular extractive algorithm that uses graph-based ranking to identify key sentences. Abstractive Summarization generates new sentences that capture the essence of the original text, similar to how a human might paraphrase. Large Language Models (LLMs) are commonly used for abstractive summarization as they can understand context and generate fluent, coherent summaries."
-            },
-            {
-                "id": 20,
-                "title": "Key Term Extraction",
-                "keywords": [
-                    "key term extraction",
-                    "key phrase extraction",
-                    "keyword extraction",
-                    "term extraction",
-                    "important terms"
-                ],
-                "content": "Key Term Extraction is the process of automatically identifying the most important and relevant terms, phrases, or concepts in a text document. This technique helps in understanding the main topics and themes within large volumes of text. Key term extraction algorithms typically use statistical methods (such as TF-IDF), linguistic features (such as noun phrases), or machine learning models to identify terms that are most representative of the document's content. The extracted terms can be used for document indexing, search optimization, topic modeling, and content categorization."
-            },
-            {
-                "id": 21,
-                "title": "Text Classification",
-                "keywords": [
-                    "text classification",
-                    "classify text",
-                    "text categorization",
-                    "sentiment analysis",
-                    "sentiment",
-                    "analyze sentiment",
-                    "predict sentiment",
-                    "opinion mining",
-                    "document classification"
-                ],
-                "content": "Text Classification is the task of assigning predefined categories or labels to text documents based on their content. This is a supervised machine learning task that requires labeled training data. Common applications include spam detection, topic categorization, and language identification. Sentiment Analysis is a specific type of text classification that determines the emotional tone or opinion expressed in text, typically categorizing it as positive, negative, or neutral. Sentiment analysis is widely used in social media monitoring, customer feedback analysis, and brand reputation management. Modern text classification often uses deep learning models such as transformers that can capture complex semantic relationships in text."
-            }
-        ]
-    },
-    {
-        "category": "Speech",
-        "link": "https://aka.ms/mslearn-ai-speech",
-        "documents": [
-            {
-                "id": 22,
-                "title": "Overview of Speech",
-                "video_id": "882f1af7-944c-4be0-97c3-889dd985df68",
-                "keywords": [
-                    "speech",
-                    "voice",
-                    "audio",
-                    "speak",
-                    "speaking",
-                    "talk",
-                    "talking"
-                ],
-                "content": "AI technologies like speech recognition and speech synthesis enable you to communicate with computers using your voice. Common use cases include voice assistants, transcription services that convert spoken words to text, accessibility tools for people with disabilities, language translation, and automated customer service systems. Speech processing involves two main tasks: Speech Recognition (converting spoken words to text) and Speech Synthesis (converting text to spoken words). These technologies have become increasingly accurate and natural-sounding with advances in deep learning and neural networks."
-            },
-            {
-                "id": 23,
-                "title": "Speech Recognition (Speech to Text)",
-                "video_id": "cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
-                "keywords": [
-                    "speech to text",
-                    "speech-to-text",
-                    "speech recognition",
-                    "stt",
-                    "mfcc",
-                    "mfccs",
-                    "mel frequency cepstral coefficients",
-                    "phoneme",
-                    "phonemes",
-                    "acoustic model",
-                    "language model",
-                    "word prediction"
-                ],
-                "content": "Speech Recognition, also known as Speech-to-Text (STT), is the process of converting spoken language into written text. The process begins by capturing audio as a frequency wave, which represents the vibration patterns of sound over time. The audio is then processed to extract Mel-Frequency Cepstral Coefficients (MFCCs), which are numerical features that represent the power spectrum of sound in a way that mimics human auditory perception. These features are fed into an acoustic model that identifies phonemes (the smallest units of sound in language, such as 'k' or 'ae'). Finally, a language model predicts likely sequences of words based on the phonemes and linguistic context, producing the final transcription. Modern speech recognition systems use deep learning models like recurrent neural networks (RNNs) and transformers to achieve high accuracy."
-            },
-            {
-                "id": 24,
-                "title": "Speech Synthesis (Text to Speech)",
-                "video_id": "a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
-                "keywords": [
-                    "tts",
-                    "text to speech",
-                    "text-to-speech",
-                    "speech synthesis",
-                    "voice generation",
-                    "grapheme",
-                    "graphemes",
-                    "prosody",
-                    "intonation",
-                    "pitch",
-                    "vocoder"
-                ],
-                "content": "Speech Synthesis, also known as Text-to-Speech (TTS), is the process of converting written text into spoken audio. The process begins by converting graphemes (written letters or letter combinations) into phonemes (sounds). Next, prosody is applied, which involves determining the rhythm, stress, and intonation patterns that make speech sound natural and expressive. This includes adjusting pitch (how high or low the voice sounds), duration (how long each sound lasts), and emphasis. Finally, post-processing generates the audio waveform that represents the actual sound wave to be played through speakers. Modern neural TTS systems use deep learning to produce highly natural and expressive speech that closely resembles human voices."
-            }
-        ]
-    },
-    {
-        "category": "Computer Vision",
-        "link": "https://aka.ms/mslearn-vision",
-        "documents": [
-            {
-                "id": 25,
-                "title": "Computer Vision Overview",
-                "video_id": "4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
-                "keywords": [
-                    "computer vision",
-                    "vision",
-                    "image classification",
-                    "object detection",
-                    "semantic segmentation",
-                    "visual recognition",
-                    "image analysis",
-                    "photo",
-                    "photograph",
-                    "picture",
-                    "camera"
-                ],
-                "content": "Computer Vision is a field of artificial intelligence that enables computers to understand and interpret visual information from images and videos. Common computer vision tasks include: Image Classification (identifying what's in an image, such as recognizing a photo contains a cat), Object Detection (locating and identifying multiple objects within an image with bounding boxes), Semantic Segmentation (classifying every pixel in an image to identify distinct regions and objects), and image captioning (combining visual and textual information to understand images in context). Common models used in computer vision include convolutional neural networks (CNNs) and vision transformers (ViTs). Computer vision is used in applications ranging from autonomous vehicles and medical imaging to facial recognition and augmented reality."
-            },
-            {
-                "id": 26,
-                "title": "Image Processing",
-                "video_id": "a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
-                "keywords": [
-                    "image processing",
-                    "pixel",
-                    "pixels",
-                    "resolution",
-                    "filter",
-                    "filters",
-                    "convolution",
-                    "edge detection"
-                ],
-                "content": "Image Processing involves manipulating and analyzing digital images to extract information or enhance their quality. Digital images are composed of pixels, which are tiny dots that each have a color value (typically represented as RGB - red, green, blue). Resolution refers to the number of pixels in an image, typically expressed as width × height (for example, 1920×1080). Filters are mathematical operations applied to images to enhance features or extract patterns. Common filters include edge detection filters (which identify boundaries between objects), blur filters (which smooth images), and sharpening filters. Convolution is a fundamental operation in image processing where a filter (kernel) slides across an image, performing calculations at each position to produce a new output image."
-            },
-            {
-                "id": 27,
-                "title": "Convolutional Neural Networks",
-                "video_id": "2fae02ed-55bc-44df-b37f-f7ce2373fe73",
-                "keywords": [
-                    "convolutional neural network",
-                    "convolutional neural networks",
-                    "cnn",
-                    "cnns",
-                    "feature extraction layers",
-                    "pooling layers",
-                    "fully connected layers",
-                    "kernel"
-                ],
-                "content": "Convolutional Neural Networks (CNNs) are specialized deep learning architectures designed for processing grid-like data such as images. CNNs consist of three main types of layers: Feature Extraction Layers (convolutional layers) apply filters (also called kernels) that slide across the image to detect patterns like edges, textures, and shapes. Early layers detect simple features while deeper layers combine these to recognize complex patterns. Pooling Layers reduce the spatial dimensions of the data by downsampling, typically using max pooling (taking the maximum value) or average pooling. This reduces computational complexity and helps the model become invariant to small translations. Fully-Connected Layers at the end of the network combine all the extracted features to make final predictions, such as classifying the image into categories."
-            },
-            {
-                "id": 28,
-                "title": "Vision Transformers",
-                "video_id": "9157a9d9-290b-4a2a-99c4-a28eab3369ad",
-                "keywords": [
-                    "visual transformer",
-                    "visual transformers",
-                    "vision transformer",
-                    "vision transformers",
-                    "image transformer",
-                    "image transformers",
-                    "vit",
-                    "vits",
-                    "multimodal models",
-                    "patch",
-                    "patches",
-                    "cross-model attention",
-                    "shared vector space",
-                    "image captioning"
-                ],
-                "content": "Visual Transformers (ViT) adapt the transformer architecture, originally designed for natural language processing, to computer vision tasks. Instead of processing images through convolutional layers, ViTs divide images into patches (small squares), convert each patch into a linear vector (embedding), and process them using self-attention mechanisms to understand relationships between different parts of the image. Multimodal models extend this concept by using cross-modal attention to create a shared vector space where both images and their text descriptions are represented. This allows the model to understand the relationship between visual and textual information, enabling tasks like image captioning (generating text descriptions of images), visual question answering, and image-text matching. These models have revolutionized computer vision by enabling more flexible and powerful visual understanding."
-            },
-            {
-                "id": 29,
-                "title": "Image Generation",
-                "video_id": "5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
-                "keywords": [
-                    "image generation",
-                    "diffusion",
-                    "diffusion model",
-                    "video generation",
-                    "generative model",
-                    "denoising",
-                    "image creation",
-                    "text to image",
-                    "video creation"
-                ],
-                "content": "Image Generation is the process of creating new images using AI models. Diffusion Models are a popular approach that works by gradually adding random noise to training images until they become pure noise, then learning to reverse this process. To generate a new image, the model starts with random noise and iteratively denoises it, guided by text prompts or other conditions, until a coherent image emerges. This process allows for creating highly detailed and creative images based on text descriptions. Video Generation extends these techniques to create sequences of frames that form coherent videos, either from text descriptions or by transforming existing videos. Diffusion models have become the foundation for popular image generation systems like DALL-E, Midjourney, and Stable Diffusion."
-            }
-        ]
-    },
-    {
-        "category": "Information Extraction",
-        "link": "https://aka.ms/mslearn-ai-info",
-        "documents": [
-            {
-                "id": 30,
-                "title": "Overview of Information Extraction",
-                "video_id": "a9cbad65-a964-47fe-8bfc-fcb12257fd29",
-                "keywords": [
-                    "information extraction",
-                    "document processing",
-                    "document intelligence",
-                    "content understanding",
-                    "document",
-                    "documents",
-                    "forms",
-                    "invoice processing",
-                    "receipt processing",
-                    "form processing"
-                ],
-                "content": "Information Extraction is the process of automatically extracting structured information from unstructured or semi-structured documents. Common use cases include processing invoices, receipts, forms, contracts, and identity documents to extract key information like dates, amounts, names, and addresses. The typical pipeline consists of three stages: First, Optical Character Recognition (OCR) detects and extracts text from images or scanned documents. Second, Field Extraction identifies and extracts specific pieces of information (fields) from the extracted text. Third, Field Mapping and Normalization converts the extracted information into a standardized format suitable for downstream processing or database storage. This technology enables automation of document-heavy workflows in industries like finance, healthcare, and legal services."
-            },
-            {
-                "id": 31,
-                "title": "Optical Character Recognition (OCR)",
-                "video_id": "1c411668-84d6-494f-9d17-1090705e549f",
-                "keywords": [
-                    "optical character recognition",
-                    "ocr",
-                    "text detection",
-                    "text extraction",
-                    "character recognition",
-                    "text region"
-                ],
-                "content": "Optical Character Recognition (OCR) is the technology used to convert images of text into machine-readable text data. The OCR process consists of two main stages: Text Detection identifies and locates regions in an image that contain text. This involves detecting text areas, often using computer vision techniques to find bounding boxes around text regions, even when text is at different angles or sizes. Text Extraction then recognizes the actual characters within these regions and converts them into digital text. Modern OCR systems use deep learning models like convolutional neural networks (CNNs) and recurrent neural networks (RNNs) to achieve high accuracy even with challenging inputs like handwritten text, low-quality scans, or complex layouts. OCR is a fundamental technology for digitizing printed documents, enabling searchability, and automating document processing workflows."
-            },
-            {
-                "id": 32,
-                "title": "Field Extraction and Mapping",
-                "video_id": "f09417e1-0a82-4667-a7f5-0081f21d6a77",
-                "keywords": [
-                    "field mapping",
-                    "data extraction",
-                    "key-value pairs"
-                ],
-                "content": "Field Extraction and Mapping is the process of identifying specific pieces of information (fields) in extracted text and converting them into a structured, usable format. Field Extraction uses techniques like named entity recognition (NER), pattern matching, and machine learning to identify key information such as dates, amounts, names, addresses, and other relevant data. This often involves understanding the context and relationships between different pieces of text. Field Mapping then associates the extracted fields with target schema fields in a database or application. Normalization and Standardization convert the extracted data into consistent formats - for example, converting various date formats (like '01/15/2025', 'Jan 15, 2025', '15-01-2025') into a standard format (like '2025-01-15'), or standardizing currency amounts and addresses. This ensures the extracted information can be reliably used in downstream systems and applications."
-            }
-        ]
-    },
-    {
-        "category": "Microsoft Foundry",
-        "link": "https://aka.ms/mslearn-get-started-ai-apps-agents-lp",
-        "documents": [
-            {
-                "id": 33,
-                "title": "Microsoft Foundry",
-                "video_id": "ba14d7e5-71c8-4be0-8895-15db1d726756",
-                "keywords": [
-                    "foundry",
-                    "azure"
-                ],
-                "content": "Microsoft Foundry is an AI platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions. I can't provide you with detailed steps about how to use Microsoft Foundry - you should refer to official Microsoft training and documentation."
-            },
-            {
-                "id": 34,
-                "title": "Foundry Tools",
-                "video_id": "d4d80d65-8863-4184-a738-c5814802a1e7",
-                "keywords": [
-                    "foundry tools",
-                    "azure language",
-                    "azure speech",
-                    "azure translator",
-                    "voice live",
-                    "azure content understanding"
-                ],
-                "content": "Microsoft Foundry includes tools that enable developers to build and deploy AI applications on Azure. These tools include Azure Language for natural language processing tasks, Azure Speech for speech recognition and synthesis, Azure Translator for language translation, and Azure Content Understanding for extracting insights from unstructured data."
-            },
-            {
-                "id": 35,
-                "title": "Foundry Models",
-                "video_id": "916a346d-d084-48ae-8db7-2544f1200a9d",
-                "keywords": [
-                    "foundry models",
-                    "model catalog"
-                ],
-                "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, and other model providers."
-            },
-            {
-                "id": 36,
-                "title": "Foundry Agent Development",
-                "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
-                "keywords": [
-                    "foundry agent",
-                    "foundry agents",
-                    "agent framework",
-                    "agent service"
-                ],
-                "content": "Microsoft Foundry enables developers to create AI agents that can perform tasks autonomously. The Foundry agent service provides tools and APIs for defining agent behavior, integrating with external systems, and managing agent interactions."
-            },
-            {
-                "id": 37,
-                "title": "Foundry SDKs and APIs",
-                "keywords": [
-                    "foundry sdks",
-                    "foundry apis",
-                    "openai api",
-                    "openai sdk",
-                    "responses api",
-                    "chatcompletions api",
-                    "azure-projects"
-                ],
-                "content": "Developers can use SDKs and APIs to build AI apps and agents with Microsoft Foundry. The Foundry SDK enables programmatic access to projects, agents, and other Foundry resources, while the OpenAI API enables developers to integrate powerful language models into their applications. Within the OpenAI API, the Responses API and ChatCompletions APIs provide interfaces for generating responses and managing conversations with large language models."
-            },
-            {
-                "id": 38,
-                "title": "Foundry Toolkit for Visual Studio Code",
-                "video_id": "e4dd3172-8749-40d1-a009-d4c521424dc7",
-                "keywords": [
-                    "foundry toolkit",
-                    "visual studio code",
-                    "vs code",
-                    "visual studio",
-                    "ai toolkit",
-                    "vs code extension",
-                    "visual studio extension",
-                    "visual studio code extension"
-                ],
-                "content": "Visual Studio Code is a popular code editor that supports a wide range of extensions and tools for developers. Developers can use the Foundry Toolkit for Visual Studio Code to build AI apps and agents on Microsoft Foundry. The toolkit provides integration with the Foundry SDK, enabling programmatic access to projects, agents, and other Foundry resources."
-            },
-            {
-                "id": 39,
-                "title": "Foundry IQ",
-                "video_id": "7595b77c-7a4e-41ec-9a9c-ccc93a5f4a1c",
-                "keywords": [
-                    "foundry iq",
-                    "foundryiq",
-                    "knowledge source",
-                    "knowledge sources",
-                    "knowledge retrieval",
-                    "knowledge store",
-                    "knowledge stores",
-                    "knowledge base",
-                    "knowledge bases",
-                    "azure ai search"
-                ],
-                "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
-            },
-            {
-                "id": 40,
-                "title": "Open AI models in Foundry",
-                "keywords": [
-                    "openai",
-                    "gpt"
-                ],
-                "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
-            },
-            {
-                "id": 41,
-                "title": "Anthropic models in Foundry",
-                "keywords": [
-                    "anthropic",
-                    "claude"
-                ],
-                "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
-            }
-        ]
-    },
-    {
-        "category": "Credentials and certification",
-        "link": "https://learn.microsoft.com/credentials/",
-        "documents": [
-            {
-                "id": 42,
-                "title": "Microsoft AI Certifications",
-                "keywords": [
-                    "certification",
-                    "certifications",
-                    "exam",
-                    "exams",
-                    "microsoft certified professional",
-                    "ai102",
-                    "ai900",
-                    "ai103",
-                    "ai901",
-                    "ai200",
-                    "ai300"
-                ],
-                "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
-            },
-            {
-                "id": 43,
-                "title": "Microsoft AI Credentials",
-                "keywords": [
-                    "microsoft applied skill",
-                    "microsoft applied skills",
-                    "applied skills credential",
-                    "applied skills credentials",
-                    "mas",
-                    "apl",
-                    "microsoft credential",
-                    "microsoft credentials",
-                    "microsoft ai credentials"
-                ],
-                "content": "Microsoft Applied Skills credentials provide a way to demonstrate your ability to perform specific tasks related to AI. These credentials are designed to be more focused than traditional exam-based certifications, enabling you to showcase your skills in a practical test."
-            }
-        ]
-    }
-]
+                "content": "Agent tools are resources or services that an AI agent can use to perform actions or retrieve information. Tools can include APIs, databases, or other software components that provide specific functionalities. Agents often discover and access external tools using the Model Context Protocol (MCP)."
+            ]
+        },
+        {
+            "category": "Text Analysis",
+            "link": "https://aka.ms/mslearn-nlp",
+            "documents": [
+                {
+                    "id": 19,
+                    "title": "Common Text Analysis Techniques",
+                    "video_id": "0ce04283-6436-44f0-9838-1a9b293e5ed1",
+                    "keywords": [
+                        "text",
+                        "text analysis",
+                        "text analytics",
+                        "analyze text",
+                        "term frequency",
+                        "tf-idf",
+                        "tfidf",
+                        "stemming",
+                        "lemmatization",
+                        "parts of speech",
+                        "pos tagging",
+                        "tokenization"
+                    ],
+                    "content": "Text Analysis encompasses statistical and semantic modeling techniques for processing and extracting insights from textual data. Term Frequency (TF) measures how often a term appears in a document, while TF-IDF (Term Frequency-Inverse Document Frequency) weighs terms by their importance across a corpus of documents. Stemming and lemmatization are techniques for reducing words to their base or root form (for example, 'running' to 'run'), helping to normalize text for analysis. Parts-of-speech (POS) tagging identifies the grammatical role of each word in a sentence (noun, verb, adjective, etc.), which is useful for understanding sentence structure and meaning."
+                },
+                {
+                    "id": 20,
+                    "title": "Natural Language Processing",
+                    "keywords": [
+                        "natural language processing",
+                        "nlp"
+                    ],
+                    "content": "Natural Language Processing (NLP) is a field of artificial intelligence that focuses on the interaction between computers and human language. It involves the development of algorithms and models that enable machines to understand, interpret, and generate human language in a meaningful way; including generative AI large language models. NLP techniques are used in various text analysis applications such as keyword extraction, sentiment analysis, and summarization."
+                },
+                {
+                    "id": 21,
+                    "title": "Text Summarization",
+                    "keywords": [
+                        "text summarization",
+                        "summarization",
+                        "extractive summarization",
+                        "abstractive summarization",
+                        "textrank",
+                        "summary"
+                    ],
+                    "content": "Text Summarization is the process of creating a concise and coherent summary of a longer text document while preserving its key information. There are two main approaches: Extractive Summarization selects and combines the most important sentences from the original text without modification. TextRank is a popular extractive algorithm that uses graph-based ranking to identify key sentences. Abstractive Summarization generates new sentences that capture the essence of the original text, similar to how a human might paraphrase. Large Language Models (LLMs) are commonly used for abstractive summarization as they can understand context and generate fluent, coherent summaries."
+                },
+                {
+                    "id": 22,
+                    "title": "Key Term Extraction",
+                    "keywords": [
+                        "key term extraction",
+                        "key phrase extraction",
+                        "keyword extraction",
+                        "term extraction",
+                        "important terms"
+                    ],
+                    "content": "Key Term Extraction is the process of automatically identifying the most important and relevant terms, phrases, or concepts in a text document. This technique helps in understanding the main topics and themes within large volumes of text. Key term extraction algorithms typically use statistical methods (such as TF-IDF), linguistic features (such as noun phrases), or machine learning models to identify terms that are most representative of the document's content. The extracted terms can be used for document indexing, search optimization, topic modeling, and content categorization."
+                },
+                {
+                    "id": 23,
+                    "title": "Text Classification",
+                    "keywords": [
+                        "text classification",
+                        "classify text",
+                        "text categorization",
+                        "sentiment analysis",
+                        "sentiment",
+                        "analyze sentiment",
+                        "predict sentiment",
+                        "opinion mining",
+                        "document classification"
+                    ],
+                    "content": "Text Classification is the task of assigning predefined categories or labels to text documents based on their content. This is a supervised machine learning task that requires labeled training data. Common applications include spam detection, topic categorization, and language identification. Sentiment Analysis is a specific type of text classification that determines the emotional tone or opinion expressed in text, typically categorizing it as positive, negative, or neutral. Sentiment analysis is widely used in social media monitoring, customer feedback analysis, and brand reputation management. Modern text classification often uses deep learning models such as transformers that can capture complex semantic relationships in text."
+                }
+            ]
+        },
+        {
+            "category": "Speech",
+            "link": "https://aka.ms/mslearn-ai-speech",
+            "documents": [
+                {
+                    "id": 24,
+                    "title": "Overview of Speech",
+                    "video_id": "882f1af7-944c-4be0-97c3-889dd985df68",
+                    "keywords": [
+                        "speech",
+                        "voice",
+                        "audio",
+                        "speak",
+                        "speaking",
+                        "talk",
+                        "talking"
+                    ],
+                    "content": "AI technologies like speech recognition and speech synthesis enable you to communicate with computers using your voice. Common use cases include voice assistants, transcription services that convert spoken words to text, accessibility tools for people with disabilities, language translation, and automated customer service systems. Speech processing involves two main tasks: Speech Recognition (converting spoken words to text) and Speech Synthesis (converting text to spoken words). These technologies have become increasingly accurate and natural-sounding with advances in deep learning and neural networks."
+                },
+                {
+                    "id": 25,
+                    "title": "Speech Recognition (Speech to Text)",
+                    "video_id": "cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
+                    "keywords": [
+                        "speech to text",
+                        "speech-to-text",
+                        "speech recognition",
+                        "stt",
+                        "mfcc",
+                        "mfccs",
+                        "mel frequency cepstral coefficients",
+                        "phoneme",
+                        "phonemes",
+                        "acoustic model",
+                        "language model",
+                        "word prediction"
+                    ],
+                    "content": "Speech Recognition, also known as Speech-to-Text (STT), is the process of converting spoken language into written text. The process begins by capturing audio as a frequency wave, which represents the vibration patterns of sound over time. The audio is then processed to extract Mel-Frequency Cepstral Coefficients (MFCCs), which are numerical features that represent the power spectrum of sound in a way that mimics human auditory perception. These features are fed into an acoustic model that identifies phonemes (the smallest units of sound in language, such as 'k' or 'ae'). Finally, a language model predicts likely sequences of words based on the phonemes and linguistic context, producing the final transcription. Modern speech recognition systems use deep learning models like recurrent neural networks (RNNs) and transformers to achieve high accuracy."
+                },
+                {
+                    "id": 26,
+                    "title": "Speech Synthesis (Text to Speech)",
+                    "video_id": "a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
+                    "keywords": [
+                        "tts",
+                        "text to speech",
+                        "text-to-speech",
+                        "speech synthesis",
+                        "voice generation",
+                        "grapheme",
+                        "graphemes",
+                        "prosody",
+                        "intonation",
+                        "pitch",
+                        "vocoder"
+                    ],
+                    "content": "Speech Synthesis, also known as Text-to-Speech (TTS), is the process of converting written text into spoken audio. The process begins by converting graphemes (written letters or letter combinations) into phonemes (sounds). Next, prosody is applied, which involves determining the rhythm, stress, and intonation patterns that make speech sound natural and expressive. This includes adjusting pitch (how high or low the voice sounds), duration (how long each sound lasts), and emphasis. Finally, post-processing generates the audio waveform that represents the actual sound wave to be played through speakers. Modern neural TTS systems use deep learning to produce highly natural and expressive speech that closely resembles human voices."
+                }
+            ]
+        },
+        {
+            "category": "Computer Vision",
+            "link": "https://aka.ms/mslearn-vision",
+            "documents": [
+                {
+                    "id": 27,
+                    "title": "Computer Vision Overview",
+                    "video_id": "4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
+                    "keywords": [
+                        "computer vision",
+                        "vision",
+                        "image classification",
+                        "object detection",
+                        "semantic segmentation",
+                        "visual recognition",
+                        "image analysis",
+                        "photo",
+                        "photograph",
+                        "picture",
+                        "camera"
+                    ],
+                    "content": "Computer Vision is a field of artificial intelligence that enables computers to understand and interpret visual information from images and videos. Common computer vision tasks include: Image Classification (identifying what's in an image, such as recognizing a photo contains a cat), Object Detection (locating and identifying multiple objects within an image with bounding boxes), Semantic Segmentation (classifying every pixel in an image to identify distinct regions and objects), and image captioning (combining visual and textual information to understand images in context). Common models used in computer vision include convolutional neural networks (CNNs) and vision transformers (ViTs). Computer vision is used in applications ranging from autonomous vehicles and medical imaging to facial recognition and augmented reality."
+                },
+                {
+                    "id": 28,
+                    "title": "Image Processing",
+                    "video_id": "a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
+                    "keywords": [
+                        "image processing",
+                        "pixel",
+                        "pixels",
+                        "resolution",
+                        "filter",
+                        "filters",
+                        "convolution",
+                        "edge detection"
+                    ],
+                    "content": "Image Processing involves manipulating and analyzing digital images to extract information or enhance their quality. Digital images are composed of pixels, which are tiny dots that each have a color value (typically represented as RGB - red, green, blue). Resolution refers to the number of pixels in an image, typically expressed as width × height (for example, 1920×1080). Filters are mathematical operations applied to images to enhance features or extract patterns. Common filters include edge detection filters (which identify boundaries between objects), blur filters (which smooth images), and sharpening filters. Convolution is a fundamental operation in image processing where a filter (kernel) slides across an image, performing calculations at each position to produce a new output image."
+                },
+                {
+                    "id": 29,
+                    "title": "Convolutional Neural Networks",
+                    "video_id": "2fae02ed-55bc-44df-b37f-f7ce2373fe73",
+                    "keywords": [
+                        "convolutional neural network",
+                        "convolutional neural networks",
+                        "cnn",
+                        "cnns",
+                        "feature extraction layers",
+                        "pooling layers",
+                        "fully connected layers",
+                        "kernel"
+                    ],
+                    "content": "Convolutional Neural Networks (CNNs) are specialized deep learning architectures designed for processing grid-like data such as images. CNNs consist of three main types of layers: Feature Extraction Layers (convolutional layers) apply filters (also called kernels) that slide across the image to detect patterns like edges, textures, and shapes. Early layers detect simple features while deeper layers combine these to recognize complex patterns. Pooling Layers reduce the spatial dimensions of the data by downsampling, typically using max pooling (taking the maximum value) or average pooling. This reduces computational complexity and helps the model become invariant to small translations. Fully-Connected Layers at the end of the network combine all the extracted features to make final predictions, such as classifying the image into categories."
+                },
+                {
+                    "id": 30,
+                    "title": "Vision Transformers",
+                    "video_id": "9157a9d9-290b-4a2a-99c4-a28eab3369ad",
+                    "keywords": [
+                        "visual transformer",
+                        "visual transformers",
+                        "vision transformer",
+                        "vision transformers",
+                        "image transformer",
+                        "image transformers",
+                        "vit",
+                        "vits",
+                        "multimodal models",
+                        "patch",
+                        "patches",
+                        "cross-model attention",
+                        "shared vector space",
+                        "image captioning"
+                    ],
+                    "content": "Visual Transformers (ViT) adapt the transformer architecture, originally designed for natural language processing, to computer vision tasks. Instead of processing images through convolutional layers, ViTs divide images into patches (small squares), convert each patch into a linear vector (embedding), and process them using self-attention mechanisms to understand relationships between different parts of the image. Multimodal models extend this concept by using cross-modal attention to create a shared vector space where both images and their text descriptions are represented. This allows the model to understand the relationship between visual and textual information, enabling tasks like image captioning (generating text descriptions of images), visual question answering, and image-text matching. These models have revolutionized computer vision by enabling more flexible and powerful visual understanding."
+                },
+                {
+                    "id": 31,
+                    "title": "Image Generation",
+                    "video_id": "5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
+                    "keywords": [
+                        "image generation",
+                        "diffusion",
+                        "diffusion model",
+                        "video generation",
+                        "generative model",
+                        "denoising",
+                        "image creation",
+                        "text to image",
+                        "video creation"
+                    ],
+                    "content": "Image Generation is the process of creating new images using AI models. Diffusion Models are a popular approach that works by gradually adding random noise to training images until they become pure noise, then learning to reverse this process. To generate a new image, the model starts with random noise and iteratively denoises it, guided by text prompts or other conditions, until a coherent image emerges. This process allows for creating highly detailed and creative images based on text descriptions. Video Generation extends these techniques to create sequences of frames that form coherent videos, either from text descriptions or by transforming existing videos. Diffusion models have become the foundation for popular image generation systems like DALL-E, Midjourney, and Stable Diffusion."
+                }
+            ]
+        },
+        {
+            "category": "Information Extraction",
+            "link": "https://aka.ms/mslearn-ai-info",
+            "documents": [
+                {
+                    "id": 32,
+                    "title": "Overview of Information Extraction",
+                    "video_id": "a9cbad65-a964-47fe-8bfc-fcb12257fd29",
+                    "keywords": [
+                        "information extraction",
+                        "document processing",
+                        "document intelligence",
+                        "content understanding",
+                        "document",
+                        "documents",
+                        "forms",
+                        "invoice processing",
+                        "receipt processing",
+                        "form processing"
+                    ],
+                    "content": "Information Extraction is the process of automatically extracting structured information from unstructured or semi-structured documents. Common use cases include processing invoices, receipts, forms, contracts, and identity documents to extract key information like dates, amounts, names, and addresses. The typical pipeline consists of three stages: First, Optical Character Recognition (OCR) detects and extracts text from images or scanned documents. Second, Field Extraction identifies and extracts specific pieces of information (fields) from the extracted text. Third, Field Mapping and Normalization converts the extracted information into a standardized format suitable for downstream processing or database storage. This technology enables automation of document-heavy workflows in industries like finance, healthcare, and legal services."
+                },
+                {
+                    "id": 33,
+                    "title": "Optical Character Recognition (OCR)",
+                    "video_id": "1c411668-84d6-494f-9d17-1090705e549f",
+                    "keywords": [
+                        "optical character recognition",
+                        "ocr",
+                        "text detection",
+                        "text extraction",
+                        "character recognition",
+                        "text region"
+                    ],
+                    "content": "Optical Character Recognition (OCR) is the technology used to convert images of text into machine-readable text data. The OCR process consists of two main stages: Text Detection identifies and locates regions in an image that contain text. This involves detecting text areas, often using computer vision techniques to find bounding boxes around text regions, even when text is at different angles or sizes. Text Extraction then recognizes the actual characters within these regions and converts them into digital text. Modern OCR systems use deep learning models like convolutional neural networks (CNNs) and recurrent neural networks (RNNs) to achieve high accuracy even with challenging inputs like handwritten text, low-quality scans, or complex layouts. OCR is a fundamental technology for digitizing printed documents, enabling searchability, and automating document processing workflows."
+                },
+                {
+                    "id": 34,
+                    "title": "Field Extraction and Mapping",
+                    "video_id": "f09417e1-0a82-4667-a7f5-0081f21d6a77",
+                    "keywords": [
+                        "field mapping",
+                        "data extraction",
+                        "key-value pairs"
+                    ],
+                    "content": "Field Extraction and Mapping is the process of identifying specific pieces of information (fields) in extracted text and converting them into a structured, usable format. Field Extraction uses techniques like named entity recognition (NER), pattern matching, and machine learning to identify key information such as dates, amounts, names, addresses, and other relevant data. This often involves understanding the context and relationships between different pieces of text. Field Mapping then associates the extracted fields with target schema fields in a database or application. Normalization and Standardization convert the extracted data into consistent formats - for example, converting various date formats (like '01/15/2025', 'Jan 15, 2025', '15-01-2025') into a standard format (like '2025-01-15'), or standardizing currency amounts and addresses. This ensures the extracted information can be reliably used in downstream systems and applications."
+                }
+            ]
+        },
+        {
+            "category": "Microsoft Foundry",
+            "link": "https://aka.ms/mslearn-get-started-ai-apps-agents-lp",
+            "documents": [
+                {
+                    "id": 35,
+                    "title": "Microsoft Foundry",
+                    "video_id": "ba14d7e5-71c8-4be0-8895-15db1d726756",
+                    "keywords": [
+                        "foundry",
+                        "azure"
+                    ],
+                    "content": "Microsoft Foundry is an AI platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions. I can't provide you with detailed steps about how to use Microsoft Foundry - you should refer to official Microsoft training and documentation."
+                },
+                {
+                    "id": 36,
+                    "title": "Foundry Tools",
+                    "video_id": "d4d80d65-8863-4184-a738-c5814802a1e7",
+                    "keywords": [
+                        "foundry tools",
+                        "azure language",
+                        "azure speech",
+                        "azure translator",
+                        "voice live",
+                        "azure content understanding"
+                    ],
+                    "content": "Microsoft Foundry includes tools that enable developers to build and deploy AI applications on Azure. These tools include Azure Language for natural language processing tasks, Azure Speech for speech recognition and synthesis, Azure Translator for language translation, and Azure Content Understanding for extracting insights from unstructured data."
+                },
+                {
+                    "id": 37,
+                    "title": "Foundry Models",
+                    "video_id": "916a346d-d084-48ae-8db7-2544f1200a9d",
+                    "keywords": [
+                        "foundry models",
+                        "model catalog"
+                    ],
+                    "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, and other model providers."
+                },
+                {
+                    "id": 38,
+                    "title": "Foundry Agent Development",
+                    "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
+                    "keywords": [
+                        "foundry agent",
+                        "foundry agents",
+                        "agent framework",
+                        "agent service"
+                    ],
+                    "content": "Microsoft Foundry enables developers to create AI agents that can perform tasks autonomously. The Foundry agent service provides tools and APIs for defining agent behavior, integrating with external systems, and managing agent interactions."
+                },
+                {
+                    "id": 39,
+                    "title": "Foundry SDKs and APIs",
+                    "keywords": [
+                        "foundry sdks",
+                        "foundry apis",
+                        "openai api",
+                        "openai sdk",
+                        "responses api",
+                        "chatcompletions api",
+                        "azure-projects"
+                    ],
+                    "content": "Developers can use SDKs and APIs to build AI apps and agents with Microsoft Foundry. The Foundry SDK enables programmatic access to projects, agents, and other Foundry resources, while the OpenAI API enables developers to integrate powerful language models into their applications. Within the OpenAI API, the Responses API and ChatCompletions APIs provide interfaces for generating responses and managing conversations with large language models."
+                },
+                {
+                    "id": 40,
+                    "title": "Foundry Toolkit for Visual Studio Code",
+                    "video_id": "e4dd3172-8749-40d1-a009-d4c521424dc7",
+                    "keywords": [
+                        "foundry toolkit",
+                        "visual studio code",
+                        "vs code",
+                        "visual studio",
+                        "ai toolkit",
+                        "vs code extension",
+                        "visual studio extension",
+                        "visual studio code extension"
+                    ],
+                    "content": "Visual Studio Code is a popular code editor that supports a wide range of extensions and tools for developers. Developers can use the Foundry Toolkit for Visual Studio Code to build AI apps and agents on Microsoft Foundry. The toolkit provides integration with the Foundry SDK, enabling programmatic access to projects, agents, and other Foundry resources."
+                },
+                {
+                    "id": 41,
+                    "title": "Foundry IQ",
+                    "video_id": "7595b77c-7a4e-41ec-9a9c-ccc93a5f4a1c",
+                    "keywords": [
+                        "foundry iq",
+                        "foundryiq",
+                        "knowledge source",
+                        "knowledge sources",
+                        "knowledge retrieval",
+                        "knowledge store",
+                        "knowledge stores",
+                        "knowledge base",
+                        "knowledge bases",
+                        "azure ai search"
+                    ],
+                    "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
+                },
+                {
+                    "id": 42,
+                    "title": "Open AI models in Foundry",
+                    "keywords": [
+                        "openai",
+                        "gpt"
+                    ],
+                    "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
+                },
+                {
+                    "id": 43,
+                    "title": "Anthropic models in Foundry",
+                    "keywords": [
+                        "anthropic",
+                        "claude"
+                    ],
+                    "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+                },
+                {
+                    "id": 44,
+                    "title": "Microsoft models in Foundry",
+                    "keywords": [
+                        "mai",
+                        "phi"
+                    ],
+                    "content": "Microsoft Foundry Models include the MAI family of state-of-the-art models for image analysis and generation, audio processing, coding, and reasoning; and the Phi family of small language models (SMLs), for specialized tasks, lightweight applications, and edge devices."
+                }
+            ]
+        },
+        {
+            "category": "Credentials and certification",
+            "link": "https://learn.microsoft.com/credentials/",
+            "documents": [
+                {
+                    "id": 45,
+                    "title": "Microsoft AI Certifications",
+                    "keywords": [
+                        "certification",
+                        "certifications",
+                        "exam",
+                        "exams",
+                        "microsoft certified professional",
+                        "ai102",
+                        "ai900",
+                        "ai103",
+                        "ai901",
+                        "ai200",
+                        "ai300"
+                    ],
+                    "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
+                },
+                {
+                    "id": 46,
+                    "title": "Microsoft AI Credentials",
+                    "keywords": [
+                        "microsoft applied skill",
+                        "microsoft applied skills",
+                        "applied skills credential",
+                        "applied skills credentials",
+                        "mas",
+                        "apl",
+                        "microsoft credential",
+                        "microsoft credentials",
+                        "microsoft ai credentials"
+                    ],
+                    "content": "Microsoft Applied Skills credentials provide a way to demonstrate your ability to perform specific tasks related to AI. These credentials are designed to be more focused than traditional exam-based certifications, enabling you to showcase your skills in a practical test."
+                }
+            ]
+        }
+    ]

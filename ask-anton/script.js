@@ -1073,7 +1073,7 @@ class AskAnton {
             return trimmedText.slice(5).trim();
         }
 
-        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i') || lowerText.includes('me how') || lowerText.includes('sample code') || lowerText.includes('example code') || lowerText.includes('code sample') || lowerText.includes('code example')) {
+        if (lowerText.includes('documentation') || lowerText.includes(' docs ') || lowerText.includes('microsoft learn ') || lowerText.includes('how to ') || lowerText.includes('how do i ') || lowerText.includes('how can i') || lowerText.includes(' me how ') || lowerText.includes('sample code') || lowerText.includes('example code') || lowerText.includes('code sample') || lowerText.includes('code example')) {
             return trimmedText;
         }
 
