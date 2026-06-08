@@ -65,7 +65,13 @@ const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
 const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
-// Global error handler for unhandled promise rejections (e.g., from Vosk library)
+// ============================================================================
+// GLOBAL ERROR HANDLER
+// ============================================================================
+
+/**
+ * Handles unhandled promise rejections, particularly Vosk model loading errors
+ */
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
 
@@ -97,16 +103,20 @@ window.addEventListener('unhandledrejection', (event) => {
             sendBtn.disabled = false;
             textInput.disabled = false;
 
-            event.preventDefault(); // Prevent the error from being logged again
+            event.preventDefault();
         }
     }
 });
 
+// ============================================================================
+// IMAGE CLASSIFICATION CONSTANTS
+// ============================================================================
+
 // Vision model paths
-const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
+const MODEL_URL = './image_model/retro-classifier-model.json';
 const BASE_MODEL_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
 
-// We need to define the classes. 
+// Classification classes
 const CLASSES = [
     'Altair 8800', // 0
     'Commodore 64', // 1
@@ -144,6 +154,11 @@ const CLASS_INFO = {
     ].join('\n')
 };
 
+/**
+ * Builds a prompt for generating information about a classified computer
+ * @param {number} classIndex - Index of the classification class
+ * @returns {string|null} Formatted prompt or null if class has no info
+ */
 function buildClassInfoPrompt(classIndex) {
     const className = CLASSES[classIndex];
     const classInfo = CLASS_INFO[classIndex];
@@ -155,8 +170,13 @@ function buildClassInfoPrompt(classIndex) {
     return `Provide a concise paragraph describing the ${className} computer using the following information:\nINFORMATION:\n---\n${classInfo}\n---`;
 }
 
+// ============================================================================
+// INITIALIZATION FUNCTIONS
+// ============================================================================
+
 /**
  * Checks if WebGPU is available in the browser
+ * @returns {boolean} True if WebGPU is supported
  */
 function checkWebGPUSupport() {
     if (!navigator.gpu) {
@@ -293,13 +313,14 @@ async function initializeWebLLM() {
     }
 }
 
-let gpuRecoveryInProgress = false;
+// ============================================================================
+// ERROR RECOVERY FUNCTIONS
+// ============================================================================
 
 /**
- * Recovers from a WebLLM (GPU) failure — typically a lost WebGPU device — by
- * disposing the dead engine, reinitializing it, and re-enabling input. If
- * reinitialization fails, falls back to CPU mode (loading wllama if needed),
- * or Basic mode if CPU is also unavailable.
+ * Recovers from a GPU mode failure (e.g., lost WebGPU device) by disposing
+ * the engine and reinitializing it. Falls back to CPU or Basic mode if recovery fails.
+ * @returns {Promise<string|null>} The new mode after recovery, or null if already recovering
  */
 async function recoverGpuModeOrFallback() {
     if (gpuRecoveryInProgress) return null;
@@ -440,7 +461,7 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
                     if (prefixHtml) {
                         setBubbleContent(bubble, prefixHtml);
                     }
-                    await typeTextInBubble(bubble, escapeHtml(summary), 20, prefixHtml);
+                    await typeTextInBubble(bubble, prefixHtml + escapeHtml(summary), 20, prefixHtml);
                     if (checkStopResponse()) return;
                 }
             } else {
@@ -481,8 +502,12 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     }
 }
 
+// ============================================================================
+// SPEECH RECOGNITION FUNCTIONS
+// ============================================================================
+
 /**
- * Load Vosk speech model for offline speech recognition (lazy-loaded fallback)
+ * Loads the Vosk speech model for offline speech recognition (lazy-loaded fallback)
  * @returns {Promise<boolean>} True if loaded successfully, false otherwise
  */
 async function loadVoskModel() {
@@ -580,10 +605,25 @@ async function loadVoskModel() {
     }
 }
 
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Reverses a string character by character
+ * @param {string} text - Text to reverse
+ * @returns {string} Reversed text
+ */
 function reverseWord(text) {
     return text.split('').reverse().join('');
 }
 
+/**
+ * Shifts characters in a string by a specified amount (Caesar cipher)
+ * @param {string} text - Text to shift
+ * @param {number} amount - Amount to shift each character code
+ * @returns {string} Shifted text
+ */
 function shiftWord(text, amount) {
     return text
         .split('')
@@ -591,17 +631,62 @@ function shiftWord(text, amount) {
         .join('');
 }
 
+/**
+ * Escapes special regex characters in a string
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text safe for use in RegExp
+ */
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Escapes HTML special characters and converts newlines to <br> tags
+ * @param {string} text - Text to escape
+ * @returns {string} HTML-safe text
+ */
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    // Replace newlines with <br> tags for proper display in HTML
     return div.innerHTML.replace(/\n/g, '<br>');
 }
 
+/**
+ * Trims incomplete sentences from AI-generated text that was cut off mid-sentence.
+ * Only trims if the response ends with incomplete markers (comma, dash, "and", etc.).
+ * Preserves lists and responses ending with proper names or numbers.
+ * @param {string} text - Text to trim
+ * @returns {string} Text with incomplete trailing sentence removed, or original text
+ */
+function trimIncompleteSentence(text) {
+    if (!text || text.length <= 20) {
+        return text;
+    }
+
+    // Check if text ends with an incomplete marker
+    const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(text);
+
+    if (endsWithIncompleteMarker) {
+        // Find the last complete sentence
+        const lastCompleteMatch = text.match(/(.*[.!?])\s+[^.!?]*$/);
+        if (lastCompleteMatch) {
+            const trimmed = lastCompleteMatch[1].trim();
+            console.log(`Trimmed incomplete sentence: ${text.length} -> ${trimmed.length} chars`);
+            return trimmed;
+        }
+    }
+
+    return text;
+}
+
+// ============================================================================
+// CONTENT MODERATION
+// ============================================================================
+
+/**
+ * Loads and decodes the inappropriate words list for content filtering
+ * @throws {Error} If file cannot be loaded
+ */
 async function loadInappropriateWords() {
     try {
         const response = await fetch('./moderation/mod.txt');
@@ -621,9 +706,14 @@ async function loadInappropriateWords() {
     }
 }
 
+// ============================================================================
+// IMAGE CLASSIFICATION MODEL LOADING
+// ============================================================================
+
 /**
- * Loads the MobileNet and custom classifier models on first demand. Coalesces
- * concurrent callers and shows a transient loading status while running.
+ * Ensures the image classification model (MobileNet + classifier) is loaded.
+ * Coalesces concurrent callers to prevent duplicate loads.
+ * @returns {Promise<void>} Resolves when model is ready
  */
 function ensureImageModelLoaded() {
     if (mobilenetReady) return Promise.resolve();
@@ -639,13 +729,11 @@ function ensureImageModelLoaded() {
 }
 
 /**
- * Loads the MobileNet and custom classifier models for image classification
+ * Loads the MobileNet base model and custom classifier for image classification.
+ * Pins TFJS to CPU backend to preserve GPU memory for WebLLM.
  * @throws {Error} If models fail to load
  */
 async function loadModel() {
-    // Attempt to load the model
-    // Note: If you used the Browser Trainer, it might be a LayersModel.
-    // If you used the Python script export, it is also a LayersModel.
     try {
         console.log("Loading base model...");
         updateLoadingStatus('mobilenet', 'loading', '25%');
@@ -1248,6 +1336,11 @@ function checkStopResponse() {
     return shouldStopResponse;
 }
 
+// ============================================================================
+// KEYWORD EXTRACTION AND SEARCH CONSTANTS
+// ============================================================================
+
+// Stopwords for keyword extraction (common words to filter out)
 const STOPWORDS = new Set([
     // Articles, prepositions, conjunctions
     'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
@@ -1287,6 +1380,7 @@ const STOPWORDS = new Set([
     'ebay', 'sale', 'buy', 'price', 'cost', 'one'
 ]);
 
+// Search trigger patterns
 const SHOPPING_TRIGGERS = ['ebay', 'for sale', 'buy', 'purchase', 'shop'];
 const WEB_SEARCH_TRIGGERS = ['bing', 'search', 'find'];
 const SEARCH_TRIGGER_WORDS = new Set([
@@ -1294,8 +1388,9 @@ const SEARCH_TRIGGER_WORDS = new Set([
     ...WEB_SEARCH_TRIGGERS.join(' ').split(/\s+/)
 ]);
 
-// Initialize
-// ...
+// ============================================================================
+// MESSAGE HANDLING
+// ============================================================================
 
 /**
  * Main message handler - processes text input, images, and commands
@@ -1747,6 +1842,10 @@ function truncateToFirstSentence(text) {
     return text.substring(0, 100).trim();
 }
 
+// ============================================================================
+// TEXT ANALYSIS FUNCTIONS
+// ============================================================================
+
 /**
  * Summarizes text using TextRank algorithm
  * @param {string} text - The text to summarize
@@ -1800,6 +1899,10 @@ function summarizeText(text) {
 
     return topIndices.map(i => sentences[i].trim()).join(' ');
 }
+
+// ============================================================================
+// IMAGE UPLOAD AND CLASSIFICATION
+// ============================================================================
 
 /**
  * Handles image file selection from input
@@ -2013,7 +2116,7 @@ async function performClassification(imgEl, userText = "") {
                             // Animate typing the summary after the classification
                             const finalPrefix = reply + `<br><br>`;
                             setBubbleContent(bubble, finalPrefix);
-                            await typeTextInBubble(bubble, escapeHtml(summary), 20, finalPrefix);
+                            await typeTextInBubble(bubble, finalPrefix + escapeHtml(summary), 20, finalPrefix);
 
                             if (checkStopResponse()) {
                                 return;
@@ -2144,7 +2247,7 @@ async function performClassification(imgEl, userText = "") {
 // generation), which on tight-VRAM systems is a common trigger for WebGPU
 // device-lost / driver TDR. Cap incoming queries at a safe length and cut at
 // a word boundary when possible so we don't slice mid-word.
-const MAX_QUERY_CHARS = 1000;
+const MAX_QUERY_CHARS = 1200;
 
 function clampQueryLength(query) {
     if (typeof query !== 'string' || query.length <= MAX_QUERY_CHARS) {
@@ -2157,8 +2260,12 @@ function clampQueryLength(query) {
     return cut.trim();
 }
 
+// ============================================================================
+// AI TEXT GENERATION
+// ============================================================================
+
 /**
- * Generates computing-related information using AI (WebLLM or Wllama)
+ * Generates computing-related information using AI (WebLLM, Wllama, or Wikipedia)
  * @param {string} query - The query to generate information about
  * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
  * @param {HTMLElement} bubbleElement - Optional bubble element for CPU mode waiting message
@@ -2243,24 +2350,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         console.log('WebLLM raw response:', responseText);
 
         // Clean up the response
-        responseText = responseText.trim();
-
-        // Only trim incomplete sentences if the response looks genuinely cut off
-        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
-        // that end with proper names or numbers
-        if (responseText && responseText.length > 20) {
-            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
-
-            if (endsWithIncompleteMarker) {
-                // Find the last complete sentence
-                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
-                if (lastCompleteMatch) {
-                    const originalLength = responseText.length;
-                    responseText = lastCompleteMatch[1].trim();
-                    console.log(`Trimmed incomplete sentence: ${originalLength} -> ${responseText.length} chars`);
-                }
-            }
-        }
+        responseText = trimIncompleteSentence(responseText.trim());
 
         if (!responseText || responseText.length < 5) {
             console.warn('WebLLM response too short or empty after cleanup:', responseText);
@@ -2430,22 +2520,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }
 
         // Clean up the response
-        responseText = responseText.trim();
-
-        // Only trim incomplete sentences if the response looks genuinely cut off
-        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
-        // that end with proper names or numbers
-        if (responseText && responseText.length > 20) {
-            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
-
-            if (endsWithIncompleteMarker) {
-                // Find the last complete sentence
-                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
-                if (lastCompleteMatch) {
-                    responseText = lastCompleteMatch[1].trim();
-                }
-            }
-        }
+        responseText = trimIncompleteSentence(responseText.trim());
 
         if (!responseText || responseText.length < 10) {
             return null;
@@ -2589,7 +2664,11 @@ async function classify(imgElement) {
     return results.sort((a, b) => b.probability - a.probability);
 }
 
-// Event Listeners
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+
+// Send button - handles both send and stop actions
 sendBtn.addEventListener('click', () => {
     if (sendBtn.classList.contains('stop-mode')) {
         handleStopResponse();
@@ -2598,6 +2677,7 @@ sendBtn.addEventListener('click', () => {
     }
 });
 
+// Text input - submit on Enter (Shift+Enter for new line)
 textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -2605,7 +2685,7 @@ textInput.addEventListener('keydown', (e) => {
     }
 });
 
-// Auto-resize textarea
+// Auto-resize textarea as user types
 textInput.addEventListener('input', function () {
     this.style.height = 'auto';
     this.style.height = (this.scrollHeight) + 'px';
@@ -3224,9 +3304,17 @@ async function handleStopResponse() {
     // Remove typing indicator
     removeTyping();
 
-    // Reset button state
+    // Force clear typing animation counter
+    typingAnimationsInProgress = 0;
+
+    // Reset flags and button state
     isStoppingResponse = false;
-    endResponse();
+    shouldStopResponse = false;
+    isResponding = false;
+
+    sendBtn.classList.remove('stop-mode');
+    sendBtn.textContent = '▶';
+    sendBtn.title = 'Send';
 }
 
 /**
@@ -3295,8 +3383,12 @@ async function restartConversation() {
     }
 }
 
+// ============================================================================
+// MODAL UI FUNCTIONS
+// ============================================================================
+
 /**
- * Shows the app details modal with focus management
+ * Shows the About modal with focus management
  */
 function showAbout() {
     const modal = document.getElementById('aboutModal');
@@ -3307,6 +3399,9 @@ function showAbout() {
     }
 }
 
+/**
+ * Closes the About modal and returns focus to the trigger button
+ */
 function closeAbout() {
     const modal = document.getElementById('aboutModal');
     const aboutBtn = document.getElementById('aboutBtn');
@@ -3316,6 +3411,9 @@ function closeAbout() {
     }
 }
 
+/**
+ * Shows the App Details modal and updates model information
+ */
 function showAppDetails() {
     const modal = document.getElementById('appDetailsModal');
     const closeBtn = document.getElementById('closeAppDetailsBtn');
@@ -3336,14 +3434,13 @@ function showAppDetails() {
 
     modal.style.display = 'flex';
 
-    // Focus the close button for keyboard accessibility
     if (closeBtn) {
         closeBtn.focus();
     }
 }
 
 /**
- * Closes the app details modal
+ * Closes the App Details modal and returns focus to the trigger button
  */
 function closeAppDetails() {
     const modal = document.getElementById('appDetailsModal');
@@ -3380,5 +3477,8 @@ document.addEventListener('keydown', function (event) {
     }
 });
 
-// Start
+// ============================================================================
+// APPLICATION INITIALIZATION
+// ============================================================================
+
 init();
