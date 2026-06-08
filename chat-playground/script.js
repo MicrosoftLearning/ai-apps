@@ -1342,6 +1342,105 @@ class ChatPlayground {
         }, 1000);
     }
 
+    /**
+     * Run `task` with `navigator.gpu` hidden so any code path inside it
+     * cannot detect or use WebGPU. Restores the original descriptor on
+     * exit even if `task` throws. Used to force the CPU code path in
+     * libraries that auto-detect WebGPU.
+     */
+    async withWebGpuTemporarilyDisabled(task) {
+        const nav = navigator;
+        const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
+        const ownGpuDescriptor = hadOwnGpu ? Object.getOwnPropertyDescriptor(nav, 'gpu') : null;
+        let gpuMasked = false;
+
+        const unavailableGpu = {
+            requestAdapter: async () => null
+        };
+
+        try {
+            Object.defineProperty(nav, 'gpu', {
+                configurable: true,
+                enumerable: false,
+                get: () => unavailableGpu
+            });
+            gpuMasked = true;
+            console.log('Temporarily stubbed navigator.gpu as unavailable for wllama initialization');
+        } catch (error) {
+            console.warn('Unable to mask navigator.gpu during wllama initialization:', error);
+        }
+
+        try {
+            return await task();
+        } finally {
+            if (!gpuMasked) {
+                return;
+            }
+
+            try {
+                if (hadOwnGpu && ownGpuDescriptor) {
+                    Object.defineProperty(nav, 'gpu', ownGpuDescriptor);
+                } else {
+                    delete nav.gpu;
+                }
+                console.log('Restored navigator.gpu after wllama initialization');
+            } catch (error) {
+                console.warn('Unable to restore navigator.gpu after wllama initialization:', error);
+            }
+        }
+    }
+
+    /**
+     * Run `task` while transparently rewriting `new Worker(url)` so worker
+     * scripts also see WebGPU as unavailable. Pairs with
+     * {@link withWebGpuTemporarilyDisabled} for libraries (e.g. wllama)
+     * that spawn workers which would otherwise re-enable the GPU backend.
+     */
+    async withWebGpuDisabledForWorkers(task) {
+        const NativeWorker = window.Worker;
+        let workerPatched = false;
+
+        try {
+            if (typeof NativeWorker === 'function') {
+                window.Worker = class WorkerWithoutWebGPU extends NativeWorker {
+                    constructor(scriptURL, options) {
+                        let wrappedURL = scriptURL;
+                        let createdWrappedBlobUrl = false;
+
+                        try {
+                            const workerType = options?.type === 'module' ? 'module' : 'classic';
+                            const source = workerType === 'module'
+                                ? `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimport ${JSON.stringify(String(scriptURL))};`
+                                : `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimportScripts(${JSON.stringify(String(scriptURL))});`;
+
+                            wrappedURL = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+                            createdWrappedBlobUrl = true;
+                        } catch (error) {
+                            wrappedURL = scriptURL;
+                            createdWrappedBlobUrl = false;
+                        }
+
+                        super(wrappedURL, options);
+
+                        if (createdWrappedBlobUrl) {
+                            setTimeout(() => URL.revokeObjectURL(wrappedURL), 0);
+                        }
+                    }
+                };
+
+                workerPatched = true;
+                console.log('Temporarily patched Worker to disable WebGPU inside wllama workers');
+            }
+
+            return await this.withWebGpuTemporarilyDisabled(task);
+        } finally {
+            if (workerPatched) {
+                window.Worker = NativeWorker;
+                console.log('Restored Worker after wllama initialization');
+            }
+        }
+    }
+
     async initializeWllama(progressCallback) {
         console.log('Initializing wllama...');
         this.wllamaLoaded = false;
@@ -1372,6 +1471,8 @@ class ChatPlayground {
 
         const modelConfig = {
             n_ctx: 384,      // Smaller context for faster processing
+            n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
+            offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
             n_threads: preferredThreads,
             progressCallback: ({ loaded, total }) => {
                 if (!isLazyLoad) {
@@ -1385,46 +1486,48 @@ class ChatPlayground {
             }
         };
 
-        try {
-            this.wllama = new Wllama(CONFIG_PATHS);
-            if (!isLazyLoad) {
-                updateProgress(20, 100);
-            }
-
-            await this.wllama.loadModelFromHF(
-                {
-                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                },
-                {
-                    ...modelConfig,
-                    progressCallback: modelConfig.progressCallback
+        await this.withWebGpuDisabledForWorkers(async () => {
+            try {
+                this.wllama = new Wllama(CONFIG_PATHS);
+                if (!isLazyLoad) {
+                    updateProgress(20, 100);
                 }
-            );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
-        } catch (multiErr) {
-            console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
-            if (!isLazyLoad) {
-                updateProgress(20, 100);
-            }
 
-            // Create fresh instance
-            this.wllama = new Wllama(CONFIG_PATHS);
-            await this.wllama.loadModelFromHF(
-                {
-                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                },
-                {
-                    ...modelConfig,
-                    n_threads: preferredThreads,
-                    progressCallback: modelConfig.progressCallback
+                await this.wllama.loadModelFromHF(
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
+                    {
+                        ...modelConfig,
+                        progressCallback: modelConfig.progressCallback
+                    }
+                );
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
+                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
+            } catch (multiErr) {
+                console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
+                if (!isLazyLoad) {
+                    updateProgress(20, 100);
                 }
-            );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
-        }
+
+                // Create fresh instance
+                this.wllama = new Wllama(CONFIG_PATHS);
+                await this.wllama.loadModelFromHF(
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
+                    {
+                        ...modelConfig,
+                        n_threads: preferredThreads,
+                        progressCallback: modelConfig.progressCallback
+                    }
+                );
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
+                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
+            }
+        });
 
         console.log('Wllama initialized successfully');
         this.wllamaLoaded = true;
