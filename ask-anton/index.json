@@ -123,7 +123,11 @@
                     "genai",
                     "prompt",
                     "prompts",
-                    "prompt engineering"
+                    "prompting",
+                    "promt",
+                    "promp",
+                    "prompt engineering",
+                    "prompt egineering"
                 ],
                 "content": "Generative AI refers to a class of artificial intelligence models that are capable of generating new content, such as text, images, audio, or video in response to a natural language 'prompt'. These models are typically large language models (LLMs) that use transformer architectures with attention mechanisms to define a vocabulary of semantically meaningful tokens and generate coherent and contextually relevant outputs."
             },
