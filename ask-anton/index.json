@@ -140,7 +140,8 @@
                     "large language models",
                     "llm",
                     "llms",
-                    "gpt"
+                    "generative models",
+                    "generative ai models"
                 ],
                 "content": "Large Language Models (LLMs) are a type of artificial intelligence model designed to understand and generate human language. They are built using transformer architectures that use attention mechanisms to process and generate text. LLMs work by converting tokens (words or parts of words) into embeddings, which are vectors with multiple numeric 'dimensions', allowing the model to capture semantic meaning and context. These models are capable of performing a wide range of natural language processing tasks, including translation, summarization, and question-answering."
             },
