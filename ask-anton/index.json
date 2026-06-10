@@ -120,14 +120,7 @@
                 "video_id": "904e700e-4549-42ac-8056-7e4dfd505966",
                 "keywords": [
                     "generative ai",
-                    "genai",
-                    "prompt",
-                    "prompts",
-                    "prompting",
-                    "promt",
-                    "promp",
-                    "prompt engineering",
-                    "prompt egineering"
+                    "genai"
                 ],
                 "content": "Generative AI refers to a class of artificial intelligence models that are capable of generating new content, such as text, images, audio, or video in response to a natural language 'prompt'. These models are typically large language models (LLMs) that use transformer architectures with attention mechanisms to define a vocabulary of semantically meaningful tokens and generate coherent and contextually relevant outputs."
             },
@@ -184,7 +177,7 @@
             {
                 "id": 12,
                 "title": "Prompt Engineering",
-                "video_id": "2330092e-48b9-4d41-905b-e1b4fd002356",
+                "video_id": "2330092e-48b9-4d41-905b-e1b4fd002356", 
                 "keywords": [
                     "prompt engineering",
                     "prompt",
@@ -192,7 +185,10 @@
                     "instruction",
                     "instructions",
                     "few shot learning",
-                    "zero shot learning"
+                    "zero shot learning",
+                    "prompting",
+                    "promt",
+                    "promp"
                 ],
                 "content": "Prompt Engineering is the process of designing and refining input prompts to effectively communicate with generative AI models, such as large language models (LLMs). A well-crafted prompt can significantly influence the quality and relevance of the model's output. Prompt engineering involves techniques such as providing clear instructions, using examples (few-shot learning), and structuring prompts to guide the model's response. Few-shot learning involves including a few examples in the prompt to help the model understand the desired output format, while zero-shot learning relies on the model's pre-existing knowledge without any examples. Effective prompt engineering is essential for maximizing the capabilities of generative AI models across various applications."
             },
