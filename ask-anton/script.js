@@ -83,6 +83,8 @@ class AskAnton {
             basic: true
         };
         this.isLoadingModel = false;
+        this.modelLoadingCancelled = false;
+        this.modelLoadingAbortController = null;
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
@@ -120,6 +122,7 @@ class AskAnton {
             progressSection: document.getElementById('progress-section'),
             progressFill: document.getElementById('progress-fill'),
             progressText: document.getElementById('progress-text'),
+            cancelLoadingLink: document.getElementById('cancel-loading-link'),
             chatContainer: document.getElementById('chat-container'),
             chatMessages: document.getElementById('chat-messages'),
             userInput: document.getElementById('user-input'),
@@ -187,6 +190,14 @@ class AskAnton {
      */
     async initialize() {
         try {
+            // Setup event listeners FIRST so cancel link works during loading
+            this.setupEventListeners();
+
+            // Hide cancel link initially
+            if (this.elements.cancelLoadingLink) {
+                this.elements.cancelLoadingLink.style.display = 'none';
+            }
+
             // Load prohibited words used by content moderation
             await this.loadProhibitedWords();
 
@@ -195,9 +206,6 @@ class AskAnton {
 
             // Try to initialize WebLLM first, fall back to wllama if needed
             await this.initializeEngine();
-
-            // Setup event listeners
-            this.setupEventListeners();
 
         } catch (error) {
             console.error('Initialization error:', error);
@@ -556,11 +564,22 @@ class AskAnton {
         const hasWebGPU = this.checkWebGPUSupport();
         this.availableModes.gpu = hasWebGPU;
 
+        // Create abort controller for model loading
+        this.modelLoadingAbortController = new AbortController();
+
         if (hasWebGPU) {
             try {
                 await this.initializeWebLLM();
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    return;
+                }
                 return;
             } catch (error) {
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    return;
+                }
                 console.log('WebLLM initialization failed, falling back to CPU mode');
                 this.availableModes.gpu = false;
             }
@@ -572,8 +591,16 @@ class AskAnton {
                 showChatInterface: true,
                 showFatalError: false
             });
+            // Check if cancelled during initialization
+            if (this.modelLoadingCancelled) {
+                return;
+            }
             return;
         } catch (error) {
+            // Check if cancelled during initialization
+            if (this.modelLoadingCancelled) {
+                return;
+            }
             console.log('CPU model initialization failed, falling back to Basic mode');
             this.availableModes.cpu = false;
         }
@@ -588,10 +615,16 @@ class AskAnton {
      * Bring up the WebLLM (WebGPU) engine with the Phi-3.5 model and wire
      * its progress callback to the loading UI. Resolves once the model is
      * ready to chat; rejects if WebGPU init or model download fails.
+     * @param {(p:number)=>void|null} [progressCallback] Optional callback for progress updates (used when loading from mode switch)
+     * @param {{isLazyLoad?:boolean, activateMode?:boolean, showChatInterface?:boolean}} [options]
      */
-    async initializeWebLLM() {
+    async initializeWebLLM(progressCallback = null, options = {}) {
+        const { isLazyLoad = false, activateMode = true, showChatInterface = true } = options;
+
         try {
-            this.updateProgress(15, 'Loading AI model (WebGPU)...');
+            if (!isLazyLoad) {
+                this.updateProgress(15, 'Loading AI model (WebGPU)...');
+            }
 
             // 🧪 DEBUG: Force WebGPU initialization failure for testing error handling
             if (this.debugConfig.enabled && this.debugConfig.forceWebGPUFail) {
@@ -623,23 +656,51 @@ class AskAnton {
                 {
                     appConfig: appConfig,
                     initProgressCallback: (progress) => {
+                        // Check if user cancelled loading
+                        if (this.modelLoadingCancelled) {
+                            return;
+                        }
+
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-                        this.updateProgress(
-                            percentage,
-                            `Loading model: ${Math.round(progress.progress * 100)}%`
-                        );
+
+                        if (!isLazyLoad) {
+                            this.updateProgress(
+                                percentage,
+                                `Loading model: ${Math.round(progress.progress * 100)}%`
+                            );
+                        } else {
+                            console.log(`Loading WebLLM: ${Math.round(progress.progress * 100)}%`);
+                            // Call the progress callback for lazy loading
+                            if (progressCallback) {
+                                progressCallback(progress.progress);
+                            }
+                        }
                     }
                 }
             );
 
-            this.updateProgress(100, 'Ready to chat!');
+            // Check if cancelled before finalizing
+            if (this.modelLoadingCancelled) {
+                this.engine = null;
+                throw new Error('Model loading cancelled by user');
+            }
+
+            if (!isLazyLoad) {
+                this.updateProgress(100, 'Ready to chat!');
+            }
             console.log('WebLLM engine initialized successfully');
             this.availableModes.gpu = true;
-            this.setCurrentMode('gpu');
 
-            setTimeout(() => {
-                this.showChatInterface();
-            }, 500);
+            if (activateMode) {
+                this.setCurrentMode('gpu');
+            }
+
+            // Double-check cancellation before showing interface
+            if (showChatInterface && !this.modelLoadingCancelled) {
+                setTimeout(() => {
+                    this.showChatInterface();
+                }, 500);
+            }
 
         } catch (error) {
             console.error('Failed to initialize WebLLM:', error);
@@ -709,6 +770,11 @@ class AskAnton {
                 offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
                 n_threads: preferredThreads,
                 progressCallback: ({ loaded, total }) => {
+                    // Check if user cancelled loading
+                    if (this.modelLoadingCancelled) {
+                        return;
+                    }
+
                     const percentage = Math.min(100, Math.max(15, Math.round((loaded / total) * 85) + 15));
                     const progress = loaded / total;
 
@@ -744,6 +810,13 @@ class AskAnton {
                             progressCallback: modelConfig.progressCallback
                         }
                     );
+
+                    // Check if cancelled before finalizing
+                    if (this.modelLoadingCancelled) {
+                        this.wllama = null;
+                        throw new Error('Model loading cancelled by user');
+                    }
+
                     console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
 
                     // Update to final ready state if requested
@@ -767,6 +840,13 @@ class AskAnton {
                                 progressCallback: modelConfig.progressCallback
                             }
                         );
+
+                        // Check if cancelled before finalizing (fallback path)
+                        if (this.modelLoadingCancelled) {
+                            this.wllama = null;
+                            throw new Error('Model loading cancelled by user');
+                        }
+
                         console.log('Wllama initialized successfully with 1 thread (fallback)');
 
                         // Update to final ready state if requested
@@ -781,14 +861,17 @@ class AskAnton {
             console.log('Wllama initialized successfully with Phi 3.1');
             this.availableModes.cpu = true;
 
-            if (activateMode) {
-                this.setCurrentMode('cpu');
-            }
+            // Check cancellation before activating and showing interface
+            if (!this.modelLoadingCancelled) {
+                if (activateMode) {
+                    this.setCurrentMode('cpu');
+                }
 
-            if (showChatInterface) {
-                setTimeout(() => {
-                    this.showChatInterface();
-                }, 500);
+                if (showChatInterface) {
+                    setTimeout(() => {
+                        this.showChatInterface();
+                    }, 500);
+                }
             }
 
         } catch (error) {
@@ -807,8 +890,20 @@ class AskAnton {
 
     /** Update the loading progress bar and status text. */
     updateProgress(percentage, text) {
+        // Don't update if loading was cancelled
+        if (this.modelLoadingCancelled) {
+            return;
+        }
+
         this.elements.progressFill.style.width = `${percentage}%`;
         this.elements.progressText.textContent = text;
+
+        // Show cancel link when loading starts (after initial knowledge base load)
+        if (percentage >= 15 && percentage < 100 && this.elements.cancelLoadingLink) {
+            this.elements.cancelLoadingLink.style.display = 'inline-block';
+        } else if (percentage === 100 && this.elements.cancelLoadingLink) {
+            this.elements.cancelLoadingLink.style.display = 'none';
+        }
 
         // Update progress bar ARIA attributes
         const progressBar = document.querySelector('.progress-bar');
@@ -820,6 +915,11 @@ class AskAnton {
 
     /** Hide the loading screen and reveal the chat UI. */
     showChatInterface() {
+        // Don't show interface if already showing due to cancellation
+        if (this.elements.chatContainer.style.display === 'flex') {
+            return;
+        }
+
         this.elements.progressSection.style.display = 'none';
         this.elements.chatContainer.style.display = 'flex';
         this.updateModeSelector();
@@ -833,7 +933,16 @@ class AskAnton {
      */
     initializeBasicMode(progressText = 'Ready to chat! (Basic mode)', notice = null) {
         this.setCurrentMode('basic');
+
+        // Temporarily allow progress update for final state
+        const wasCancelled = this.modelLoadingCancelled;
+        this.modelLoadingCancelled = false;
         this.updateProgress(100, progressText);
+
+        // Restore cancelled state if it was set
+        if (wasCancelled) {
+            this.modelLoadingCancelled = true;
+        }
 
         setTimeout(() => {
             this.showChatInterface();
@@ -841,6 +950,43 @@ class AskAnton {
                 this.addSystemMessage(notice);
             }
         }, 500);
+    }
+
+    /**
+     * Cancel the ongoing model loading and switch to Basic mode.
+     * Called when the user clicks the "Cancel and start in Basic Mode" link
+     * during model download.
+     */
+    cancelModelLoading() {
+        // Set the cancellation flag immediately
+        this.modelLoadingCancelled = true;
+
+        // Abort any ongoing loading operations
+        if (this.modelLoadingAbortController) {
+            this.modelLoadingAbortController.abort();
+        }
+
+        // Clean up any partially loaded models
+        if (this.engine) {
+            this.engine = null;
+        }
+        if (this.wllama) {
+            this.wllama = null;
+        }
+
+        // Hide the cancel link immediately
+        if (this.elements.cancelLoadingLink) {
+            this.elements.cancelLoadingLink.style.display = 'none';
+        }
+
+        // Don't mark modes as unavailable - user cancelled, not failed
+        // They should still be able to select GPU/CPU modes later
+
+        // Immediately switch to Basic mode
+        this.initializeBasicMode(
+            'Ready to chat! (Basic mode)',
+            'Model loading was cancelled. You can switch modes anytime from the mode selector.'
+        );
     }
 
     /** Set the active inference mode. @param {'gpu'|'cpu'|'basic'} mode */
@@ -945,6 +1091,25 @@ class AskAnton {
         this.elements.modeSelect.addEventListener('change', (event) => {
             this.switchMode(event.target.value);
         });
+
+        // Cancel loading link
+        if (this.elements.cancelLoadingLink) {
+            // Click handler
+            this.elements.cancelLoadingLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.cancelModelLoading();
+            });
+
+            // Keyboard handler for accessibility
+            this.elements.cancelLoadingLink.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.cancelModelLoading();
+                }
+            });
+        }
 
         // About button
         this.elements.aboutBtn.addEventListener('click', () => {
@@ -1581,14 +1746,66 @@ class AskAnton {
             return;
         }
 
+        // Reset cancellation flag when user tries to load a model again
+        if ((targetMode === 'gpu' || targetMode === 'cpu') && this.modelLoadingCancelled) {
+            this.modelLoadingCancelled = false;
+        }
+
         if (targetMode === 'gpu') {
-            if (!this.availableModes.gpu || !this.engine) {
+            // If GPU is available but engine not loaded, try to load it
+            if (this.availableModes.gpu && !this.engine) {
+                this.isLoadingModel = true;
+                this.elements.modeSelect.disabled = true;
+                this.disableInput();
+                const loadingMsg = this.addSystemMessage('Switching to GPU mode - loading model... 0%');
+                const loadingMsgElement = loadingMsg.querySelector('p');
+
+                try {
+                    // Create new abort controller for this load attempt
+                    this.modelLoadingAbortController = new AbortController();
+
+                    await this.initializeWebLLM((progress) => {
+                        if (loadingMsgElement) {
+                            const percentage = Math.round(progress * 100);
+                            loadingMsgElement.textContent = `Switching to GPU mode - loading model... ${percentage}%`;
+                        }
+                    }, {
+                        isLazyLoad: true,
+                        activateMode: true,
+                        showChatInterface: false
+                    });
+
+                    if (loadingMsgElement) {
+                        loadingMsgElement.textContent = 'Switched to GPU mode';
+                    }
+                } catch (error) {
+                    console.error('Failed to load GPU mode:', error);
+                    this.availableModes.gpu = false;
+
+                    const fallbackMode = this.availableModes.cpu && this.wllama ? 'cpu' : 'basic';
+                    this.setCurrentMode(fallbackMode);
+
+                    if (loadingMsgElement) {
+                        loadingMsgElement.textContent = `Failed to load GPU mode. Switched to ${this.getModeLabel(fallbackMode)} mode.`;
+                    }
+                } finally {
+                    this.updateModeSelector();
+                    this.isLoadingModel = false;
+                    this.enableInput();
+                    this.elements.modeSelect.disabled = false;
+                }
+                return;
+            }
+
+            // If GPU not available, show modal
+            if (!this.availableModes.gpu) {
                 this.updateModeSelector();
                 this.lastFocusedElement = document.activeElement;
                 this.showAiModeModal();
                 return;
             }
 
+            // GPU mode already loaded, just switch to it
             this.disableInput();
             this.setCurrentMode('gpu');
             this.updateModeSelector();

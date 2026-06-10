@@ -30,6 +30,8 @@ const availableModes = { gpu: false, cpu: true, basic: true }; // Track which mo
 let currentAbortController = null; // Track abort controller for wllama
 let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
+let modelLoadingCancelled = false; // Track if user cancelled model loading
+let modelLoadingAbortController = null; // Track abort controller for model loading
 const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
@@ -190,6 +192,9 @@ function checkWebGPUSupport() {
  * Initializes the application by loading ML models and AI engines
  */
 async function init() {
+    // Setup cancel link event listener first
+    setupCancelLinkListener();
+
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
     updateLoadingStatus('smollm', 'loading', 'Loading...');
@@ -221,6 +226,9 @@ async function init() {
         // Check for WebGPU support
         const hasWebGPU = checkWebGPUSupport();
 
+        // Create abort controller for model loading
+        modelLoadingAbortController = new AbortController();
+
         if (!hasWebGPU) {
             console.log('WebGPU not available, trying wllama (CPU mode)');
             try {
@@ -234,16 +242,43 @@ async function init() {
                 updateLoadingStatus('smollm', 'ready', 'Basic');
             }
         } else {
+            // WebGPU is available - mark it as an available mode
+            availableModes.gpu = true;
+            webGPUAvailable = true;
+
             // Try WebLLM first (faster with GPU)
             try {
                 await initializeWebLLM();
+                // Check if cancelled during initialization
+                if (modelLoadingCancelled) {
+                    return;
+                }
                 // currentMode = 'gpu' is set inside initializeWebLLM
             } catch (error) {
+                // Check if cancelled during initialization
+                if (modelLoadingCancelled) {
+                    // Keep GPU available for retry - user just cancelled, didn't fail
+                    console.log('Model loading was cancelled by user');
+                    return;
+                }
+
+                // Genuine failure (not cancellation) - mark GPU mode as unavailable
                 console.log('WebLLM initialization failed, falling back to wllama');
+                availableModes.gpu = false;
+                webGPUAvailable = false;
+
                 try {
                     await initWllama();
+                    // Check if cancelled during initialization
+                    if (modelLoadingCancelled) {
+                        return;
+                    }
                     currentMode = 'cpu';
                 } catch (error2) {
+                    // Check if cancelled during initialization
+                    if (modelLoadingCancelled) {
+                        return;
+                    }
                     console.log('Wllama also failed, using Basic mode (Wikipedia)');
                     currentMode = 'basic';
                     availableModes.cpu = false;
@@ -263,6 +298,73 @@ async function init() {
             addMessage(`Error loading models: ${escapeHtml(e.message)}. Some features may be unavailable.`, "bot");
         }, 2000);
     }
+}
+
+/**
+ * Sets up the cancel loading link event listener
+ */
+function setupCancelLinkListener() {
+    const cancelLink = document.getElementById('cancel-loading-link');
+    if (cancelLink) {
+        // Initially hide the cancel link
+        cancelLink.style.display = 'none';
+
+        // Click handler
+        cancelLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelModelLoading();
+        });
+
+        // Keyboard handler for accessibility
+        cancelLink.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                cancelModelLoading();
+            }
+        });
+    }
+}
+
+/**
+ * Cancels the ongoing model loading and switches to Basic mode
+ */
+function cancelModelLoading() {
+    // Set the cancellation flag immediately
+    modelLoadingCancelled = true;
+
+    // Abort any ongoing loading operations
+    if (modelLoadingAbortController) {
+        modelLoadingAbortController.abort();
+    }
+
+    // Clean up any partially loaded models
+    if (engine) {
+        engine = null;
+    }
+    if (wllama) {
+        wllama = null;
+    }
+
+    // Hide the cancel link immediately
+    const cancelLink = document.getElementById('cancel-loading-link');
+    if (cancelLink) {
+        cancelLink.style.display = 'none';
+    }
+
+    // Don't mark modes as unavailable - user cancelled, not failed
+    // Switch to Basic mode
+    currentMode = 'basic';
+    updateModelName('Wikipedia API (Basic)');
+    updateLoadingStatus('smollm', 'ready', 'Basic');
+
+    hideLoadingOverlay();
+    updateModeSelect();
+
+    setTimeout(() => {
+        addMessage('Model loading was cancelled. You can switch modes anytime from the mode selector.', 'bot');
+    }, 500);
 }
 
 /**
@@ -295,17 +397,29 @@ async function initializeWebLLM() {
             {
                 appConfig: appConfig,
                 initProgressCallback: (progress) => {
+                    // Check if user cancelled loading
+                    if (modelLoadingCancelled) {
+                        return;
+                    }
+
                     const percentage = Math.round(progress.progress * 100);
                     updateLoadingStatus('smollm', 'loading', `${percentage}%`);
+
+                    // Show cancel link when loading starts
+                    showCancelLink();
                 }
             }
         );
 
+        // Check if cancelled before finalizing
+        if (modelLoadingCancelled) {
+            engine = null;
+            throw new Error('Model loading cancelled by user');
+        }
+
         updateLoadingStatus('smollm', 'ready', '100%');
         console.log('WebLLM engine initialized successfully');
-        webGPUAvailable = true;
         currentMode = 'gpu';
-        availableModes.gpu = true;
 
     } catch (error) {
         console.error('Failed to initialize WebLLM:', error);
@@ -610,6 +724,16 @@ async function loadVoskModel() {
 // ============================================================================
 
 /**
+ * Shows the cancel loading link
+ */
+function showCancelLink() {
+    const cancelLink = document.getElementById('cancel-loading-link');
+    if (cancelLink && !modelLoadingCancelled) {
+        cancelLink.style.display = 'inline-block';
+    }
+}
+
+/**
  * Reverses a string character by character
  * @param {string} text - Text to reverse
  * @returns {string} Reversed text
@@ -810,12 +934,20 @@ async function initWllama(progressCallback = null, options = {}) {
         };
 
         const internalProgressCallback = ({ loaded, total }) => {
+            // Check if user cancelled loading
+            if (modelLoadingCancelled) {
+                return;
+            }
+
             const progress = loaded / total;
             if (!isLazyLoad) {
                 const percentage = Math.round((progress * 100));
                 const adjustedProgress = Math.round(20 + (percentage * 0.8)); // 20% to 100%
                 updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
                 console.log(`Loading wllama: ${percentage}%`);
+
+                // Show cancel link when loading starts
+                showCancelLink();
             }
             if (progressCallback) {
                 progressCallback(progress);
@@ -848,6 +980,13 @@ async function initWllama(progressCallback = null, options = {}) {
                         progressCallback: internalProgressCallback
                     }
                 );
+
+                // Check if cancelled before finalizing
+                if (modelLoadingCancelled) {
+                    wllama = null;
+                    throw new Error('Model loading cancelled by user');
+                }
+
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
             } catch (multiErr) {
                 if (preferredThreads > 1) {
@@ -870,6 +1009,13 @@ async function initWllama(progressCallback = null, options = {}) {
                             progressCallback: internalProgressCallback
                         }
                     );
+
+                    // Check if cancelled before finalizing (fallback path)
+                    if (modelLoadingCancelled) {
+                        wllama = null;
+                        throw new Error('Model loading cancelled by user');
+                    }
+
                     console.log("Wllama initialized successfully with 1 thread (fallback)");
                 } else {
                     throw multiErr;
@@ -2735,12 +2881,62 @@ if (modeSelect) {
 function selectMode() {
     const selected = modeSelect.value;
 
+    // Reset cancellation flag when switching modes
+    modelLoadingCancelled = false;
+
     if (selected === 'gpu') {
-        if (!availableModes.gpu || !webGPUAvailable || !engine) {
+        if (!availableModes.gpu || !webGPUAvailable) {
             addMessage('GPU mode is not available in your browser.', 'bot');
             updateModeSelect(); // revert dropdown to current mode
             return;
         }
+
+        // Check if engine needs to be loaded (e.g., after cancellation)
+        if (!engine) {
+            modeSelect.disabled = true;
+            sendBtn.disabled = true;
+            textInput.disabled = true;
+            micBtn.disabled = true;
+            uploadBtn.disabled = true;
+            const loadingMsg = addMessage('Switching to GPU mode - loading model...', 'bot');
+            const loadingBubble = loadingMsg.bubble;
+
+            initializeWebLLM().then(() => {
+                currentMode = 'gpu';
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'Switched to GPU mode (Phi-3.5-mini)');
+                }
+                modeSelect.disabled = false;
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                uploadBtn.disabled = false;
+                updateModeSelect();
+            }).catch(error => {
+                console.error('Failed to load WebLLM:', error);
+                availableModes.gpu = false;
+                // Fall back to CPU if available, otherwise stay on Basic
+                if (availableModes.cpu && wllama) {
+                    currentMode = 'cpu';
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'Failed to load GPU mode. Switched to CPU mode.');
+                    }
+                } else {
+                    currentMode = 'basic';
+                    if (loadingBubble) {
+                        setBubbleContent(loadingBubble, 'Failed to load GPU mode. Switched to Basic mode.');
+                    }
+                }
+                modeSelect.disabled = false;
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                uploadBtn.disabled = false;
+                updateModeSelect();
+            });
+            return;
+        }
+
         currentMode = 'gpu';
         addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
         updateModeSelect();
@@ -2874,7 +3070,7 @@ function updateModeSelect() {
     const basicOption = modeSelect.querySelector('option[value="basic"]');
 
     if (gpuOption) {
-        const gpuReady = availableModes.gpu && webGPUAvailable && engine;
+        const gpuReady = availableModes.gpu && webGPUAvailable;
         gpuOption.disabled = !gpuReady;
         gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
     }

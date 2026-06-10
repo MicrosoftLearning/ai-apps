@@ -148,6 +148,40 @@ header h1 {
     text-align: center;
 }
 
+.progress-cancel {
+    margin-top: 10px;
+    text-align: center;
+    position: relative;
+    z-index: 10;
+}
+
+.cancel-link {
+    font-size: 0.8em;
+    color: #888;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    display: inline-block;
+    padding: 3px 6px;
+}
+
+.cancel-link:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+.cancel-link:focus {
+    outline: 2px solid #0066cc;
+    outline-offset: 2px;
+    border-radius: 2px;
+    color: #0066cc;
+}
+
+.cancel-link:active {
+    color: #004499;
+}
+
 /* Chat Container */
 .chat-container {
     display: flex;
