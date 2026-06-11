@@ -1623,12 +1623,27 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     formatAssistantResponse(text) {
-        const escapedText = this.escapeHtml(text);
+        // Handle fenced code blocks FIRST (before escaping HTML)
+        const codeBlocks = [];
+        const withCodeBlockPlaceholders = text.replace(
+            /```(\w+)?\n([\s\S]*?)```/g,
+            (match, language, code) => {
+                const placeholder = `§§CODE_BLOCK_${codeBlocks.length}§§`;
+                const escapedCode = this.escapeHtml(code);
+                const langClass = language ? ` class="language-${language}"` : '';
+                codeBlocks.push(`<pre${langClass}><code>${escapedCode}</code></pre>`);
+                return placeholder;
+            }
+        );
+
+        const escapedText = this.escapeHtml(withCodeBlockPlaceholders);
+
+        // Handle markdown links
         const markdownLinks = [];
         const withMarkdownPlaceholders = escapedText.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
             (_, label, url) => {
-                const placeholder = `__MARKDOWN_LINK_${markdownLinks.length}__`;
+                const placeholder = `§§MARKDOWN_LINK_${markdownLinks.length}§§`;
                 markdownLinks.push(
                     `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
                 );
@@ -1636,7 +1651,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         );
 
-        const withAutoLinkedUrls = withMarkdownPlaceholders.replace(
+        // Apply basic markdown formatting
+        let formatted = withMarkdownPlaceholders;
+
+        // Bold: **text** or __text__
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+        formatted = formatted.replace(/__(.+?)__/g, '<b>$1</b>');
+
+        // Italic: *text* or _text_ (but not in middle of words)
+        formatted = formatted.replace(/(?:^|[\s])\*([^\*\n]+?)\*(?=[\s]|$)/g, ' <i>$1</i>');
+        formatted = formatted.replace(/(?:^|[\s])_([^_\n]+?)_(?=[\s]|$)/g, ' <i>$1</i>');
+
+        // Inline code: `code` (prevent matching across lines)
+        formatted = formatted.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+        // Auto-link URLs
+        const withAutoLinkedUrls = formatted.replace(
             /(^|[\s(>])((?:https?:\/\/)[^\s<)]+)/g,
             (_, prefix, url) => {
                 const trailingPunctuationMatch = url.match(/[.,!?;:]+$/);
@@ -1647,12 +1677,96 @@ IMPORTANT: Follow these guidelines when responding:
             }
         );
 
+        // Restore markdown link placeholders
         const withLinks = withAutoLinkedUrls.replace(
-            /__MARKDOWN_LINK_(\d+)__/g,
+            /§§MARKDOWN_LINK_(\d+)§§/g,
             (_, index) => markdownLinks[Number(index)]
         );
 
-        return `<p>${withLinks.replace(/\n/g, '<br>')}</p>`;
+        // Process lists (split by lines first)
+        const lines = withLinks.split('\n');
+        let inUnorderedList = false;
+        let inOrderedList = false;
+        let inCodeBlock = false;
+        let result = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trimStart();
+
+            // Check if this line is a code block placeholder
+            if (/§§CODE_BLOCK_\d+§§/.test(line)) {
+                // Close any open lists
+                if (inUnorderedList) {
+                    result.push('</ul>');
+                    inUnorderedList = false;
+                }
+                if (inOrderedList) {
+                    result.push('</ol>');
+                    inOrderedList = false;
+                }
+                result.push(line);
+                continue;
+            }
+
+            // Unordered list items: - or * followed by space
+            if (/^[-*]\s+/.test(trimmedLine)) {
+                const content = trimmedLine.replace(/^[-*]\s+/, '');
+                if (!inUnorderedList) {
+                    result.push('<ul>');
+                    inUnorderedList = true;
+                }
+                result.push(`<li>${content}</li>`);
+            }
+            // Ordered list items: number. followed by space
+            else if (/^\d+\.\s+/.test(trimmedLine)) {
+                const content = trimmedLine.replace(/^\d+\.\s+/, '');
+                if (!inOrderedList) {
+                    result.push('<ol>');
+                    inOrderedList = true;
+                }
+                result.push(`<li>${content}</li>`);
+            }
+            // Regular line
+            else {
+                // Close any open lists
+                if (inUnorderedList) {
+                    result.push('</ul>');
+                    inUnorderedList = false;
+                }
+                if (inOrderedList) {
+                    result.push('</ol>');
+                    inOrderedList = false;
+                }
+
+                // Add line with <br> if not empty
+                if (line.trim()) {
+                    result.push(line + '<br>');
+                } else if (result.length > 0 && !result[result.length - 1].endsWith('<br>')) {
+                    result.push('<br>');
+                }
+            }
+        }
+
+        // Close any remaining open lists
+        if (inUnorderedList) {
+            result.push('</ul>');
+        }
+        if (inOrderedList) {
+            result.push('</ol>');
+        }
+
+        // Join the result
+        let finalText = result.join('');
+
+        // Restore code block placeholders
+        finalText = finalText.replace(
+            /§§CODE_BLOCK_(\d+)§§/g,
+            (_, index) => codeBlocks[Number(index)]
+        );
+
+        // Wrap in paragraph
+        return `<p>${finalText}</p>`;
     }
 
     async animateTyping(element, htmlContent, speed = 10) {

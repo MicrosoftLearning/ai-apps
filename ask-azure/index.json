@@ -451,7 +451,7 @@
                     "multimodal models",
                     "patch",
                     "patches",
-                    "cross-model attention",
+                    "crossmodel attention",
                     "shared vector space",
                     "image captioning"
                 ],
@@ -470,7 +470,13 @@
                     "denoising",
                     "image creation",
                     "text to image",
-                    "video creation"
+                    "text-to-image",
+                    "video creation",
+                    "dalle",
+                    "dall-e",
+                    "sora",
+                    "mai-image",
+                    "maiimage"
                 ],
                 "content": "Image Generation is the process of creating new images using AI models. Diffusion Models are a popular approach that works by gradually adding random noise to training images until they become pure noise, then learning to reverse this process. To generate a new image, the model starts with random noise and iteratively denoises it, guided by text prompts or other conditions, until a coherent image emerges. This process allows for creating highly detailed and creative images based on text descriptions. Video Generation extends these techniques to create sequences of frames that form coherent videos, either from text descriptions or by transforming existing videos. Diffusion models have become the foundation for popular image generation systems like DALL-E, Midjourney, and Stable Diffusion."
             }
@@ -519,7 +525,7 @@
                 "keywords": [
                     "field mapping",
                     "data extraction",
-                    "key-value pairs"
+                    "key-value"
                 ],
                 "content": "Field Extraction and Mapping is the process of identifying specific pieces of information (fields) in extracted text and converting them into a structured, usable format. Field Extraction uses techniques like named entity recognition (NER), pattern matching, and machine learning to identify key information such as dates, amounts, names, addresses, and other relevant data. This often involves understanding the context and relationships between different pieces of text. Field Mapping then associates the extracted fields with target schema fields in a database or application. Normalization and Standardization convert the extracted data into consistent formats - for example, converting various date formats (like '01/15/2025', 'Jan 15, 2025', '15-01-2025') into a standard format (like '2025-01-15'), or standardizing currency amounts and addresses. This ensures the extracted information can be reliably used in downstream systems and applications."
             }
@@ -585,7 +591,7 @@
                     "openai sdk",
                     "responses api",
                     "chatcompletions api",
-                    "azure-projects"
+                    "azureprojects"
                 ],
                 "content": "Developers can use SDKs and APIs to build AI apps and agents with Microsoft Foundry. The Foundry SDK enables programmatic access to projects, agents, and other Foundry resources, while the OpenAI API enables developers to integrate powerful language models into their applications. Within the OpenAI API, the Responses API and ChatCompletions APIs provide interfaces for generating responses and managing conversations with large language models."
             },
@@ -640,6 +646,29 @@
                     "claude"
                 ],
                 "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+            },
+            {
+                "id": 42,
+                "title": "Authentication in Foundry",
+                "keywords": [
+                    "authentication",
+                    "auth",
+                    "keybased",
+                    "key-based",
+                    "entra",
+                    "azure active directory",
+                    "aad",
+                    "api_key",
+                    "apikey",
+                    "api-key",
+                    "security",
+                    "secure",
+                    "authenticate",
+                    "identity",
+                    "access control",
+                    "control access"
+                ],
+                "content": "Microsoft Foundry secures access to its resources through robust authentication mechanisms, including key-based authentication and integration with Microsoft Entra ID. Client applications must authenticate using API keys or managed identity credentials to access models and agents."
             }
         ]
     },
@@ -648,7 +677,7 @@
         "link": "https://learn.microsoft.com/credentials/",
         "documents": [
             {
-                "id": 42,
+                "id": 43,
                 "title": "Microsoft AI Certifications",
                 "keywords": [
                     "certification",
@@ -661,12 +690,18 @@
                     "ai103",
                     "ai901",
                     "ai200",
-                    "ai300"
+                    "ai300",
+                    "ai-102",
+                    "ai-900",
+                    "ai-103",
+                    "ai-901",
+                    "ai-200",
+                    "ai-300"
                 ],
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
             {
-                "id": 43,
+                "id": 44,
                 "title": "Microsoft AI Credentials",
                 "keywords": [
                     "microsoft applied skill",

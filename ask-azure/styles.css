@@ -324,12 +324,53 @@ header h1 {
     margin-bottom: 0;
 }
 
-.message-text strong {
+.message-text strong,
+.message-text b {
     font-weight: 600;
 }
 
-.message-text em {
+.message-text em,
+.message-text i {
     font-style: italic;
+}
+
+.message-text code {
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.9em;
+    color: #d63384;
+    white-space: pre-wrap;
+}
+
+.message-text pre {
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 10px 0;
+    overflow-x: auto;
+}
+
+.message-text pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    color: #333;
+    display: block;
+    white-space: pre;
+}
+
+.message-text ul,
+.message-text ol {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.message-text li {
+    margin: 5px 0;
+    line-height: 1.5;
 }
 
 .message-text a {
