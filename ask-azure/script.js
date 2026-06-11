@@ -1711,6 +1711,11 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Unordered list items: - or * followed by space
             if (/^[-*]\s+/.test(trimmedLine)) {
+                // Close ordered list if switching to unordered
+                if (inOrderedList) {
+                    result.push('</ol>');
+                    inOrderedList = false;
+                }
                 const content = trimmedLine.replace(/^[-*]\s+/, '');
                 if (!inUnorderedList) {
                     result.push('<ul>');
@@ -1720,6 +1725,11 @@ IMPORTANT: Follow these guidelines when responding:
             }
             // Ordered list items: number. followed by space
             else if (/^\d+\.\s+/.test(trimmedLine)) {
+                // Close unordered list if switching to ordered
+                if (inUnorderedList) {
+                    result.push('</ul>');
+                    inUnorderedList = false;
+                }
                 const content = trimmedLine.replace(/^\d+\.\s+/, '');
                 if (!inOrderedList) {
                     result.push('<ol>');
@@ -1727,7 +1737,16 @@ IMPORTANT: Follow these guidelines when responding:
                 }
                 result.push(`<li>${content}</li>`);
             }
-            // Regular line
+            // Empty line - don't close lists, just skip
+            else if (line.trim() === '') {
+                // Skip empty lines while in a list
+                if (!inUnorderedList && !inOrderedList) {
+                    if (result.length > 0 && !result[result.length - 1].endsWith('<br>')) {
+                        result.push('<br>');
+                    }
+                }
+            }
+            // Regular line with content
             else {
                 // Close any open lists
                 if (inUnorderedList) {
@@ -1739,12 +1758,8 @@ IMPORTANT: Follow these guidelines when responding:
                     inOrderedList = false;
                 }
 
-                // Add line with <br> if not empty
-                if (line.trim()) {
-                    result.push(line + '<br>');
-                } else if (result.length > 0 && !result[result.length - 1].endsWith('<br>')) {
-                    result.push('<br>');
-                }
+                // Add line with <br>
+                result.push(line + '<br>');
             }
         }
 
