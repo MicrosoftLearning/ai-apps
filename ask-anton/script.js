@@ -2056,9 +2056,28 @@ class AskAnton {
         this.scrollToBottom();
     }
 
-    /** @returns {boolean} true if at least one user turn exists in history. */
+    /** @returns {boolean} true if at least one user turn exists in history AND the previous response wasn't a "no results" message. */
     hasPreviousUserPrompt() {
-        return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
+        const userMessages = this.elements.chatMessages.querySelectorAll('.user-message');
+        if (userMessages.length <= 1) {
+            return false;
+        }
+
+        // Check if the last assistant message was the standard "no results" message
+        const assistantMessages = this.elements.chatMessages.querySelectorAll('.assistant-message');
+        if (assistantMessages.length > 0) {
+            const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+            const messageText = lastAssistantMessage.querySelector('.message-text');
+            if (messageText) {
+                const text = messageText.textContent || messageText.innerText || '';
+                // Check for the standard "no results" message text
+                if (text.includes("I don't have any information about that specific topic")) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     // === Microsoft Learn MCP server integration ============================
@@ -2341,10 +2360,10 @@ class AskAnton {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
         const encodedKeywords = encodeURIComponent(bingKeywords);
         const bingUrl = `https://www.bing.com/search?q=${encodedKeywords}`;
-        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.\n\nAsk me about AI-related topics and I'll do my best to help!`;
         const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
-        const fallbackNote = '\n\nDon\'t forget. You can ask me to "Search for details about X" or "Find documentation for Y" to look for information about Microsoft AI technologies in Microsoft Learn.';
+        const fallbackNote = '\n\nDon\'t forget. You can ask me to "Search for details about *X*" or "Find documentation for *Y*" to look for information about Microsoft AI technologies in Microsoft Learn.';
 
         this.isGenerating = true;
         this.stopRequested = false;
