@@ -520,10 +520,46 @@ class ChatPlayground {
     }
 
     displayFileInfo(file) {
-        this.setElementText('fileName', file.name);
+        this.setElementText('fileName', '🗒 ' + file.name);
         this.setElementText('fileSize', `${(file.size / 1024).toFixed(1)}KB`);
         this.setElementStyle('fileInfo', 'display', 'flex');
         this.hideElement('addDataBtn');
+        const fileSearchOption = document.getElementById('file-search-option');
+        if (fileSearchOption) fileSearchOption.style.display = 'none';
+    }
+
+    isWebSearchActive() {
+        const el = document.getElementById('web-search-info');
+        return !!(el && el.style.display !== 'none');
+    }
+
+    extractWebSearchKeywords(text, extraTerms = null) {
+        const stopwords = new Set([
+            'a','an','and','are','as','at','be','by','for','from',
+            'in','is','it','its','of','on','that','the','to','with',
+            'or','but','if','than','then','so','yet',
+            'after','before','between','during','into','through','over',
+            'under','until','up','down','out','off','above','below',
+            'i','you','he','she','we','they','me','him','her',
+            'us','them','my','your','his','our','their',
+            'this','these','those','some','any','all','each','every',
+            'both','few','more','most','such','no','nor','not','only',
+            'own','same','other','another','much','many',
+            'am','was','were','been','being','have','has',
+            'had','do','does','did','can','could','would','should',
+            'may','might','must','shall','will',
+            'get','make','know','see','take','come','go','want',
+            'use','find','need','try','ask','work','help','like',
+            'what','when','where','who','how','why','which',
+            'also','just','now','here','there','very','too',
+            'really','still','always','never','often','sometimes',
+            'search','look','information','info','please','tell',
+            'about','regarding','related','anything'
+        ]);
+        const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+        const keywords = words.filter(w => w.length > 0 && !stopwords.has(w)).join(' ');
+        const combined = [keywords, extraTerms].filter(Boolean).join(' ').trim();
+        return combined || null;
     }
 
     removeFile() {
@@ -535,6 +571,8 @@ class ChatPlayground {
         this.hideElement('fileInfo');
         this.setElementProperty('fileInput', 'value', '');
         this.showElement('addDataBtn');
+        const fileSearchOption = document.getElementById('file-search-option');
+        if (fileSearchOption) fileSearchOption.style.display = '';
 
         this.showToast(ChatPlayground.MESSAGES.SUCCESS.FILE_REMOVED);
         this.restartConversation('file-remove');
@@ -1970,6 +2008,31 @@ class ChatPlayground {
             this.typingState = null;
         }
 
+        // Web search intercept
+        if (this.isWebSearchActive() && /^(find|search)\b/i.test(userMessage)) {
+            this.addMessage('user', userMessage, imageElement);
+            this.userInput.value = '';
+            this.userInput.style.height = 'auto';
+            if (this.pendingImage) this.removePendingImage();
+            const keywords = this.extractWebSearchKeywords(userMessage, imageAnalysis || null);
+            this.isGenerating = true;
+            this.updateUIForGeneration(true);
+            const typingIndicator = this.addTypingIndicator();
+            await new Promise(resolve => setTimeout(resolve, 600));
+            typingIndicator.remove();
+            const msgEl = this.addMessage('assistant', '');
+            const contentEl = msgEl.querySelector('.message-content');
+            if (keywords) {
+                const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
+                const plainText = `OK, I searched the web for you. Here's what I found.`;
+                const finalHtml = `OK, I searched the web for you. <a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+                await this.typeResponseWithFinalHtml(contentEl, plainText, finalHtml);
+            } else {
+                await this.typeResponse(contentEl, 'Please enter a more specific search query.');
+            }
+            return;
+        }
+
         // Add user message to chat (with image if available)
         this.addMessage('user', userMessage, imageElement);
 
@@ -2764,6 +2827,25 @@ class ChatPlayground {
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
 
         return thinkingDiv;
+    }
+
+    async typeResponseWithFinalHtml(contentEl, plainText, finalHtml) {
+        let currentIndex = 0;
+        const typingSpeed = 5;
+
+        while (currentIndex < plainText.length && !this.stopRequested) {
+            contentEl.textContent = plainText.substring(0, currentIndex + 1);
+            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            currentIndex++;
+            await new Promise(resolve => setTimeout(resolve, typingSpeed));
+        }
+
+        // Set final HTML (with link) once typing is done
+        contentEl.innerHTML = finalHtml;
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+
+        this.isGenerating = false;
+        this.updateUIForGeneration(false);
     }
 
     async typeResponse(contentEl, text) {
@@ -4086,6 +4168,36 @@ class ChatPlayground {
             userMessage.classList.add('hidden');
         }
 
+        // Web search intercept (voice mode)
+        if (this.isWebSearchActive() && /^(find|search)\b/i.test(sanitizedTranscript)) {
+            const keywords = this.extractWebSearchKeywords(sanitizedTranscript);
+            const plainText = keywords
+                ? "OK, I searched the web for you. Here's what I found."
+                : 'Please enter a more specific search query.';
+            const assistantMsgEl = this.addMessage('assistant', '');
+            if (keywords) {
+                const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
+                assistantMsgEl.querySelector('.message-content').innerHTML =
+                    `OK, I searched the web for you. <a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+            } else {
+                assistantMsgEl.querySelector('.message-content').textContent = plainText;
+            }
+            if (assistantMsgEl && !this.showCaptions) assistantMsgEl.classList.add('hidden');
+            const voiceWelcome = document.getElementById('voice-welcome');
+            const chatIcon = document.querySelector('.voice-chat-icon');
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+            }
+            if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
+            this.conversationHistory.push(
+                { role: 'user', content: sanitizedTranscript },
+                { role: 'assistant', content: plainText }
+            );
+            this.speakResponse(plainText);
+            return;
+        }
+
         // Generate response
         this.generateVoiceResponse(sanitizedTranscript);
     }
@@ -4693,6 +4805,46 @@ window.triggerFileUpload = function () {
         fileInput.click();
     }
 };
+
+window.toggleAddDropdown = function (event) {
+    event.stopPropagation();
+    const btn = document.getElementById('add-tool-btn');
+    const menu = document.getElementById('add-dropdown-menu');
+    const isOpen = menu.style.display !== 'none';
+    menu.style.display = isOpen ? 'none' : 'block';
+    btn.setAttribute('aria-expanded', String(!isOpen));
+};
+
+window.selectTool = function (tool) {
+    const menu = document.getElementById('add-dropdown-menu');
+    const btn = document.getElementById('add-tool-btn');
+    menu.style.display = 'none';
+    btn.setAttribute('aria-expanded', 'false');
+    if (tool === 'file-search') {
+        window.triggerFileUpload();
+    } else if (tool === 'web-search') {
+        const info = document.getElementById('web-search-info');
+        const option = document.getElementById('web-search-option');
+        if (info) info.style.display = 'flex';
+        if (option) option.style.display = 'none';
+    }
+};
+
+window.removeWebSearch = function () {
+    const info = document.getElementById('web-search-info');
+    const option = document.getElementById('web-search-option');
+    if (info) info.style.display = 'none';
+    if (option) option.style.display = '';
+};
+
+document.addEventListener('click', function (e) {
+    const menu = document.getElementById('add-dropdown-menu');
+    const btn = document.getElementById('add-tool-btn');
+    if (menu && !menu.contains(e.target) && e.target !== btn) {
+        menu.style.display = 'none';
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+});
 
 window.removeFile = function () {
     if (window.chatPlaygroundApp) {

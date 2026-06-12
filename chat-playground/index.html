@@ -91,13 +91,7 @@
                         <div class="collapsible-content" id="add-data" style="display: block;" role="region"
                             aria-labelledby="add-data-header">
                             <div class="data-upload-section" id="add-data-header">
-                                <p class="section-description">Upload a text file to provide additional context for the
-                                    AI model.</p>
-
-                                <button class="add-data-btn" id="add-data-btn" onclick="triggerFileUpload()"
-                                    aria-describedby="upload-constraints">
-                                    Upload files
-                                </button>
+                                <p class="section-description">Connect tools to your models for faster access to key information and improved efficiency.</p>
 
                                 <input type="file" id="file-input" accept=".txt" style="display: none;"
                                     aria-label="Select text file to upload">
@@ -112,10 +106,34 @@
                                         aria-label="Remove uploaded file">🗑️</button>
                                 </div>
 
-                                <div class="upload-constraints" id="upload-constraints" role="note">
-                                    <small>• Text files (.txt) only</small>
-                                    <small>• Maximum size: 3KB</small>
+                                <div class="file-info" id="web-search-info" style="display: none;" role="status"
+                                    aria-live="polite">
+                                    <div class="file-details">
+                                        <span class="file-name">&#x229C; Web search</span>
+                                    </div>
+                                    <button class="remove-file-btn" onclick="removeWebSearch()"
+                                        aria-label="Remove web search">🗑️</button>
                                 </div>
+
+                                <div class="tools-btn-row">
+                                    <div class="add-dropdown-wrapper">
+                                        <button class="add-data-btn add-dropdown-btn" id="add-tool-btn"
+                                            aria-haspopup="true" aria-expanded="false"
+                                            onclick="toggleAddDropdown(event)">
+                                            Add &#9660;
+                                        </button>
+                                        <ul class="add-dropdown-menu" id="add-dropdown-menu" role="menu"
+                                            aria-label="Add tool options" style="display:none;">
+                                            <li id="file-search-option" role="menuitem"><button onclick="selectTool('file-search')">🗒 File search</button></li>
+                                            <li id="web-search-option" role="menuitem"><button onclick="selectTool('web-search')">⊜ Web search</button></li>
+                                        </ul>
+                                    </div>
+                                    <button class="add-data-btn upload-files-btn" id="add-data-btn" onclick="triggerFileUpload()">
+                                        Upload files
+                                    </button>
+                                </div>
+
+
                             </div>
                         </div>
                     </div>
