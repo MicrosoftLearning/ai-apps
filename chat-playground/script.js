@@ -2024,8 +2024,8 @@ class ChatPlayground {
             const contentEl = msgEl.querySelector('.message-content');
             if (keywords) {
                 const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
-                const plainText = `OK, I searched the web for you. Here's what I found.`;
-                const finalHtml = `OK, I searched the web for you. <a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+                const plainText = `OK, I searched the web for you.\nHere's what I found.`;
+                const finalHtml = `OK, I searched the web for you.<br><a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
                 await this.typeResponseWithFinalHtml(contentEl, plainText, finalHtml);
             } else {
                 await this.typeResponse(contentEl, 'Please enter a more specific search query.');

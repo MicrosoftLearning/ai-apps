@@ -2011,6 +2011,15 @@ body.dark-mode .assistant-message .message-content {
     border-color: #444;
 }
 
+body.dark-mode .assistant-message .message-content a {
+    color: #c4a8f0;
+    text-decoration: underline;
+}
+
+body.dark-mode .assistant-message .message-content a:hover {
+    color: #d9c4f7;
+}
+
 body.dark-mode .system-restart-message .message-content {
     background: #2a3f4f;
     border-color: #3d5a6b;
