@@ -1,10 +1,10 @@
 # Microsoft Learning AI Apps
 
-This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft Learn](https://learn.microsoft.com) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
+This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
 
 > **Important**: These apps are <u>not</u> supported Microsoft services or products. They are educational resources to support practical exercises in training courses; and are provided as-is without warranty of any kind. Performance issues and occasional failures are to be expected.
 
-Most of the apps (with two Azure-based exceptions) are designed to run locally in-browser. No data is uploaded to Microsoft, though some apps make use of external web services for speech support or web search. To run the apps successfully, you need a modern browser, such as Microsoft Edge. In some cases, the full app functionality is only available on computers that include a GPU (integrated or dedicated) and browser wupport for WebGPU. When using Windows on ARM64 computers, you can choose to enable WebGPU in your browser flag settings (for example at [edge://flags](edge://flags) or [chrome://flags](chrome://flags)). For most features, the apps are designed to use a "fallback" mode with some functionality restrictions when WebGPU is available.
+Most of the apps (with two Azure-based exceptions) are designed to run locally in-browser. No data is uploaded to Microsoft, though some apps make use of external web services for speech support or web search. To run the apps successfully, you need a modern browser, such as Microsoft Edge. In some cases, the full app functionality is only available on computers that include a GPU (integrated or dedicated) and browser support for WebGPU. When using Windows on ARM64 computers, you can choose to enable WebGPU in your browser flag settings (for example at [edge://flags](edge://flags) or [chrome://flags](chrome://flags)). For most features, the apps are designed to use a "fallback" mode with some functionality restrictions when WebGPU is available.
 
 ## Apps
 
@@ -55,7 +55,7 @@ All in-browser LLM-based apps include a *minimal* content moderation solution in
 
 ### Other AI models and technologies
 
-In addition to WebLLM and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
+In addition to WebLLM/Wllama and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.

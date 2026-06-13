@@ -1,7 +1,8 @@
-import "./llm.js?v=20260329-system-prompt-moderation";
+import "./llm.js?v=20260612-cancel-fix-v2";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
+const cancelModelLink = document.getElementById("cancel-model-loading");
 const runBtn = document.getElementById("run-btn");
 const stopBtn = document.getElementById("stop-btn");
 const modeSelect = document.getElementById("mode-select");
@@ -1621,6 +1622,8 @@ async function initializeApp() {
     window.modelCoderSetStatusListener(({ kind, message }) => {
         if (kind === "ready") {
             setPill(statusModel, message, "ready");
+            if (cancelModelLink) cancelModelLink.style.display = "none";
+            state.modelReady = true;
             syncModeStateFromRuntime();
             updateModeSelectDropdown();
             updateRunState();
@@ -1628,11 +1631,16 @@ async function initializeApp() {
         }
         if (kind === "error") {
             setPill(statusModel, message, "error");
+            if (cancelModelLink) cancelModelLink.style.display = "none";
             syncModeStateFromRuntime();
             updateModeSelectDropdown();
             return;
         }
         setPill(statusModel, message);
+        // Show cancel link when loading
+        if (kind === "loading" && cancelModelLink) {
+            cancelModelLink.style.display = "inline";
+        }
     });
 
     window.modelCoderMarkRunComplete = (runId) => {
@@ -1647,6 +1655,27 @@ async function initializeApp() {
 
     initializePaneSplitter();
     window.addEventListener("resize", requestTerminalResizeSync);
+
+    // Set up cancel link event handlers
+    if (cancelModelLink) {
+        cancelModelLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (typeof window.modelCoderCancelLoading === "function") {
+                cancelModelLink.style.display = "none";
+                window.modelCoderCancelLoading();
+            }
+        });
+
+        cancelModelLink.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (typeof window.modelCoderCancelLoading === "function") {
+                    cancelModelLink.style.display = "none";
+                    window.modelCoderCancelLoading();
+                }
+            }
+        });
+    }
 
     window.addEventListener("py:ready", markRuntimeReady, { once: true });
 

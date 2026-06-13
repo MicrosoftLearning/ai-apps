@@ -1,7 +1,7 @@
 [
     {
         "category": "AI Overview",
-        "link": "https://aka.ms/mslearn-ai-concepts",
+        "link": "https://aka.ms/aisn-ai-concepts-mod",
         "documents": [
             {
                 "id": 1,
@@ -40,7 +40,7 @@
     },
     {
         "category": "Machine Learning",
-        "link": "https://aka.ms/mslearn-ml-concepts",
+        "link": "https://aka.ms/aisn-ml-concepts-mod",
         "documents": [
             {
                 "id": 3,
@@ -111,7 +111,7 @@
     },
     {
         "category": "Generative AI and Agents",
-        "link": "https://aka.ms/mslearn-intro-gen-ai",
+        "link": "https://aka.ms/aisn-gen-ai-concepts-mod",
         "documents": [
             {
                 "id": 8,
@@ -235,7 +235,7 @@
             {
                 "id": 16,
                 "title": "Model Context Protocol (MCP)",
-                "video_id": "https://share.synthesia.io/6285aa6e-5787-4375-914a-ab4e1f54a400",
+                "video_id": "6285aa6e-5787-4375-914a-ab4e1f54a400",
                 "keywords": [
                     "model context protocol",
                     "mcp"
@@ -246,7 +246,7 @@
     },
     {
         "category": "Text Analysis",
-        "link": "https://aka.ms/mslearn-nlp",
+        "link": "https://aka.ms/aisn-nlp-concepts-mod",
         "documents": [
             {
                 "id": 17,
@@ -322,7 +322,7 @@
     },
     {
         "category": "Speech",
-        "link": "https://aka.ms/mslearn-ai-speech",
+        "link": "https://aka.ms/aisn-speech-concepts-mod",
         "documents": [
             {
                 "id": 22,
@@ -382,7 +382,7 @@
     },
     {
         "category": "Computer Vision",
-        "link": "https://aka.ms/mslearn-vision",
+        "link": "https://aka.ms/aisn-vision-concepts-mod",
         "documents": [
             {
                 "id": 25,
@@ -484,7 +484,7 @@
     },
     {
         "category": "Information Extraction",
-        "link": "https://aka.ms/mslearn-ai-info",
+        "link": "https://aka.ms/aisn-info-extract-concepts-mod",
         "documents": [
             {
                 "id": 30,
@@ -533,7 +533,7 @@
     },
     {
         "category": "Microsoft Foundry",
-        "link": "https://aka.ms/mslearn-get-started-ai-apps-agents-lp",
+        "link": "https://aka.ms/aisn-intro-ai-azure-lp",
         "documents": [
             {
                 "id": 33,
@@ -674,7 +674,7 @@
     },
     {
         "category": "Credentials and certification",
-        "link": "https://learn.microsoft.com/credentials/",
+        "link": "https://aiskillsnavigator.microsoft.com/credentials",
         "documents": [
             {
                 "id": 43,

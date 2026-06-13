@@ -292,6 +292,25 @@ button:focus-visible {
     color: var(--warn);
 }
 
+.cancel-model-link {
+    font-size: 0.75rem;
+    color: #7b2cbf;
+    text-decoration: none;
+    padding: 5px 8px;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+
+.cancel-model-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+.cancel-model-link:focus {
+    outline: 2px solid #7b2cbf;
+    outline-offset: 2px;
+}
+
 .workspace {
     --editor-size: minmax(180px, 1fr);
     --terminal-size: minmax(180px, 1fr);
@@ -550,6 +569,14 @@ body.dark-theme .status-pill.ready {
     background: #1f3a2a;
     border-color: rgba(132, 240, 173, 0.55);
     color: #84f0ad;
+}
+
+body.dark-theme .cancel-model-link {
+    color: #c8b6ff;
+}
+
+body.dark-theme .cancel-model-link:focus {
+    outline-color: #c8b6ff;
 }
 
 #terminal-container .xterm-viewport {
