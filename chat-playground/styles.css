@@ -191,6 +191,7 @@ header h1 {
 
 .progress-container {
     margin-top: 10px;
+    text-align: center;
 }
 
 .progress-bar {
@@ -214,6 +215,26 @@ header h1 {
     font-size: 12px;
     color: #666;
     text-align: center;
+}
+
+.cancel-link {
+    font-size: 12px;
+    color: #7b2cbf;
+    text-decoration: none;
+    margin-top: 8px;
+    display: block;
+    text-align: center;
+    cursor: pointer;
+}
+
+.cancel-link:hover {
+    color: #9333ea;
+    text-decoration: underline;
+}
+
+.cancel-link:focus {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
 }
 
 .instructions-section {
@@ -443,7 +464,7 @@ header h1 {
     background: white;
     border: 1px solid #d1d1d1;
     border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     list-style: none;
     padding: 4px 0;
     min-width: 140px;
@@ -1919,6 +1940,14 @@ body.dark-mode #system-message:disabled {
 
 body.dark-mode .progress-text {
     color: #b0b0b0;
+}
+
+body.dark-mode .cancel-link {
+    color: #c8b6ff;
+}
+
+body.dark-mode .cancel-link:hover {
+    color: #d4c5ff;
 }
 
 body.dark-mode .collapsible-btn {

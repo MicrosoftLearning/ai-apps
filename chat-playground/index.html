@@ -59,6 +59,8 @@
                                 <div class="progress-fill" id="progress-fill"></div>
                             </div>
                             <div class="progress-text" id="progress-text">Downloading model: 0%</div>
+                            <a href="#" id="cancel-model-link" class="cancel-link" style="display: none;">Cancel model
+                                load</a>
                         </div>
                     </div>
 
@@ -91,7 +93,8 @@
                         <div class="collapsible-content" id="add-data" style="display: block;" role="region"
                             aria-labelledby="add-data-header">
                             <div class="data-upload-section" id="add-data-header">
-                                <p class="section-description">Connect tools to your models for faster access to key information and improved efficiency.</p>
+                                <p class="section-description">Connect tools to your models for faster access to key
+                                    information and improved efficiency.</p>
 
                                 <input type="file" id="file-input" accept=".txt" style="display: none;"
                                     aria-label="Select text file to upload">
@@ -124,11 +127,14 @@
                                         </button>
                                         <ul class="add-dropdown-menu" id="add-dropdown-menu" role="menu"
                                             aria-label="Add tool options" style="display:none;">
-                                            <li id="file-search-option" role="menuitem"><button onclick="selectTool('file-search')">🗒 File search</button></li>
-                                            <li id="web-search-option" role="menuitem"><button onclick="selectTool('web-search')">⊜ Web search</button></li>
+                                            <li id="file-search-option" role="menuitem"><button
+                                                    onclick="selectTool('file-search')">🗒 File search</button></li>
+                                            <li id="web-search-option" role="menuitem"><button
+                                                    onclick="selectTool('web-search')">⊜ Web search</button></li>
                                         </ul>
                                     </div>
-                                    <button class="add-data-btn upload-files-btn" id="add-data-btn" onclick="triggerFileUpload()">
+                                    <button class="add-data-btn upload-files-btn" id="add-data-btn"
+                                        onclick="triggerFileUpload()">
                                         Upload files
                                     </button>
                                 </div>
