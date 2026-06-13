@@ -37,8 +37,8 @@ const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\n
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Shared prompt constants for both WebLLM and Wllama
-const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nProvide a concise and factually accurate response.';
+const SYSTEM_PROMPT = 'You are a friendly and helpful expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
+const USER_PROMPT_SUFFIX = '\nAnswer with a single succinct and factually accurate paragraph.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -386,7 +386,7 @@ async function initializeWebLLM() {
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
-                        context_window_size: 2048
+                        context_window_size: 1024
                     }
                 }
             ]
@@ -787,14 +787,16 @@ function trimIncompleteSentence(text) {
         return text;
     }
 
-    // Check if text ends with an incomplete marker
-    const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(text);
+    // If text already ends with sentence-ending punctuation, it's complete
+    if (/[.!?]$/.test(text)) {
+        return text;
+    }
 
-    if (endsWithIncompleteMarker) {
-        // Find the last complete sentence
-        const lastCompleteMatch = text.match(/(.*[.!?])\s+[^.!?]*$/);
-        if (lastCompleteMatch) {
-            const trimmed = lastCompleteMatch[1].trim();
+    // Text doesn't end with sentence-ending punctuation - trim to the last complete sentence
+    const lastCompleteMatch = text.match(/([\s\S]*[.!?])/);
+    if (lastCompleteMatch) {
+        const trimmed = lastCompleteMatch[1].trim();
+        if (trimmed.length >= 20) {
             console.log(`Trimmed incomplete sentence: ${text.length} -> ${trimmed.length} chars`);
             return trimmed;
         }
@@ -2481,7 +2483,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Generate without streaming (complete response at once)
         const completion = await engine.chat.completions.create({
             messages,
-            temperature: 0.3,
+            temperature: 0.1,
             top_p: 0.9,
             max_tokens: 250,
             stream: false
@@ -2513,7 +2515,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                     // Retry the generation
                     const retryCompletion = await engine.chat.completions.create({
                         messages,
-                        temperature: 0.3,
+                        temperature: 0.1,
                         top_p: 0.9,
                         max_tokens: 250,
                         stream: false
@@ -2667,6 +2669,12 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
         // Clean up the response
         responseText = trimIncompleteSentence(responseText.trim());
+
+        // Update bubble with trimmed content to remove any incomplete fragment streamed earlier
+        if (bubbleElement && responseText) {
+            setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+            scrollToBottom();
+        }
 
         if (!responseText || responseText.length < 10) {
             return null;
@@ -3163,11 +3171,15 @@ async function tryWebSpeech() {
             // Set active state
             micBtn.classList.add('listening');
 
-            // Start no-speech timeout
+            // Start no-speech timeout - resolve quietly without fallback
             noSpeechTimer = setTimeout(() => {
-                console.log('No speech detected, cancelling...');
-                recognition.stop();
-                // Don't resolve here - let the error handler or onend handle it
+                if (!hasResolved) {
+                    hasResolved = true;
+                    console.log('No speech detected, quietly resetting...');
+                    micBtn.classList.remove('listening');
+                    resolve(true); // Don't fallback to Vosk
+                    recognition.abort();
+                }
             }, noSpeechTimeout);
 
             recognition.onresult = (event) => {
@@ -3202,13 +3214,16 @@ async function tryWebSpeech() {
 
                 if (!hasResolved) {
                     hasResolved = true;
-                    // If it's a permission error, don't fallback
                     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                         addMessage('Microphone access was denied.', 'bot');
                         resolve(true); // Don't fallback, user denied permission
+                    } else if (event.error === 'no-speech') {
+                        // No speech detected - quietly reset, no fallback
+                        console.log('No speech detected, quietly resetting...');
+                        resolve(true);
                     } else {
-                        // Any other error (network, no-speech, etc.) triggers fallback
-                        resolve(false); // Fallback to Vosk
+                        // Actual error (network, audio-capture, etc.) - fallback to Vosk
+                        resolve(false);
                     }
                 }
             };
@@ -3222,12 +3237,12 @@ async function tryWebSpeech() {
 
                 micBtn.classList.remove('listening');
 
-                // If we haven't resolved yet, it means recognition ended without a result
-                // This can happen with network errors or no speech - fallback to Vosk
+                // If we haven't resolved yet, recognition ended cleanly without a result
+                // (e.g. after abort from no-speech timer) - quietly reset, no fallback
                 if (!hasResolved) {
                     hasResolved = true;
-                    console.log('Web Speech ended without result, falling back to Vosk');
-                    resolve(false);
+                    console.log('Web Speech ended without result, quietly resetting');
+                    resolve(true);
                 }
             };
 
