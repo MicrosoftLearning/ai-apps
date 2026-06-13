@@ -259,6 +259,9 @@ class ModelCoderLLM {
         this.activeRunId = 0;
         this.moderationTerms = null;
         this.moderationLoadPromise = null;
+        this.modelLoadingCancelled = false;
+        this.modelLoadingAbortController = null;
+        this.initSessionId = 0;  // Track which init session we're in
     }
 
     async _ensureModerationTerms() {
@@ -468,6 +471,29 @@ class ModelCoderLLM {
         this.statusCallback = callback;
     }
 
+    cancelModelLoading() {
+        console.log('User requested to cancel model loading');
+        this.modelLoadingCancelled = true;
+
+        if (this.modelLoadingAbortController) {
+            this.modelLoadingAbortController.abort();
+        }
+
+        // Clean up any loading state
+        this.isLoading = false;
+
+        // Switch to basic mode WITHOUT marking other modes unavailable
+        // (Don't use _activateBasicMode as it sets webllmAvailable = false)
+        this.usingBasic = true;
+        this.usingWllama = false;
+        // Keep webllmAvailable and availableModes as they are
+        this.isReady = true;
+
+        this._status("ready", `${WIKIPEDIA_MODEL_NAME} ready (user cancelled loading)`);
+
+        console.log('Switched to Basic mode after cancellation');
+    }
+
     async resetSession() {
         console.log('[Model Reset] Soft reset - clearing conversation history only');
         this.sessionVersion += 1;
@@ -493,7 +519,26 @@ class ModelCoderLLM {
     async hardResetSession(options = {}) {
         const { skipReinit = false } = options;
         console.log('[Model Reset] Hard reset - reloading model');
+
+        // Clear any lingering status messages
+        this._status("loading", "Resetting model...");
+
         await this.resetSession();
+
+        // Preserve availability information before reset
+        const preservedGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
+        const preservedCpuAvailable = this.availableModes.cpu;
+
+        // Cancel any ongoing model loading only if actually loading
+        if (this.isLoading) {
+            console.log('[Model Reset] Cancelling ongoing model loading');
+            this.modelLoadingCancelled = true;
+            if (this.modelLoadingAbortController) {
+                this.modelLoadingAbortController.abort();
+            }
+            // Give a moment for the cancellation to be observed
+            await sleep(100);
+        }
 
         const currentWllama = this.wllama;
         const currentEngine = this.engine;
@@ -504,7 +549,14 @@ class ModelCoderLLM {
         this.isLoading = false;
         this.usingWllama = false;
         this.usingBasic = false;
-        this.webllmAvailable = false;
+
+        // Only reset webllmAvailable if GPU was never successfully loaded
+        // Preserve it if WebGPU is supported or was previously loaded
+        this.webllmAvailable = preservedGpuAvailable;
+
+        // Preserve mode availability knowledge
+        this.availableModes.gpu = preservedGpuAvailable;
+        this.availableModes.cpu = preservedCpuAvailable;
 
         // Clean up wllama
         if (currentWllama) {
@@ -577,10 +629,17 @@ class ModelCoderLLM {
             return;
         }
 
+        // Reset cancellation flag for new initialization
+        this.modelLoadingCancelled = false;
+        this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
+        this.initSessionId++;  // Increment to invalidate any previous load callbacks
+        console.log(`[Initialize] Session ID incremented to ${this.initSessionId}, forceCPU=${forceCPU}, forceGPU=${forceGPU}`);
 
+        // Preserve GPU availability if previously available or if WebGPU supported
+        const preservedGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
         this.availableModes = {
-            gpu: false,  // Only set true once WebLLM actually loads successfully, not just because navigator.gpu exists
+            gpu: preservedGpuAvailable,
             cpu: true,
             basic: true
         };
@@ -595,16 +654,30 @@ class ModelCoderLLM {
         // If forcing CPU mode, skip GPU check and go straight to wllama
         if (forceCPU) {
             console.log('Forcing CPU mode (wllama)');
+            this._status("loading", "Initializing CPU mode (Phi-2)...");
             this.webllmAvailable = false;
             this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 this.usingWllama = true;
                 this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this.isLoading = false;
@@ -621,17 +694,31 @@ class ModelCoderLLM {
                 throw new Error('GPU mode requested but WebGPU is not available');
             }
             console.log('WebGPU not available, using wllama (CPU mode)');
+            this._status("loading", "WebGPU not available - using CPU mode...");
             this.webllmAvailable = false;
             this.availableModes.gpu = false;
             this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 this.usingWllama = true;
                 this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this._activateBasicMode("GPU unavailable and CPU init failed");
@@ -642,9 +729,19 @@ class ModelCoderLLM {
         }
 
         // Try WebLLM first (faster with GPU) unless forcing CPU
+        // Set GPU as available before attempting to load
+        this.availableModes.gpu = true;
+        this._status("loading", "Initializing GPU mode (Phi-3)...");
         try {
             console.log('Attempting to initialize WebLLM with WebGPU...');
             await this._loadWebLLM();
+
+            // Check if cancelled during loading
+            if (this.modelLoadingCancelled) {
+                console.log('WebLLM loading was cancelled by user - GPU stays available');
+                return;
+            }
+
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
             this.usingWllama = false;
@@ -654,6 +751,12 @@ class ModelCoderLLM {
             this.isLoading = false;
             return;
         } catch (error) {
+            // Only mark unavailable if there was a genuine error (not cancellation)
+            if (this.modelLoadingCancelled || (error.message && error.message.includes('cancelled by user'))) {
+                console.log('WebLLM loading was cancelled by user - GPU stays available');
+                return;
+            }
+
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
             this.availableModes.gpu = false;
@@ -665,6 +768,13 @@ class ModelCoderLLM {
 
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
                 this.usingBasic = false;
@@ -673,6 +783,12 @@ class ModelCoderLLM {
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this._activateBasicMode("GPU and CPU init failed");
@@ -713,10 +829,26 @@ class ModelCoderLLM {
         try {
             console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
 
+            // Capture current session ID to detect stale callbacks
+            const currentSessionId = this.initSessionId;
+            console.log(`[GPU Load] Starting with session ID ${currentSessionId}`);
+
             this.engine = await webllm.CreateMLCEngine(
                 PHI3_MODEL_ID,
                 {
                     initProgressCallback: (progress) => {
+                        // Ignore callbacks from old initialization sessions
+                        if (this.initSessionId !== currentSessionId) {
+                            console.log(`[GPU Progress] Ignoring stale callback - current:${this.initSessionId}, expected:${currentSessionId}`);
+                            return;
+                        }
+
+                        // Check for cancellation during progress updates
+                        if (this.modelLoadingCancelled) {
+                            console.log('[GPU Progress] Cancelled - ignoring');
+                            return;
+                        }
+
                         console.log('Progress:', progress);
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
@@ -724,6 +856,17 @@ class ModelCoderLLM {
                     }
                 }
             );
+
+            // Check if this load is from a stale session
+            if (this.initSessionId !== currentSessionId) {
+                console.log('GPU load completed but session has changed - discarding result');
+                throw new Error('Session changed during loading');
+            }
+
+            // Check if cancelled after loading
+            if (this.modelLoadingCancelled) {
+                throw new Error('Loading cancelled by user');
+            }
 
             console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
             this._status("ready", "Model ready: Phi-3 (GPU mode)");
@@ -736,13 +879,44 @@ class ModelCoderLLM {
     async _loadWllama(maxRetries = 3) {
         let lastError = null;
 
+        // Capture current session ID to detect stale loads
+        const currentSessionId = this.initSessionId;
+
         for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+            // Check if session changed
+            if (this.initSessionId !== currentSessionId) {
+                console.log('Wllama load aborted - session changed');
+                throw new Error('Session changed during loading');
+            }
+
+            // Check for cancellation before each attempt
+            if (this.modelLoadingCancelled) {
+                throw new Error('Loading cancelled by user');
+            }
+
             try {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadWllamaModel();
+
+                // Check if session changed after loading
+                if (this.initSessionId !== currentSessionId) {
+                    console.log('Wllama load completed but session has changed - discarding result');
+                    throw new Error('Session changed during loading');
+                }
+
+                // Check if cancelled after loading
+                if (this.modelLoadingCancelled) {
+                    throw new Error('Loading cancelled by user');
+                }
+
                 this._status("ready", "Model ready: Phi-2 (CPU mode)");
                 return;
             } catch (error) {
+                // If cancelled, rethrow immediately
+                if (this.modelLoadingCancelled) {
+                    throw error;
+                }
+
                 lastError = error;
                 this._status("error", `Model load failed on attempt ${attempt}: ${error.message}`);
                 if (attempt < maxRetries) {
@@ -1581,6 +1755,10 @@ const modelCoderGetAvailableModes = () => {
     return llmRuntime.getAvailableModes();
 };
 
+const modelCoderCancelLoading = () => {
+    llmRuntime.cancelModelLoading();
+};
+
 const modelCoderBridge = {
     modelCoderSetStatusListener,
     modelCoderInit,
@@ -1593,6 +1771,7 @@ const modelCoderBridge = {
     modelCoderIsUsingCPUMode,
     modelCoderGetCurrentMode,
     modelCoderGetAvailableModes,
+    modelCoderCancelLoading,
 };
 
 function attachBridge(target) {
@@ -1610,6 +1789,7 @@ function attachBridge(target) {
     target.modelCoderIsUsingCPUMode = modelCoderIsUsingCPUMode;
     target.modelCoderGetCurrentMode = modelCoderGetCurrentMode;
     target.modelCoderGetAvailableModes = modelCoderGetAvailableModes;
+    target.modelCoderCancelLoading = modelCoderCancelLoading;
     target.modelCoderBridge = modelCoderBridge;
 }
 
