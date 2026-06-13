@@ -37,6 +37,7 @@ class ChatPlayground {
         this.selectedAvatar = null; // Track selected avatar filename
         this.availableAvatars = ['Boris.svg', 'Doris.svg']; // Available avatars
         this.voiceInteractionCancelled = false; // Track if user explicitly cancelled voice interaction
+        this.isStartingRecognition = false; // Track if we're intentionally starting recognition
         this.modelLoadingCancelled = false; // Track if user cancelled initial model loading
         this.modelLoadingAbortController = null; // Track abort controller for model loading
 
@@ -1309,7 +1310,7 @@ class ChatPlayground {
                 this.updateParameterUI();
             } catch (wllamaError) {
                 // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || wllamaError.message.includes('cancelled by user')) {
                     console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
@@ -1387,7 +1388,7 @@ class ChatPlayground {
                 this.updateParameterUI();
             } catch (wllamaError) {
                 // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || wllamaError.message.includes('cancelled by user')) {
                     console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
@@ -1994,7 +1995,7 @@ class ChatPlayground {
                     console.error('Failed to load wllama:', error);
 
                     // If loading was cancelled by user, don't mark as failed
-                    if (this.modelLoadingCancelled) {
+                    if (this.modelLoadingCancelled || error.message.includes('cancelled by user')) {
                         console.log('Model loading was cancelled by user - Wllama stays available');
                         return;
                     }
@@ -3797,7 +3798,10 @@ class ChatPlayground {
         this.recognition.maxAlternatives = 1;
 
         this.recognition.onstart = () => {
+            console.log('Web Speech Recognition started');
             this.isListening = true;
+            // Clear the starting flag once we've successfully started
+            this.isStartingRecognition = false;
         };
 
         this.recognition.onresult = (event) => {
@@ -3811,27 +3815,68 @@ class ChatPlayground {
         };
 
         this.recognition.onend = () => {
+            console.log('Web Speech Recognition ended');
             this.isListening = false;
+            // Ensure starting flag is cleared
+            this.isStartingRecognition = false;
         };
 
         this.recognition.onerror = (event) => {
-            this.isListening = false;
             console.error('Speech recognition error:', event.error);
+            this.isListening = false;
 
-            // In voice mode, try Vosk failover for network errors or other failures
-            if (this.voiceMode && event.error !== 'aborted' && event.error !== 'not-allowed') {
+            // Ignore 'aborted' errors when we're starting recognition - cleanup abort is expected
+            if (event.error === 'aborted' && this.isStartingRecognition) {
+                console.log('Ignoring abort error during startup cleanup');
+                return;
+            }
+
+            // Always clear the starting flag on any error
+            this.isStartingRecognition = false;
+
+            // Ignore 'aborted' errors - these are expected when stopping recognition
+            if (event.error === 'aborted') {
+                this.resetVoiceUI();
+                return;
+            }
+
+            // If user explicitly cancelled voice interaction, don't do anything
+            if (this.voiceInteractionCancelled) {
+                this.resetVoiceUI();
+                return;
+            }
+
+            // Ignore 'no-speech' errors - these are normal when user doesn't speak
+            if (event.error === 'no-speech') {
+                console.log('No speech detected, continuing in voice mode');
+                // In voice mode, automatically restart listening after no-speech
+                if (this.voiceMode) {
+                    setTimeout(() => {
+                        if (this.voiceMode && !this.isListening && !this.isGenerating && !this.isSpeaking && !this.voiceInteractionCancelled) {
+                            this.startSpeechRecognition();
+                        }
+                    }, 500);
+                } else {
+                    this.resetVoiceUI();
+                }
+                return;
+            }
+
+            // In voice mode, try Vosk failover only for network/service errors
+            // Don't failover for audio-capture, language-not-supported, or other benign errors
+            if (this.voiceMode && (event.error === 'network' || event.error === 'service-not-allowed')) {
                 this.handleSpeechRecognitionFailure(event.error);
                 return;
             }
 
             this.resetVoiceUI();
 
-            if (this.voiceMode && event.error !== 'aborted') {
+            // Show appropriate error message
+            if (this.voiceMode && event.error !== 'not-allowed') {
                 this.openVoiceInputErrorModal(event.error);
-                return;
+            } else if (event.error !== 'not-allowed') {
+                this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
             }
-
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
         };
     }
 
@@ -4114,16 +4159,43 @@ class ChatPlayground {
         }
 
         try {
+            // Set flag to ignore abort errors during startup
+            this.isStartingRecognition = true;
+            console.log('Starting Web Speech Recognition...');
+
             try {
                 this.recognition.abort();
             } catch (e) {
-                // Ignore
+                console.warn('Error calling recognition.abort():', e);
             }
 
             setTimeout(() => {
-                this.recognition.start();
+                try {
+                    console.log('Calling recognition.start()');
+                    this.recognition.start();
+                    // Set a timeout to clear the flag if onstart doesn't fire
+                    setTimeout(() => {
+                        if (this.isStartingRecognition) {
+                            console.warn('Recognition start timeout - clearing flag');
+                            this.isStartingRecognition = false;
+                            // If we're still not listening after timeout, something went wrong
+                            if (!this.isListening) {
+                                console.error('Recognition failed to start');
+                                this.resetVoiceUI();
+                                this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                            }
+                        }
+                    }, 2000);
+                } catch (error) {
+                    this.isStartingRecognition = false;
+                    console.error('Error calling recognition.start():', error);
+                    this.isListening = false;
+                    this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                    this.resetVoiceUI();
+                }
             }, 100);
         } catch (error) {
+            this.isStartingRecognition = false;
             console.error('Error starting speech recognition:', error);
             this.isListening = false;
             this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
@@ -4438,6 +4510,24 @@ class ChatPlayground {
             );
             this.speakResponse(plainText);
             return;
+        }
+
+        // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
+        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
+            !this.usingWikipedia && this.currentMode !== 'none') {
+            const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
+
+            // Use the selected voice if available
+            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                const voices = speechSynthesis.getVoices();
+                const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                if (selectedVoice) {
+                    acknowledgment.voice = selectedVoice;
+                }
+            }
+
+            // Speak the acknowledgment without blocking - it will play while model processes
+            speechSynthesis.speak(acknowledgment);
         }
 
         // Generate response
