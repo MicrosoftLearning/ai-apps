@@ -561,6 +561,28 @@ body.dark .model-loading-section {
     border-radius: 3px;
 }
 
+.cancel-model-link {
+    display: inline-block;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.cancel-model-link:hover {
+    color: var(--accent);
+    background: var(--bg-secondary);
+    text-decoration: underline;
+}
+
+.cancel-model-link:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* UI disabled state */
 .ui-disabled {
     pointer-events: none;
