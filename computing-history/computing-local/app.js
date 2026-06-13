@@ -593,7 +593,7 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
                 isVoiceInput = false;
             }
         } else {
-            const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.";
+            const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.";
             if (useTypingIndicator) {
                 addMessage(errorText, 'bot');
             } else {
@@ -605,7 +605,7 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
         if (useTypingIndicator) {
             removeTyping();
         }
-        const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.";
+        const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.";
         if (useTypingIndicator || !bubble) {
             addMessage(errorText, 'bot');
         } else {
