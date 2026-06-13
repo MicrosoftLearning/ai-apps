@@ -37,8 +37,7 @@ const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\n
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Shared prompt constants for both WebLLM and Wllama
-const SYSTEM_PROMPT = 'You are a friendly and helpful expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nRespond with a single succinct and factually accurate paragraph.';
+const SYSTEM_PROMPT = 'You are a friendly and helpful expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context. Respond with a single succinct and factually accurate paragraph.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -2475,7 +2474,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Add current query
         messages.push({
             role: "user",
-            content: query + USER_PROMPT_SUFFIX
+            content: query
         });
 
         console.log('Generating info with WebLLM for:', query);
@@ -2578,7 +2577,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         // Add current query
         messages.push({
             role: "user",
-            content: query + USER_PROMPT_SUFFIX
+            content: query
         });
 
         // Convert messages array to simple prompt format (same logical structure as WebLLM)
@@ -2623,7 +2622,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_k: 40,
             top_p: 0.9,
             frequency_penalty: 1.1,
-            stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:', '\n---'],
+            stop: ['\n', 'User:', 'Assistant:', '---'],
             signal: currentAbortController.signal,
             stream: true
         });
