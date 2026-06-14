@@ -46,7 +46,7 @@ class ChatPlayground {
             modelParameters: {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 250,
+                max_tokens: 300,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -275,7 +275,7 @@ class ChatPlayground {
             return {
                 temperature: 0.1,
                 top_p: 0.85,
-                max_tokens: 250,
+                max_tokens: 300,
                 repetition_penalty: 1.1
             };
         } else {
@@ -283,7 +283,7 @@ class ChatPlayground {
             return {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 250,
+                max_tokens: 300,
                 repetition_penalty: 1.1
             };
         }
@@ -5367,7 +5367,7 @@ window.resetParametersFromModal = function () {
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.7,
         top_p: 0.9,
-        max_tokens: 250,
+        max_tokens: 300,
         repetition_penalty: 1.1
     };
 
