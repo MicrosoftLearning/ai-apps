@@ -1743,7 +1743,7 @@ async function handleSend() {
                 // If summary is null, it could be an error or just an empty response
                 // Check console logs to determine if GPU is actually failing
                 console.warn('GPU mode returned null/empty summary for query:', text);
-                addMessage("I'm sorry, I couldn't generate a response. Please try again.", "bot");
+                addMessage("I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.", "bot");
                 endResponse();
             }
         } catch (e) {
