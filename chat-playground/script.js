@@ -46,7 +46,7 @@ class ChatPlayground {
             modelParameters: {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 1000,
+                max_tokens: 250,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -275,7 +275,7 @@ class ChatPlayground {
             return {
                 temperature: 0.1,
                 top_p: 0.85,
-                max_tokens: 1000,
+                max_tokens: 250,
                 repetition_penalty: 1.1
             };
         } else {
@@ -283,7 +283,7 @@ class ChatPlayground {
             return {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 1000,
+                max_tokens: 250,
                 repetition_penalty: 1.1
             };
         }
@@ -4566,7 +4566,7 @@ class ChatPlayground {
 
                 const result = await this.wllama.createCompletion({
                     prompt: prompt,
-                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 500),
+                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
                     temperature: this.config.modelParameters.temperature,
                     top_p: this.config.modelParameters.top_p,
                     frequency_penalty: this.config.modelParameters.repetition_penalty,
@@ -4590,7 +4590,7 @@ class ChatPlayground {
                 const completion = await this.engine.chat.completions.create({
                     messages: messages,
                     temperature: this.config.modelParameters.temperature,
-                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 500), // Limit for voice responses
+                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 250), // Limit for voice responses
                     stream: true
                 });
 
@@ -5367,7 +5367,7 @@ window.resetParametersFromModal = function () {
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.7,
         top_p: 0.9,
-        max_tokens: 1000,
+        max_tokens: 250,
         repetition_penalty: 1.1
     };
 
