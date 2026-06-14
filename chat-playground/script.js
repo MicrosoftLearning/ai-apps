@@ -46,7 +46,7 @@ class ChatPlayground {
             modelParameters: {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 300,
+                max_tokens: 500,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -281,9 +281,9 @@ class ChatPlayground {
         } else {
             // Phi-3.5 (GPU mode) - Standard defaults
             return {
-                temperature: 0.7,
+                temperature: 0.5,
                 top_p: 0.9,
-                max_tokens: 300,
+                max_tokens: 500,
                 repetition_penalty: 1.1
             };
         }
@@ -5365,9 +5365,9 @@ function handleModalParameterChange(e) {
 window.resetParametersFromModal = function () {
     // Get model-specific defaults
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
-        temperature: 0.7,
+        temperature: 0.5,
         top_p: 0.9,
-        max_tokens: 300,
+        max_tokens: 500,
         repetition_penalty: 1.1
     };
 
