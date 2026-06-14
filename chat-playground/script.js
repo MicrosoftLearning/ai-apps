@@ -4665,7 +4665,7 @@ class ChatPlayground {
         } catch (error) {
             console.error('Error generating response:', error);
             console.error('Error stack:', error.stack);
-            this.showToast('Error generating response. Please try again.');
+            this.showToast('Error generating response. Please try again or switch models.');
             this.resetVoiceUI();
         } finally {
             this.isGenerating = false;
