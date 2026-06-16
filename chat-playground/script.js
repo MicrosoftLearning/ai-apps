@@ -281,7 +281,7 @@ class ChatPlayground {
         } else {
             // Phi-3.5 (GPU mode) - Standard defaults
             return {
-                temperature: 0.5,
+                temperature: 0.4,
                 top_p: 0.9,
                 max_tokens: 500,
                 repetition_penalty: 1.1
@@ -1445,7 +1445,7 @@ class ChatPlayground {
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
-                        context_window_size: 1024
+                        context_window_size: 768
                     }
                 }
             ]
@@ -2451,11 +2451,14 @@ class ChatPlayground {
             }
         }
 
+        // Clean up incomplete trailing sentences (same as CPU mode)
+        const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
+
         // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
-        let displayResponse = fullResponse;
-        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
+        let displayResponse = cleanedResponse;
+        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && cleanedResponse.trim()) {
             const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
-            displayResponse = fullResponse + attribution;
+            displayResponse = cleanedResponse + attribution;
             // Update the typing content to include attribution
             this.updateTypingContent(displayResponse);
         }
@@ -2465,9 +2468,9 @@ class ChatPlayground {
             // Remove thinking indicator
             thinkingIndicator.remove();
 
-            if (fullResponse.trim()) {
+            if (cleanedResponse.trim()) {
                 // Append file attribution if a file is uploaded and relevant content was used (for display only)
-                displayResponse = fullResponse;
+                displayResponse = cleanedResponse;
                 if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
@@ -2488,7 +2491,7 @@ class ChatPlayground {
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
         this.conversationHistory.push({ role: "user", content: userMessage });
-        this.conversationHistory.push({ role: "assistant", content: fullResponse });
+        this.conversationHistory.push({ role: "assistant", content: cleanedResponse });
     }
 
     // Helper function to check for prohibited content
@@ -5365,7 +5368,7 @@ function handleModalParameterChange(e) {
 window.resetParametersFromModal = function () {
     // Get model-specific defaults
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
-        temperature: 0.5,
+        temperature: 0.4,
         top_p: 0.9,
         max_tokens: 500,
         repetition_penalty: 1.1
