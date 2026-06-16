@@ -2463,10 +2463,13 @@ class ChatPlayground {
 
         // Update the typing content with cleaned response (always do this if output has started)
         if (hasStartedOutput) {
-            // Stop the typing animation and set the final content directly
+            // Update the typing state's fullText to the cleaned version BEFORE stopping
+            // so when the typing animation finishes, it shows the cleaned text
             if (this.typingState) {
+                this.typingState.fullText = displayResponse;
                 this.typingState.isTyping = false;
             }
+            // Also set it directly in case typing already finished
             if (contentEl) {
                 contentEl.textContent = displayResponse;
             }
