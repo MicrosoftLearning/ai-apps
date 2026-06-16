@@ -2456,11 +2456,16 @@ class ChatPlayground {
 
         // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
         let displayResponse = cleanedResponse;
-        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && cleanedResponse.trim()) {
+        if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && cleanedResponse.trim()) {
             const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
             displayResponse = cleanedResponse + attribution;
-            // Update the typing content to include attribution
+        }
+
+        // Update the typing content with cleaned response (always do this if output has started)
+        if (hasStartedOutput) {
             this.updateTypingContent(displayResponse);
+            // Wait for typing animation to complete showing the cleaned response
+            await this.waitForTypingComplete();
         }
 
         // Handle case where response is shorter than buffer size
