@@ -2463,9 +2463,13 @@ class ChatPlayground {
 
         // Update the typing content with cleaned response (always do this if output has started)
         if (hasStartedOutput) {
-            this.updateTypingContent(displayResponse);
-            // Wait for typing animation to complete showing the cleaned response
-            await this.waitForTypingComplete();
+            // Stop the typing animation and set the final content directly
+            if (this.typingState) {
+                this.typingState.isTyping = false;
+            }
+            if (contentEl) {
+                contentEl.textContent = displayResponse;
+            }
         }
 
         // Handle case where response is shorter than buffer size
