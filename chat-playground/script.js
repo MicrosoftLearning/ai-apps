@@ -2494,7 +2494,7 @@ class ChatPlayground {
                 // Type out the short response
                 await this.typeResponse(contentEl, displayResponse);
             } else {
-                const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
+                const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again. If this happens again, try switching to a different model.";
                 assistantMessageEl = this.addMessage('assistant', '');
                 contentEl = assistantMessageEl.querySelector('.message-content');
                 await this.typeResponse(contentEl, fallbackMessage);
