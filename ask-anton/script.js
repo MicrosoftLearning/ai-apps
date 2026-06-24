@@ -1,4 +1,3 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 // Delay (ms) before clearing the search-status hint shown beneath the input
@@ -6,7 +5,7 @@ import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/in
 const SEARCH_STATUS_CLEAR_DELAY = 2000;
 
 // Inline styles for the small italic note that accompanies the typing indicator
-// in CPU and Basic modes (kept inline so a single innerHTML write covers both).
+// in wllama and Basic modes (kept inline so a single innerHTML write covers both).
 const TYPING_NOTE_STYLE = 'font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;';
 
 // Stop words for n-gram search (performSearch). Hoisted so the Set isn't
@@ -67,8 +66,7 @@ class AskAnton {
         // Debug flags for testing failover (can be set via URL params or console)
         this.debugConfig = this.parseDebugConfig();
 
-        this.engine = null;      // WebLLM engine
-        this.wllama = null;      // Wllama engine (fallback)
+        this.wllama = null;
         this.conversationHistory = [];
         this.isGenerating = false;
         this.indexData = null;
@@ -78,8 +76,7 @@ class AskAnton {
         this.isStoppingGeneration = false;
         this.currentMode = 'basic';
         this.availableModes = {
-            gpu: false,
-            cpu: true,
+            wllama: true,
             basic: true
         };
         this.isLoadingModel = false;
@@ -91,10 +88,11 @@ class AskAnton {
         this.videoPopupWidth = 800;
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
-        this.gpuModeFailureMessage = "I'm sorry, something went wrong in GPU mode. If this keeps happening, please try switching to CPU mode or Basic mode.";
-        this.cpuModeFailureMessage = "I'm sorry, something went wrong in CPU mode. If this keeps happening, please try switching to Basic mode.";
-        this.lastWebLLMCompletionErrored = false;
+        this.wllamaModeFailureMessage = "I'm sorry, something went wrong. If this keeps happening, please try switching the model to None.";
         this.lastWllamaCompletionErrored = false;
+        this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
+        this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
+        this._retryMessageDiv = null;   // set by generateWithWllama when GPU recovery creates a new bubble
 
         // Vosk speech recognition (lazy-loaded fallback)
         this.voskModel = null;
@@ -141,10 +139,10 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are an AI tutor that provides learner-friendly answers to questions about AI. You politely decline to discuss topics not related to AI or computing.`;
+        this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond based on the following information:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Continue the conversation, keeping responses concise and focused on AI topics. If you don't know the answer, say you don't know.`;
+        this.PROMPT_WITH_CONTEXT = `Respond using the information below to inform your answer:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph, keeping the focus on factual AI topics.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -158,26 +156,22 @@ class AskAnton {
 
     /**
      * Read URL query string for debug overrides used to force engine-init
-     * failure paths (?debug=true&forceWebGPUFail=true&forceWllamaFail=true
-     * &forceBasicMode=true). Returns a config object consumed by
-     * {@link initializeEngine}, {@link initializeWebLLM}, {@link initializeWllama}.
-     * @returns {{enabled:boolean, forceWebGPUFail:boolean, forceWllamaFail:boolean, forceBasicMode:boolean}}
+     * failure paths (?debug=true&forceWllamaFail=true&forceBasicMode=true).
+     * @returns {{enabled:boolean, forceWllamaFail:boolean, forceBasicMode:boolean}}
      */
     parseDebugConfig() {
         // Parse URL parameters for debug flags
-        // Usage: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true
+        // Usage: ?debug=true&forceWllamaFail=true
         const params = new URLSearchParams(window.location.search);
         const config = {
             enabled: params.has('debug'),
-            forceWebGPUFail: params.has('forceWebGPUFail') || params.get('forceWebGPUFail') === 'true',
             forceWllamaFail: params.has('forceWllamaFail') || params.get('forceWllamaFail') === 'true',
             forceBasicMode: params.has('forceBasicMode') || params.get('forceBasicMode') === 'true'
         };
 
         if (config.enabled) {
             console.log('🧪 Debug mode enabled:', config);
-            console.log('💡 To force failures, add URL params: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true');
-            console.log('💡 Or use console: window.askAnton.debugConfig.forceWebGPUFail = true');
+            console.log('💡 To force failures, add URL params: ?debug=true&forceWllamaFail=true');
         }
 
         return config;
@@ -204,7 +198,7 @@ class AskAnton {
             // Load the index (no longer loading Vosk upfront)
             await this.loadIndex();
 
-            // Try to initialize WebLLM first, fall back to wllama if needed
+            // Try to initialize wllama, fall back to basic mode if needed
             await this.initializeEngine();
 
         } catch (error) {
@@ -397,146 +391,40 @@ class AskAnton {
     }
 
     // ============================================================================
-    // LLM ENGINE INITIALIZATION (WebLLM & Wllama)
+    // HARDWARE REQUIREMENTS CHECK
     // ============================================================================
 
-    /** @returns {boolean} true when WebGPU is exposed by the browser. */
-    checkWebGPUSupport() {
-        // Check if WebGPU is available in the browser
-        if (!navigator.gpu) {
-            console.log('WebGPU not supported in this browser');
+    /**
+     * Check if the device meets minimum hardware requirements for running
+     * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+     * are below the minimum thresholds.
+     * @returns {boolean} true if hardware meets requirements, false otherwise.
+     */
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
+
         return true;
     }
 
-    /**
-     * Run `task` with `navigator.gpu` hidden so any code path inside it
-     * cannot detect or use WebGPU. Restores the original descriptor on
-     * exit even if `task` throws. Used to force the CPU code path in
-     * libraries that auto-detect WebGPU.
-     */
-    async withWebGpuTemporarilyDisabled(task) {
-        const nav = navigator;
-        const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
-        const ownGpuDescriptor = hadOwnGpu ? Object.getOwnPropertyDescriptor(nav, 'gpu') : null;
-        let gpuMasked = false;
-
-        const unavailableGpu = {
-            requestAdapter: async () => null
-        };
-
-        try {
-            Object.defineProperty(nav, 'gpu', {
-                configurable: true,
-                enumerable: false,
-                get: () => unavailableGpu
-            });
-            gpuMasked = true;
-            console.log('Temporarily stubbed navigator.gpu as unavailable for wllama initialization');
-        } catch (error) {
-            console.warn('Unable to mask navigator.gpu during wllama initialization:', error);
-        }
-
-        try {
-            return await task();
-        } finally {
-            if (!gpuMasked) {
-                return;
-            }
-
-            try {
-                if (hadOwnGpu && ownGpuDescriptor) {
-                    Object.defineProperty(nav, 'gpu', ownGpuDescriptor);
-                } else {
-                    delete nav.gpu;
-                }
-                console.log('Restored navigator.gpu after wllama initialization');
-            } catch (error) {
-                console.warn('Unable to restore navigator.gpu after wllama initialization:', error);
-            }
-        }
-    }
+    // ============================================================================
+    // LLM ENGINE INITIALIZATION (wllama)
+    // ============================================================================
 
     /**
-     * Run `task` while transparently rewriting `new Worker(url)` so worker
-     * scripts also see WebGPU as unavailable. Pairs with
-     * {@link withWebGpuTemporarilyDisabled} for libraries (e.g. wllama)
-     * that spawn workers which would otherwise re-enable the GPU backend.
-     */
-    async withWebGpuDisabledForWorkers(task) {
-        const NativeWorker = window.Worker;
-        let workerPatched = false;
-
-        try {
-            if (typeof NativeWorker === 'function') {
-                window.Worker = class WorkerWithoutWebGPU extends NativeWorker {
-                    constructor(scriptURL, options) {
-                        let wrappedURL = scriptURL;
-                        let createdWrappedBlobUrl = false;
-
-                        try {
-                            const workerType = options?.type === 'module' ? 'module' : 'classic';
-                            const source = workerType === 'module'
-                                ? `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimport ${JSON.stringify(String(scriptURL))};`
-                                : `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimportScripts(${JSON.stringify(String(scriptURL))});`;
-
-                            wrappedURL = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-                            createdWrappedBlobUrl = true;
-                        } catch (error) {
-                            wrappedURL = scriptURL;
-                            createdWrappedBlobUrl = false;
-                        }
-
-                        super(wrappedURL, options);
-
-                        if (createdWrappedBlobUrl) {
-                            setTimeout(() => URL.revokeObjectURL(wrappedURL), 0);
-                        }
-                    }
-                };
-
-                workerPatched = true;
-                console.log('Temporarily patched Worker to disable WebGPU inside wllama workers');
-            }
-
-            return await this.withWebGpuTemporarilyDisabled(task);
-        } finally {
-            if (workerPatched) {
-                window.Worker = NativeWorker;
-                console.log('Restored Worker after wllama initialization');
-            }
-        }
-    }
-
-    /**
-     * Best-effort mobile detection used to skip GPU-model load on devices
-     * that typically lack the memory/bandwidth for it.
-     */
-    isLikelyMobileDevice() {
-        // Prefer userAgentData when available, then fall back to UA + touch heuristics.
-        if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
-            return navigator.userAgentData.mobile;
-        }
-
-        const ua = navigator.userAgent || '';
-        const mobileUaPattern = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|EdgA/i;
-        const isMobileUa = mobileUaPattern.test(ua);
-        const isTouchMac = /Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1;
-        const hasTouch = (navigator.maxTouchPoints || 0) > 0 || ('ontouchstart' in window);
-        const hasCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-        const shortestScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
-        const isSmallScreen = shortestScreenSide > 0 && shortestScreenSide <= 900;
-        const isTouchSmallScreen = hasTouch && hasCoarsePointer && isSmallScreen;
-
-        return isMobileUa || isTouchMac || isTouchSmallScreen;
-    }
-
-    /**
-     * Decide which inference engine to bring up at startup. Order of
-     * preference: forced basic (debug) -> WebLLM/WebGPU (desktop only) ->
-     * wllama/CPU -> basic (no model). Sets `this.availableModes` along
-     * the way so the UI can offer manual mode switches later.
+     * Top-level boot sequence: try wllama (GPU-accelerated when available,
+     * CPU fallback otherwise), then fall back to Basic mode if wllama fails.
      */
     async initializeEngine() {
         // 🧪 DEBUG: Force Basic mode for testing
@@ -549,41 +437,19 @@ class AskAnton {
             return;
         }
 
-        const isMobileDevice = this.isLikelyMobileDevice();
-        if (isMobileDevice) {
-            this.availableModes.gpu = this.checkWebGPUSupport();
-            console.log('Mobile device detected on startup. Defaulting to Basic mode.');
-            document.body.classList.add('mobile-layout');
+        // Check hardware requirements before attempting to load model
+        if (!this.checkHardwareRequirements()) {
+            console.log('Hardware requirements not met, using Basic mode only');
+            this.availableModes.wllama = false;
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
-                'Basic mode was selected automatically for mobile startup. You can switch modes anytime from the mode selector.'
+                'Using Basic mode because your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.'
             );
             return;
         }
 
-        const hasWebGPU = this.checkWebGPUSupport();
-        this.availableModes.gpu = hasWebGPU;
-
         // Create abort controller for model loading
         this.modelLoadingAbortController = new AbortController();
-
-        if (hasWebGPU) {
-            try {
-                await this.initializeWebLLM();
-                // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
-                    return;
-                }
-                return;
-            } catch (error) {
-                // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
-                    return;
-                }
-                console.log('WebLLM initialization failed, falling back to CPU mode');
-                this.availableModes.gpu = false;
-            }
-        }
 
         try {
             await this.initializeWllama(null, {
@@ -591,138 +457,38 @@ class AskAnton {
                 showChatInterface: true,
                 showFatalError: false
             });
-            // Check if cancelled during initialization
             if (this.modelLoadingCancelled) {
                 return;
             }
             return;
         } catch (error) {
-            // Check if cancelled during initialization
             if (this.modelLoadingCancelled) {
                 return;
             }
-            console.log('CPU model initialization failed, falling back to Basic mode');
-            this.availableModes.cpu = false;
+            console.log('Wllama initialization failed, falling back to Basic mode');
+            this.availableModes.wllama = false;
         }
 
         this.initializeBasicMode(
             'Ready to chat! (Basic mode)',
-            'Using Basic mode because the GPU and CPU models could not be loaded.'
+            'Using Basic mode because the AI model could not be loaded.'
         );
     }
 
     /**
-     * Bring up the WebLLM (WebGPU) engine with the Phi-3.5 model and wire
-     * its progress callback to the loading UI. Resolves once the model is
-     * ready to chat; rejects if WebGPU init or model download fails.
-     * @param {(p:number)=>void|null} [progressCallback] Optional callback for progress updates (used when loading from mode switch)
-     * @param {{isLazyLoad?:boolean, activateMode?:boolean, showChatInterface?:boolean}} [options]
-     */
-    async initializeWebLLM(progressCallback = null, options = {}) {
-        const { isLazyLoad = false, activateMode = true, showChatInterface = true } = options;
-
-        try {
-            if (!isLazyLoad) {
-                this.updateProgress(15, 'Loading AI model (WebGPU)...');
-            }
-
-            // 🧪 DEBUG: Force WebGPU initialization failure for testing error handling
-            if (this.debugConfig.enabled && this.debugConfig.forceWebGPUFail) {
-                console.log('🧪 DEBUG: Forcing WebGPU initialization to fail (testing error handling)');
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate some initialization time
-                throw new Error('DEBUG: Forced WebGPU initialization failure');
-            }
-
-            // Use Phi-3.5-mini with correct model library URL from WebLLM config
-            const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
-
-            const appConfig = {
-                model_list: [
-                    {
-                        model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
-                        model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-                        model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
-                        vram_required_MB: 3672.07,
-                        low_resource_required: false,
-                        overrides: {
-                            context_window_size: 2048
-                        }
-                    }
-                ]
-            };
-
-            this.engine = await webllm.CreateMLCEngine(
-                targetModelId,
-                {
-                    appConfig: appConfig,
-                    initProgressCallback: (progress) => {
-                        // Check if user cancelled loading
-                        if (this.modelLoadingCancelled) {
-                            return;
-                        }
-
-                        const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-
-                        if (!isLazyLoad) {
-                            this.updateProgress(
-                                percentage,
-                                `Loading model: ${Math.round(progress.progress * 100)}%`
-                            );
-                        } else {
-                            console.log(`Loading WebLLM: ${Math.round(progress.progress * 100)}%`);
-                            // Call the progress callback for lazy loading
-                            if (progressCallback) {
-                                progressCallback(progress.progress);
-                            }
-                        }
-                    }
-                }
-            );
-
-            // Check if cancelled before finalizing
-            if (this.modelLoadingCancelled) {
-                this.engine = null;
-                throw new Error('Model loading cancelled by user');
-            }
-
-            if (!isLazyLoad) {
-                this.updateProgress(100, 'Ready to chat!');
-            }
-            console.log('WebLLM engine initialized successfully');
-            this.availableModes.gpu = true;
-
-            if (activateMode) {
-                this.setCurrentMode('gpu');
-            }
-
-            // Double-check cancellation before showing interface
-            if (showChatInterface && !this.modelLoadingCancelled) {
-                setTimeout(() => {
-                    this.showChatInterface();
-                }, 500);
-            }
-
-        } catch (error) {
-            console.error('Failed to initialize WebLLM:', error);
-            this.availableModes.gpu = false;
-            throw error; // Re-throw to trigger fallback
-        }
-    }
-
-    /**
-     * Bring up the wllama (CPU/WASM) engine with the Phi-2 model. Reuses
-     * an existing instance if one is already loaded.
+     * Bring up the wllama engine with the Phi-4-mini model (Q4_K_M, 4-bit).
+     * Attempts GPU acceleration first; falls back to CPU multi-thread, then
+     * CPU single-thread. Reuses an existing instance if one is already loaded.
      * @param {(p:number)=>void|null} [progressCallback] Forwarded download progress (0..1).
-     * @param {{isLazyLoad?:boolean, activateMode?:boolean, showChatInterface?:boolean, showFatalError?:boolean}} [options]
-     *   - isLazyLoad: hide progress UI when triggered by mode switch.
-     *   - activateMode: set `currentMode='cpu'` on success.
+     * @param {{activateMode?:boolean, showChatInterface?:boolean, showFatalError?:boolean}} [options]
+     *   - activateMode: set `currentMode='wllama'` on success.
      *   - showChatInterface: reveal the chat UI on success.
      *   - showFatalError: surface error via {@link showError} on failure.
      */
     async initializeWllama(progressCallback = null, options = {}) {
         const {
-            activateMode = !this.availableModes.gpu,
-            showChatInterface = !this.availableModes.gpu,
+            activateMode = true,
+            showChatInterface = true,
             showFatalError = false
         } = options;
 
@@ -730,9 +496,9 @@ class AskAnton {
             // Check if already initialized
             if (this.wllama) {
                 console.log('Wllama already initialized');
-                this.availableModes.cpu = true;
+                this.availableModes.wllama = true;
                 if (activateMode) {
-                    this.setCurrentMode('cpu');
+                    this.setCurrentMode('wllama');
                 }
                 return;
             }
@@ -743,128 +509,196 @@ class AskAnton {
             if (this.debugConfig.enabled && this.debugConfig.forceWllamaFail) {
                 console.log('🧪 DEBUG: Forcing Wllama initialization to fail (testing error handling)');
                 if (!isLazyLoad) {
-                    this.updateProgress(15, 'Loading AI model (CPU mode)...');
+                    this.updateProgress(15, 'Loading AI model...');
                 }
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate some initialization time
+                await new Promise(resolve => setTimeout(resolve, 500));
                 throw new Error('DEBUG: Forced Wllama initialization failure');
             }
 
             if (!isLazyLoad) {
-                this.updateProgress(15, 'Loading AI model (CPU mode)...');
+                this.updateProgress(15, 'Loading AI model...');
             }
 
-            // Configure WASM paths for CDN
+            // Configure WASM paths for CDN (single unified build in wllama 3.1)
             const CONFIG_PATHS = {
                 default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
             };
 
-            // Try multithreaded first if cross-origin isolated, fall back to single-threaded
             const useMultiThread = window.crossOriginIsolated === true;
-            const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+            const availableThreads = navigator.hardwareConcurrency || 4;
             const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
             console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
-            const modelConfig = {
-                n_ctx: 512,      // Minimum context size (512 is enforced by llama.cpp)
-                n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
-                offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
+            const progressCb = ({ loaded, total }) => {
+                if (this.modelLoadingCancelled) return;
+                const percentage = Math.min(100, Math.max(15, Math.round((loaded / total) * 85) + 15));
+                const progress = loaded / total;
+                if (!isLazyLoad) {
+                    this.updateProgress(percentage, `Loading model: ${Math.round((loaded / total) * 100)}%`);
+                } else {
+                    console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
+                    if (progressCallback) progressCallback(progress);
+                }
+            };
+
+            const baseModelConfig = {
+                n_ctx: 712,
                 n_threads: preferredThreads,
-                progressCallback: ({ loaded, total }) => {
-                    // Check if user cancelled loading
-                    if (this.modelLoadingCancelled) {
+                progressCallback: progressCb
+            };
+
+            const modelSource = {
+                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+                quant: 'Q4_K_M'
+            };
+
+            // Helper to attempt a model load; always creates a fresh Wllama instance.
+            const attemptLoad = async (n_gpu_layers, n_threads) => {
+                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
+                this.wllama = new Wllama(CONFIG_PATHS);
+                await this.wllama.loadModelFromHF(modelSource, {
+                    ...baseModelConfig,
+                    n_ctx,
+                    n_gpu_layers,
+                    n_threads
+                    // Note: no_warmup not supported in wllama 3.1.1
+                    // Warmup is ~1-2 seconds and only runs once on load
+                });
+            };
+
+            // Detect errors caused by a partial / incomplete previous download.
+            const isPartialDownloadError = (err) =>
+                /model file not found|file not found/i.test(err?.message || '');
+
+            // Delete any cached model files so the next load fetches cleanly from part 1.
+            // wllama 3.x stores files in OPFS under navigator.storage → "cache" directory.
+            // OPFS file names are "${sha1(url)}_${filename}" so they contain the model name.
+            const clearModelCache = async () => {
+                let deleted = 0;
+                try {
+                    const opfsRoot = await navigator.storage.getDirectory();
+                    let cacheDir;
+                    try {
+                        cacheDir = await opfsRoot.getDirectoryHandle('cache');
+                    } catch {
+                        console.log('OPFS cache directory not found; nothing to clear');
                         return;
                     }
+                    // Collect all entries before deleting to avoid mutating while iterating.
+                    const toDelete = [];
+                    for await (const [name] of cacheDir.entries()) {
+                        toDelete.push(name);
+                    }
+                    for (const name of toDelete) {
+                        await cacheDir.removeEntry(name);
+                        deleted++;
+                    }
+                } catch (e) {
+                    console.warn('Failed to clear OPFS model cache:', e);
+                }
+                console.log(`Cleared partial model download cache (${deleted} OPFS entries); will download fresh from part 1`);
+            };
 
-                    const percentage = Math.min(100, Math.max(15, Math.round((loaded / total) * 85) + 15));
-                    const progress = loaded / total;
+            // Flag prevents retrying cache-clear more than once.
+            let cacheWasCleared = false;
 
-                    if (!isLazyLoad) {
-                        this.updateProgress(
-                            percentage,
-                            `Loading model: ${Math.round((loaded / total) * 100)}%`
-                        );
-                    } else {
-                        console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
-                        // Call the progress callback for lazy loading
-                        if (progressCallback) {
-                            progressCallback(progress);
+            // GPU-first (skipped if gpuFailed is true). Partial layer offload (10 of 32
+            // layers) falls back to CPU multi-thread, then CPU single-thread.
+            let initializedWithGPU = false;
+
+            // Qualcomm Adreno WebGPU has precision bugs that cause hallucinations.
+            // Detect the adapter vendor and disable GPU for known-broken implementations.
+            let GPU_ENABLED = true;
+            if (navigator.gpu) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        // Chrome 121+: adapter.info is a synchronous property.
+                        // Older Chrome: requestAdapterInfo() (now deprecated/removed).
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
+                            console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info.vendor}") — known precision issues cause hallucinations`);
+                            GPU_ENABLED = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                            // which predates the fix. Fall back to CPU until wllama is upgraded.
+                            console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
+                            GPU_ENABLED = false;
                         }
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                }
+            }
+
+            const loadWithFallback = async () => {
+                if (GPU_ENABLED && !this.gpuFailed) {
+                    try {
+                        // First attempt: full GPU offload (all 32 layers) with n_ctx 1024.
+                        // Full offload avoids the precision mismatch at CPU/GPU layer boundaries
+                        // that caused garbled tokens with partial offload.
+                        await attemptLoad(32, preferredThreads);
+                        initializedWithGPU = true;
+                        console.log(`Wllama initialized with GPU (32 layers) + ${preferredThreads} thread(s)`);
+                        return;
+                    } catch (gpuErr) {
+                        if (this.modelLoadingCancelled) throw gpuErr;
+
+                        // Partial download: clear cache and restart once.
+                        if (!cacheWasCleared && isPartialDownloadError(gpuErr)) {
+                            console.warn('Partial model download detected; clearing cache and retrying from part 1');
+                            await clearModelCache();
+                            cacheWasCleared = true;
+                            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+                            return loadWithFallback();
+                        }
+
+                        console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+                    }
+                } else {
+                    console.log('Skipping GPU: Using CPU directly');
+                }
+
+                try {
+                    // CPU multi-threaded
+                    await attemptLoad(0, preferredThreads);
+                    console.log(`Wllama initialized on CPU with ${preferredThreads} thread(s)`);
+                } catch (cpuErr) {
+                    if (this.modelLoadingCancelled) throw cpuErr;
+                    if (preferredThreads > 1) {
+                        console.warn('Multi-thread CPU init failed, retrying with 1 thread');
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+                        // Final attempt: CPU single-threaded
+                        await attemptLoad(0, 1);
+                        console.log('Wllama initialized on CPU with 1 thread');
+                    } else {
+                        throw cpuErr;
                     }
                 }
             };
 
-            await this.withWebGpuDisabledForWorkers(async () => {
-                try {
-                    // Initialize wllama with CDN-hosted WASM files
-                    this.wllama = new Wllama(CONFIG_PATHS);
+            await loadWithFallback();
+            this.wllama_usedGPU = initializedWithGPU;
 
-                    // Load model from HuggingFace with optimized settings
+            // Check if cancelled before finalizing
+            if (this.modelLoadingCancelled) {
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+                throw new Error('Model loading cancelled by user');
+            }
 
-                    await this.wllama.loadModelFromHF(
-                        {
-                            repo: 'ngxson/wllama-split-models',
-                            file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
-                        },
-                        {
-                            ...modelConfig,
-                            progressCallback: modelConfig.progressCallback
-                        }
-                    );
+            if (!isLazyLoad) {
+                this.updateProgress(100, 'Ready to chat!');
+            }
+            console.log('Wllama initialized successfully with Phi 3.5-mini');
+            this.availableModes.wllama = true;
 
-                    // Check if cancelled before finalizing
-                    if (this.modelLoadingCancelled) {
-                        this.wllama = null;
-                        throw new Error('Model loading cancelled by user');
-                    }
-
-                    console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-
-                    // Update to final ready state if requested
-                    if (!isLazyLoad) {
-                        this.updateProgress(100, 'Ready to chat! (CPU mode)');
-                    }
-                } catch (multiErr) {
-                    if (preferredThreads > 1) {
-                        console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-
-                        // Retry with single thread
-                        this.wllama = new Wllama(CONFIG_PATHS);
-                        await this.wllama.loadModelFromHF(
-                            {
-                                repo: 'ngxson/wllama-split-models',
-                                file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
-                            },
-                            {
-                                ...modelConfig,
-                                n_threads: 1,
-                                progressCallback: modelConfig.progressCallback
-                            }
-                        );
-
-                        // Check if cancelled before finalizing (fallback path)
-                        if (this.modelLoadingCancelled) {
-                            this.wllama = null;
-                            throw new Error('Model loading cancelled by user');
-                        }
-
-                        console.log('Wllama initialized successfully with 1 thread (fallback)');
-
-                        // Update to final ready state if requested
-                        if (!isLazyLoad) {
-                            this.updateProgress(100, 'Ready to chat! (CPU mode)');
-                        }
-                    } else {
-                        throw multiErr;
-                    }
-                }
-            });
-            console.log('Wllama initialized successfully with Phi 3.1');
-            this.availableModes.cpu = true;
-
-            // Check cancellation before activating and showing interface
             if (!this.modelLoadingCancelled) {
                 if (activateMode) {
-                    this.setCurrentMode('cpu');
+                    this.setCurrentMode('wllama');
                 }
 
                 if (showChatInterface) {
@@ -876,7 +710,7 @@ class AskAnton {
 
         } catch (error) {
             console.error('Failed to initialize wllama:', error);
-            this.availableModes.cpu = false;
+            this.availableModes.wllama = false;
             if (showFatalError) {
                 this.showError('Failed to load AI model. Please refresh the page.');
             }
@@ -927,8 +761,8 @@ class AskAnton {
     }
 
     /**
-     * Enter Basic mode (no model). Used as the final fallback when both
-     * WebLLM and wllama fail to initialize, and when the user explicitly
+     * Enter Basic mode (no model). Used as the final fallback when
+     * wllama fails to initialize, and when the user explicitly
      * selects Basic from the mode dropdown.
      */
     initializeBasicMode(progressText = 'Ready to chat! (Basic mode)', notice = null) {
@@ -967,11 +801,10 @@ class AskAnton {
         }
 
         // Clean up any partially loaded models
-        if (this.engine) {
-            this.engine = null;
-        }
         if (this.wllama) {
+            const _oldWllama = this.wllama;
             this.wllama = null;
+            _oldWllama.exit().catch(() => { });
         }
 
         // Hide the cancel link immediately
@@ -985,26 +818,22 @@ class AskAnton {
         // Immediately switch to Basic mode
         this.initializeBasicMode(
             'Ready to chat! (Basic mode)',
-            'Model loading was cancelled. You can switch modes anytime from the mode selector.'
+            'Model loading was cancelled. You can choose a different model anytime.'
         );
     }
 
-    /** Set the active inference mode. @param {'gpu'|'cpu'|'basic'} mode */
+    /** Set the active inference mode. @param {'wllama'|'basic'} mode */
     setCurrentMode(mode) {
         this.currentMode = mode;
     }
 
-    /** Human-readable label for the mode selector and aria descriptions. */
+    /** Human-readable label for the model selector and aria descriptions. */
     getModeLabel(mode = this.currentMode) {
-        if (mode === 'gpu') {
-            return 'Phi 3.5 (GPU)';
+        if (mode === 'wllama') {
+            return 'Phi 3.5-mini';
         }
 
-        if (mode === 'cpu') {
-            return 'Phi 3.1 (CPU)';
-        }
-
-        return 'None (Basic Q&A)';
+        return 'None';
     }
 
     /** Show an error in the loading section (red progress bar). */
@@ -1488,9 +1317,9 @@ class AskAnton {
             return;
         }
 
-        // Check if wllama is still loading when in CPU mode
-        if (this.currentMode === 'cpu' && !this.wllama) {
-            this.addSystemMessage('CPU mode is still loading. Please wait...');
+        // Check if wllama is still loading
+        if (this.currentMode === 'wllama' && !this.wllama) {
+            this.addSystemMessage('Model is still loading. Please wait...');
             return;
         }
 
@@ -1564,21 +1393,7 @@ class AskAnton {
 
         const activeStream = this.currentStream;
 
-        // WebLLM can keep an internal lock after interruption unless the stream is
-        // explicitly drained. This prevents the next prompt from hanging.
-        if (activeStream && this.currentMode === 'gpu' && this.engine) {
-            this.isStoppingGeneration = true;
-            this.safeStopWebLLMStream(activeStream)
-                .catch((error) => {
-                    console.warn('WebLLM stop cleanup failed:', error);
-                })
-                .finally(() => {
-                    this.isStoppingGeneration = false;
-                    if (this.currentStream === activeStream) {
-                        this.currentStream = null;
-                    }
-                });
-        } else if (activeStream && this.currentMode === 'cpu') {
+        if (activeStream && this.currentMode === 'wllama') {
             this.isStoppingGeneration = true;
             this.safeStopWllamaStream(activeStream)
                 .catch((error) => {
@@ -1629,116 +1444,17 @@ class AskAnton {
                 await stream.return();
             }
         } catch (error) {
-            console.warn('Stream return failed during CPU stop cleanup:', error);
-        }
-
-        // Try to reset state immediately
-        try {
-            await this.resetWllamaInterruptState();
-            console.log('Wllama state reset successfully after stop');
-        } catch (error) {
-            console.warn('Error during state reset:', error.message || error.toString());
-        }
-    }
-
-    /**
-     * Clear lingering interrupt flags inside wllama after a stop so the
-     * next prompt isn't immediately cancelled.
-     */
-    async resetWllamaInterruptState() {
-        if (!this.wllama) {
-            return;
+            console.warn('Stream return failed during wllama stop cleanup:', error);
         }
 
         // Wllama state is reset automatically after interruption
-        console.log('Wllama interrupt state cleared');
-    }
-
-    /**
-     * Drain a WebLLM stream after interruption and release any pipeline
-     * locks so the engine accepts the next prompt.
-     */
-    async safeStopWebLLMStream(stream) {
-        if (!this.engine || !stream) {
-            return;
-        }
-
-        try {
-            if (typeof this.engine.interruptGenerate === 'function') {
-                await this.engine.interruptGenerate();
-            }
-        } catch (error) {
-            console.warn('engine.interruptGenerate failed:', error);
-        }
-
-        // Workaround for WebLLM lock not always being released immediately.
-        for (let i = 0; i < 3; i++) {
-            try {
-                const nextPromise = stream.next?.();
-                if (!nextPromise || typeof nextPromise.then !== 'function') {
-                    break;
-                }
-
-                await Promise.race([
-                    nextPromise,
-                    new Promise((resolve) => setTimeout(resolve, 150))
-                ]);
-            } catch (error) {
-                break;
-            }
-        }
-
-        try {
-            if (typeof stream.return === 'function') {
-                await stream.return();
-            }
-        } catch (error) {
-            console.warn('Stream return failed during stop cleanup:', error);
-        }
-
-        await this.resetWebLLMInterruptState();
-    }
-
-    /**
-     * Reset internal WebLLM state (interrupt signal, pipeline locks, KV
-     * cache) after a cancelled generation.
-     */
-    async resetWebLLMInterruptState() {
-        if (!this.engine) {
-            return;
-        }
-
-        // Defensive reset for known WebLLM interruption edge cases.
-        if (Object.prototype.hasOwnProperty.call(this.engine, 'interruptSignal')) {
-            this.engine.interruptSignal = false;
-        }
-
-        const lockMap = this.engine.loadedModelIdToLock;
-        if (lockMap && typeof lockMap.values === 'function') {
-            for (const lock of lockMap.values()) {
-                if (lock && lock.acquired && typeof lock.release === 'function') {
-                    try {
-                        await lock.release();
-                    } catch (error) {
-                        console.warn('Failed to release WebLLM lock:', error);
-                    }
-                }
-            }
-        }
-
-        if (typeof this.engine.resetChat === 'function') {
-            try {
-                await this.engine.resetChat();
-            } catch (error) {
-                console.warn('engine.resetChat failed after interruption:', error);
-            }
-        }
+        console.log('Wllama state reset after stop');
     }
 
     /**
      * User-driven mode change. Lazily initializes wllama the first time
-     * CPU mode is selected and shows a transient loading indicator.
-     * @param {'gpu'|'cpu'|'basic'} targetMode
+     * it is selected and shows a transient loading indicator.
+     * @param {'wllama'|'basic'} targetMode
      */
     async switchMode(targetMode) {
         if (targetMode === this.currentMode) {
@@ -1747,108 +1463,47 @@ class AskAnton {
         }
 
         // Reset cancellation flag when user tries to load a model again
-        if ((targetMode === 'gpu' || targetMode === 'cpu') && this.modelLoadingCancelled) {
+        if (targetMode === 'wllama' && this.modelLoadingCancelled) {
             this.modelLoadingCancelled = false;
-        }
-
-        if (targetMode === 'gpu') {
-            // If GPU is available but engine not loaded, try to load it
-            if (this.availableModes.gpu && !this.engine) {
-                this.isLoadingModel = true;
-                this.elements.modeSelect.disabled = true;
-                this.disableInput();
-                const loadingMsg = this.addSystemMessage('Switching to GPU mode - loading model... 0%');
-                const loadingMsgElement = loadingMsg.querySelector('p');
-
-                try {
-                    // Create new abort controller for this load attempt
-                    this.modelLoadingAbortController = new AbortController();
-
-                    await this.initializeWebLLM((progress) => {
-                        if (loadingMsgElement) {
-                            const percentage = Math.round(progress * 100);
-                            loadingMsgElement.textContent = `Switching to GPU mode - loading model... ${percentage}%`;
-                        }
-                    }, {
-                        isLazyLoad: true,
-                        activateMode: true,
-                        showChatInterface: false
-                    });
-
-                    if (loadingMsgElement) {
-                        loadingMsgElement.textContent = 'Switched to GPU mode';
-                    }
-                } catch (error) {
-                    console.error('Failed to load GPU mode:', error);
-                    this.availableModes.gpu = false;
-
-                    const fallbackMode = this.availableModes.cpu && this.wllama ? 'cpu' : 'basic';
-                    this.setCurrentMode(fallbackMode);
-
-                    if (loadingMsgElement) {
-                        loadingMsgElement.textContent = `Failed to load GPU mode. Switched to ${this.getModeLabel(fallbackMode)} mode.`;
-                    }
-                } finally {
-                    this.updateModeSelector();
-                    this.isLoadingModel = false;
-                    this.enableInput();
-                    this.elements.modeSelect.disabled = false;
-                }
-                return;
-            }
-
-            // If GPU not available, show modal
-            if (!this.availableModes.gpu) {
-                this.updateModeSelector();
-                this.lastFocusedElement = document.activeElement;
-                this.showAiModeModal();
-                return;
-            }
-
-            // GPU mode already loaded, just switch to it
-            this.disableInput();
-            this.setCurrentMode('gpu');
-            this.updateModeSelector();
-            this.addSystemMessage('Switched to GPU mode');
-            this.enableInput();
-            return;
         }
 
         if (targetMode === 'basic') {
             this.disableInput();
             this.setCurrentMode('basic');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to Basic mode');
+            this.addSystemMessage('Switched to None');
             this.enableInput();
             return;
         }
 
-        if (!this.availableModes.cpu) {
+        // targetMode === 'wllama'
+        if (!this.availableModes.wllama) {
             this.updateModeSelector();
-            this.addSystemMessage('CPU mode is unavailable on this device.');
+            this.addSystemMessage('Phi 3.5-mini is unavailable on this device.');
             return;
         }
 
         if (this.wllama) {
             this.disableInput();
-            this.setCurrentMode('cpu');
+            this.setCurrentMode('wllama');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to CPU mode');
+            this.addSystemMessage('Switched to Phi 3.5-mini');
             this.enableInput();
             return;
         }
 
+        // Wllama not yet loaded — load it now
         this.isLoadingModel = true;
         this.elements.modeSelect.disabled = true;
         this.disableInput();
-        const loadingMsg = this.addSystemMessage('Switching to CPU mode - loading model... 0% (first-time download may take a few minutes)');
+        const loadingMsg = this.addSystemMessage('Loading AI model... 0% (first-time download may take a few minutes)');
         const loadingMsgElement = loadingMsg.querySelector('p');
 
         try {
             await this.initializeWllama((progress) => {
                 if (loadingMsgElement) {
                     const percentage = Math.round(progress * 100);
-                    loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}% (first-time download may take a few minutes)`;
+                    loadingMsgElement.textContent = `Loading AI model... ${percentage}% (first-time download may take a few minutes)`;
                 }
             }, {
                 activateMode: true,
@@ -1857,17 +1512,17 @@ class AskAnton {
             });
 
             if (loadingMsgElement) {
-                loadingMsgElement.textContent = 'Switched to CPU mode';
+                loadingMsgElement.textContent = 'AI model loaded and ready';
             }
         } catch (error) {
-            console.error('Failed to load CPU mode:', error);
-            this.availableModes.cpu = false;
+            console.error('Failed to load AI model:', error);
+            this.availableModes.wllama = false;
 
-            const fallbackMode = this.availableModes.gpu && this.engine ? 'gpu' : 'basic';
+            const fallbackMode = 'basic';
             this.setCurrentMode(fallbackMode);
 
             if (loadingMsgElement) {
-                loadingMsgElement.textContent = `Failed to load CPU mode. Switched to ${this.getModeLabel(fallbackMode)} mode.`;
+                loadingMsgElement.textContent = `Failed to load Phi 3.5-mini. Switched to ${this.getModeLabel(fallbackMode)}.`;
             }
         } finally {
             this.updateModeSelector();
@@ -1885,15 +1540,14 @@ class AskAnton {
         }
 
         const modeIcons = {
-            gpu: { enabled: '🟢', disabled: '◯' },
-            cpu: { enabled: '🟠', disabled: '◯' },
+            wllama: { enabled: '🟢', disabled: '◯' },
             basic: { enabled: '⚪', disabled: '◯' }
         };
 
         Array.from(modeSelect.options).forEach(option => {
             const mode = option.value;
             const isAvailable = mode === 'basic' ? true : this.availableModes[mode];
-            const icon = isAvailable ? modeIcons[mode].enabled : modeIcons[mode].disabled;
+            const icon = isAvailable ? (modeIcons[mode]?.enabled ?? '◯') : (modeIcons[mode]?.disabled ?? '◯');
             option.textContent = `${icon} ${this.getModeLabel(mode)}`;
             option.disabled = !isAvailable;
         });
@@ -1901,13 +1555,12 @@ class AskAnton {
         modeSelect.value = this.currentMode;
 
         const modeDescriptions = {
-            gpu: 'GPU mode uses WebLLM with Phi-3-mini.',
-            cpu: 'CPU mode uses wllama with Phi-2.',
-            basic: 'Basic mode returns matching content directly from the knowledge base.'
+            wllama: 'Phi 3.5-mini runs in your browser, GPU-accelerated when available.',
+            basic: 'None: returns matching knowledge-base content without model inference.'
         };
 
-        modeSelect.title = `Current mode: ${this.getModeLabel()}. ${modeDescriptions[this.currentMode]}`;
-        modeSelect.setAttribute('aria-label', `Choose a response mode. Current mode: ${this.getModeLabel()}.`);
+        modeSelect.title = `Current model: ${this.getModeLabel()}. ${modeDescriptions[this.currentMode] ?? ''}`;
+        modeSelect.setAttribute('aria-label', `Choose a model. Current model: ${this.getModeLabel()}.`);
     }
 
     // ============================================================================
@@ -1918,13 +1571,13 @@ class AskAnton {
      * Build the HTML for the "Anton is typing" indicator, with a mode-specific
      * note appended in CPU and Basic modes. Used to seed an assistant message
      * bubble before the real response is streamed/animated into it.
-     * @param {('gpu'|'cpu'|'basic')} [mode=this.currentMode] Mode whose note to show.
+     * @param {('wllama'|'basic')} [mode=this.currentMode] Mode whose note to show.
      * @returns {string} HTML string to assign to `messageTextDiv.innerHTML`.
      */
     getTypingIndicatorHtml(mode = this.currentMode) {
         const dots = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span>';
-        if (mode === 'cpu') {
-            return `${dots}<p style="${TYPING_NOTE_STYLE}">(Responses may be slow in CPU mode. Thanks for your patience!)</p>`;
+        if (mode === 'wllama') {
+            return `${dots}<p style="${TYPING_NOTE_STYLE}">(Responses may be slow on some devices. Thanks for your patience!)</p>`;
         }
         if (mode === 'basic') {
             return `${dots}<p style="${TYPING_NOTE_STYLE}">(Basic mode returns matching knowledge-base content without model inference.)</p>`;
@@ -2333,14 +1986,10 @@ class AskAnton {
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
-            this.conversationHistory.push({
-                role: 'user',
-                content: userMessage
-            });
-            this.conversationHistory.push({
-                role: 'assistant',
-                content: historyAssistantMessage
-            });
+            this.conversationHistory = [
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: historyAssistantMessage }
+            ];
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -2362,7 +2011,7 @@ class AskAnton {
         const bingUrl = `https://www.bing.com/search?q=${encodedKeywords}`;
         const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.\n\nAsk me about AI-related topics and I'll do my best to help!`;
         const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
-        const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
+        const shouldTryConversationFallback = this.currentMode === 'wllama' && this.hasPreviousUserPrompt();
         const fallbackNote = '\n\n*Note: You can ask me to "Search for details about {X}" or "Find documentation for {Y}" to look for information about Microsoft AI technologies in Microsoft Learn.*';
 
         this.isGenerating = true;
@@ -2381,11 +2030,13 @@ class AskAnton {
             if (shouldTryConversationFallback) {
                 let modelResponse = '';
 
-                if (this.currentMode === 'gpu') {
-                    modelResponse = await this.generateWithWebLLM(userMessage, null, messageTextDiv, usedVoiceInput);
-                } else if (this.currentMode === 'cpu') {
+                if (this.currentMode === 'wllama') {
                     modelResponse = await this.generateWithWllama(userMessage, null, messageTextDiv, usedVoiceInput);
                 }
+
+                // If GPU recovery created a new bubble, redirect rendering to it.
+                const fallbackActiveDiv = this._retryMessageDiv ?? messageTextDiv;
+                this._retryMessageDiv = null;
 
                 if (this.stopRequested) {
                     return;
@@ -2393,26 +2044,17 @@ class AskAnton {
 
                 if (modelResponse.trim()) {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
-                    messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
+                    fallbackActiveDiv.innerHTML = this.formatResponse(displayedMessage);
 
-                    this.conversationHistory.push({
-                        role: 'user',
-                        content: userMessage
-                    });
-                    this.conversationHistory.push({
-                        role: 'assistant',
-                        content: modelResponse.trim()
-                    });
+                    this.conversationHistory = [
+                        { role: 'user', content: userMessage },
+                        { role: 'assistant', content: modelResponse.trim() }
+                    ];
                     return;
                 }
 
-                if (this.currentMode === 'gpu' && this.lastWebLLMCompletionErrored) {
-                    messageTextDiv.innerHTML = this.formatResponse(this.gpuModeFailureMessage);
-                    return;
-                }
-
-                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
-                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+                if (this.currentMode === 'wllama' && this.lastWllamaCompletionErrored) {
+                    fallbackActiveDiv.innerHTML = this.formatResponse(this.wllamaModeFailureMessage);
                     return;
                 }
             }
@@ -2455,8 +2097,8 @@ class AskAnton {
 
     /**
      * Stream a response for a question that has knowledge-base context.
-     * Routes to WebLLM, wllama, or the basic fallback based on
-     * `currentMode`, then appends learn-more links and videos.
+     * Routes to wllama or the basic fallback based on `currentMode`,
+     * then appends learn-more links and videos.
      */
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links, videos } = searchResult;
@@ -2476,43 +2118,37 @@ class AskAnton {
             // Route to the appropriate engine
             let assistantMessage = '';
 
-            if (this.currentMode === 'cpu') {
+            if (this.currentMode === 'wllama') {
                 assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
-            } else if (this.currentMode === 'basic') {
-                assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
             } else {
-                assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
+                assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
             }
 
-            if (!assistantMessage.trim()) {
-                if (this.currentMode === 'gpu' && this.lastWebLLMCompletionErrored) {
-                    messageTextDiv.innerHTML = this.formatResponse(this.gpuModeFailureMessage);
-                    return;
-                }
+            // If GPU recovery created a new bubble for the CPU retry, use that div
+            // for link/video rendering instead of the original failure notice bubble.
+            const activeMessageDiv = this._retryMessageDiv ?? messageTextDiv;
+            this._retryMessageDiv = null;
 
-                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
-                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+            if (!assistantMessage.trim()) {
+                if (this.currentMode === 'wllama' && this.lastWllamaCompletionErrored) {
+                    activeMessageDiv.innerHTML = this.formatResponse(this.wllamaModeFailureMessage);
                     return;
                 }
             }
 
             // Add learn more links and videos
             if (links && links.length > 0 && categories && categories.length > 0) {
-                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
+                this.renderAssistantMessage(activeMessageDiv, assistantMessage, categories, links, videos, {});
             } else if (videos && videos.length > 0) {
-                this.renderAssistantMessage(messageTextDiv, assistantMessage, [], [], videos, {});
+                this.renderAssistantMessage(activeMessageDiv, assistantMessage, [], [], videos, {});
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
             if (!this.stopRequested && assistantMessage.trim()) {
-                this.conversationHistory.push({
-                    role: 'user',
-                    content: userMessage // Store original question, not the one with context
-                });
-                this.conversationHistory.push({
-                    role: 'assistant',
-                    content: assistantMessage
-                });
+                this.conversationHistory = [
+                    { role: 'user', content: userMessage }, // Store original question, not the one with context
+                    { role: 'assistant', content: assistantMessage }
+                ];
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
@@ -2521,11 +2157,8 @@ class AskAnton {
             console.error('Error generating response:', error);
             responseMessage.remove();
 
-            // Suggest switching to CPU mode if currently in GPU mode
-            if (this.currentMode === 'gpu') {
-                this.addMessage('assistant', this.gpuModeFailureMessage);
-            } else if (this.currentMode === 'cpu') {
-                this.addMessage('assistant', this.cpuModeFailureMessage);
+            if (this.currentMode === 'wllama') {
+                this.addMessage('assistant', this.wllamaModeFailureMessage);
             } else {
                 this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             }
@@ -2542,93 +2175,8 @@ class AskAnton {
     }
 
     // ============================================================================
-    // LLM RESPONSE GENERATION (WebLLM & Wllama)
+    // LLM RESPONSE GENERATION (wllama)
     // ============================================================================
-
-
-    /**
-     * Run a streamed chat completion against the WebLLM engine, writing
-     * tokens into `messageTextDiv` as they arrive. Honors stop requests
-     * and records error state in `lastWebLLMCompletionErrored`.
-     * @returns {Promise<string>} The full assistant text (may be empty on stop/error).
-     */
-    async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
-        this.lastWebLLMCompletionErrored = false;
-
-        let userPrompt = context
-            ? `${userMessage}\n${this.PROMPT_WITH_CONTEXT}\n${context}`
-            : `${userMessage} (${this.PROMPT_WITHOUT_CONTEXT})`;
-
-        const recentHistory = this.conversationHistory.slice(-6);
-        recentHistory.push({
-            role: 'user',
-            content: userPrompt
-        });
-
-        const messages = [
-            { role: 'system', content: this.SYSTEM_PROMPT },
-            ...recentHistory
-        ];
-
-        const completion = await this.engine.chat.completions.create({
-            messages: messages,
-            temperature: 0.7,
-            max_tokens: 500,
-            stream: true
-        });
-
-        this.currentStream = completion;
-        let assistantMessage = '';
-        let audioPlayed = false;
-
-        try {
-            for await (const chunk of completion) {
-                if (this.stopRequested) {
-                    console.log('Generation stopped by user');
-                    break;
-                }
-
-                const delta = chunk.choices[0]?.delta?.content;
-                if (delta) {
-                    // Play audio on first chunk if voice input was used
-                    if (!audioPlayed && usedVoiceInput) {
-                        this.playRandomResponseAudio();
-                        audioPlayed = true;
-                    }
-
-                    assistantMessage += delta;
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
-                }
-            }
-        } catch (error) {
-            const isInterrupted = this.stopRequested ||
-                error?.name === 'AbortError' ||
-                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
-
-            if (!isInterrupted) {
-                this.lastWebLLMCompletionErrored = true;
-                console.error('WebLLM generation error:', error);
-                return '';
-            }
-
-            console.log('WebLLM generation interrupted');
-        } finally {
-            if (this.currentStream === completion) {
-                this.currentStream = null;
-            }
-        }
-
-        // Clean up incomplete sentences after streaming completes
-        const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
-        if (cleanedAssistantMessage !== assistantMessage) {
-            assistantMessage = cleanedAssistantMessage;
-            messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-            this.scrollToBottom();
-        }
-
-        return assistantMessage;
-    }
 
     // Helper function to extract first sentence or first 30 characters
     extractFirstSentence(text) {
@@ -2642,74 +2190,6 @@ class AskAnton {
 
         // If no sentence-ending punctuation, use first 30 characters
         return text.substring(0, 30).trim();
-    }
-
-    /**
-     * Convert messages array to prompt format for wllama.
-     * Phi 3.1 uses a simple conversational format without special tokens.
-     * @param {Array<{role: string, content: string}>} messages
-     * @returns {string} Formatted prompt string
-     */
-    buildWllamaPrompt(messages) {
-        let prompt = '';
-
-        for (const msg of messages) {
-            if (msg.role === 'system') {
-                prompt += `${msg.content}\n\n`;
-            } else if (msg.role === 'user') {
-                prompt += `User: ${msg.content}\n\n`;
-            } else if (msg.role === 'assistant') {
-                prompt += `Assistant: ${msg.content}\n\n`;
-            }
-        }
-
-        // Add final prompt for assistant response
-        prompt += 'Assistant:';
-
-        return prompt;
-    }
-
-    truncateParagraphsForCPU(context) {
-        if (!context) return context;
-
-        // Split context into sections by blank lines, then concatenate into one flow.
-        const sections = context
-            .split(/\n\s*\n+/)
-            .map(section => section.replace(/\s+/g, ' ').trim())
-            .filter(Boolean);
-
-        const truncatedSections = sections.map(section => {
-            // If section is <= 100 chars, keep it as is
-            if (section.length <= 100) return section;
-
-            // Find first sentence ending (., !, ?) after position 100
-            const searchFrom = 100;
-            let endPos = -1;
-
-            for (let i = searchFrom; i < section.length; i++) {
-                if (section[i] === '.' || section[i] === '!' || section[i] === '?') {
-                    endPos = i + 1; // Include the punctuation
-                    break;
-                }
-            }
-
-            // If found a sentence ending, truncate there
-            if (endPos > 0) {
-                return section.substring(0, endPos);
-            }
-
-            // Otherwise, truncate at 100 chars with ellipsis
-            return section.substring(0, 100) + '...';
-        });
-
-        return truncatedSections.reduce((combined, section) => {
-            if (!combined) {
-                return section;
-            }
-
-            const needsSentenceSeparator = !/[.!?]\s*$/.test(combined);
-            return combined + (needsSentenceSeparator ? '. ' : ' ') + section;
-        }, '');
     }
 
     trimIncompleteSentenceForCPU(text) {
@@ -2747,11 +2227,27 @@ class AskAnton {
                     endIndex++;
                 }
                 lastSentenceEnd = endIndex;
+            } else if (trimmedText[i] === '\n') {
+                // A newline ends a list item cleanly — treat it as a valid trim point.
+                lastSentenceEnd = Math.max(lastSentenceEnd, i);
             }
         }
 
         if (lastSentenceEnd > 0) {
-            return trimmedText.substring(0, lastSentenceEnd).trim();
+            let result = trimmedText.substring(0, lastSentenceEnd).trim();
+
+            // Check if the result ends with a numbered list item that starts on a newline
+            // (e.g., ends with something like "\n3." where the sentence is incomplete)
+            // In this case, trim back to before the newline to avoid an orphaned number
+            const endsWithNumberedListPattern = /\n\d+\.\s*$/;
+            if (endsWithNumberedListPattern.test(result)) {
+                const lastNewlineIndex = result.lastIndexOf('\n');
+                if (lastNewlineIndex > 0) {
+                    result = result.substring(0, lastNewlineIndex).trim();
+                }
+            }
+
+            return result;
         }
 
         return trimmedText;
@@ -2801,7 +2297,7 @@ class AskAnton {
      * requests and records error state in `lastWllamaCompletionErrored`.
      * @returns {Promise<string>} The full assistant text (may be empty on stop/error).
      */
-    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false, isGpuRetry = false) {
         this.lastWllamaCompletionErrored = false;
 
         // Ensure wllama is loaded
@@ -2809,7 +2305,7 @@ class AskAnton {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
         }
 
-        // Build messages array (same format as WebLLM for consistency)
+        // Build messages array for wllama
         const messages = [
             { role: 'system', content: this.SYSTEM_PROMPT }
         ];
@@ -2833,17 +2329,14 @@ class AskAnton {
         // Add current user message with context if available
         let userPrompt;
         if (context) {
-            const truncatedContext = this.truncateParagraphsForCPU(context);
-            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT}\n${truncatedContext}`;
+            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT}\n${context}`;
         } else {
             userPrompt = `${userMessage} (${this.PROMPT_WITHOUT_CONTEXT})`;
         }
         messages.push({ role: 'user', content: userPrompt });
 
-        // Convert messages to prompt format for wllama
-        const prompt = this.buildWllamaPrompt(messages);
-        console.log('Sending prompt to wllama (length:', prompt.length, 'chars)');
-        console.log('Wllama prompt:', prompt);
+        console.log('Sending chat messages to wllama, message count:', messages.length);
+        console.log('Wllama messages:', JSON.stringify(messages));
 
         let assistantMessage = '';
         let audioPlayed = false;
@@ -2868,23 +2361,39 @@ class AskAnton {
                 }
                 console.log('Wllama slow response: showing waiting message after 20 seconds');
             }
-        }, 20000);
+        }, 30000);
 
-        // Use streaming with proper abort support
+        // Streamed completion: tokens arrive progressively for a responsive UI.
         try {
-            completion = await this.wllama.createCompletion({
-                prompt: prompt,
-                max_tokens: 200,
+            completion = await this.wllama.createChatCompletion({
+                messages: messages,
+                max_tokens: this.wllama_usedGPU ? 400 : 250,
                 temperature: 0.2,
-                top_k: 40,
-                top_p: 0.9,
-                frequency_penalty: 1.1,
-                stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:'],
-                signal: controller.signal,
+                top_k: 30,
+                top_p: 0.85,
+                repeat_penalty: 1.1,
+                repeat_last_n: 64,
+                cache_prompt: false, // Prevent KV cache accumulation across turns to avoid memory overflows
+                abortSignal: controller.signal,
                 stream: true
             });
 
             this.currentStream = completion;
+
+            // Throttle DOM updates to one per animation frame for smooth streaming.
+            // Tokens accumulate in assistantMessage at the model's full speed; the
+            // display catches up on the next rAF tick (~16 ms) regardless of burst size.
+            let renderPending = false;
+            const scheduleRender = () => {
+                if (!renderPending) {
+                    renderPending = true;
+                    requestAnimationFrame(() => {
+                        messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                        this.scrollToBottom();
+                        renderPending = false;
+                    });
+                }
+            };
 
             for await (const chunk of completion) {
                 if (this.stopRequested) {
@@ -2892,7 +2401,8 @@ class AskAnton {
                     break;
                 }
 
-                if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                if (tokenText) {
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
                         clearTimeout(slowResponseTimeout);
@@ -2909,9 +2419,8 @@ class AskAnton {
                         audioPlayed = true;
                     }
 
-                    assistantMessage += chunk.choices[0].text;
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
+                    assistantMessage += tokenText;
+                    scheduleRender();
                 }
             }
 
@@ -2948,6 +2457,56 @@ class AskAnton {
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
+
+        // GPU failure recovery: if the GPU session crashed mid-inference, tear down
+        // the dead WASM instance, switch to CPU-only mode, and retry the prompt once.
+        if (!isGpuRetry && this.wllama_usedGPU && !this.stopRequested &&
+            (this.lastWllamaCompletionErrored || !assistantMessage.trim())) {
+            console.warn('GPU inference failed; switching to CPU and retrying prompt...');
+            this.gpuFailed = true;
+            this.wllama_usedGPU = false;
+            const _deadWllama = this.wllama;
+            this.wllama = null;  // Dead WASM instance — must be replaced
+            _deadWllama.exit().catch(() => { });
+
+            // Animate the failure notice into the current bubble as a proper assistant response.
+            await this.animateTyping(
+                messageTextDiv,
+                'I\'m sorry, but I encountered an issue with the GPU. I\'ll switch to CPU mode and try again.\n\n*Please wait...*',
+                (t) => this.formatResponse(t),
+                25
+            );
+
+            try {
+                // gpuFailed=true causes loadWithFallback to skip the GPU attempt
+                await this.initializeWllama(null, {
+                    activateMode: false,
+                    showChatInterface: false,
+                    showFatalError: false
+                });
+            } catch (reinitErr) {
+                console.error('CPU re-initialization failed:', reinitErr);
+                this.lastWllamaCompletionErrored = true;
+                return '';
+            }
+
+            if (this.wllama && !this.stopRequested) {
+                // Create a fresh assistant bubble for the CPU response so it appears
+                // as a separate message after the failure notice above.
+                const retryMessage = this.addMessage('assistant', '', false);
+                const retryMessageDiv = retryMessage.querySelector('.message-text');
+                retryMessageDiv.innerHTML = this.getTypingIndicatorHtml();
+                this.scrollToBottom();
+
+                // Store so callers can redirect link/video rendering to this bubble.
+                this._retryMessageDiv = retryMessageDiv;
+
+                this.lastWllamaCompletionErrored = false;
+                return await this.generateWithWllama(
+                    userMessage, context, retryMessageDiv, usedVoiceInput, true
+                );
+            }
+        }
 
         return assistantMessage;
     }
@@ -3409,25 +2968,13 @@ class AskAnton {
             // Clear search status
             this.elements.searchStatus.textContent = '';
 
-            // Reset wllama cache if in CPU mode
-            if (this.currentMode === 'cpu' && this.wllama) {
+            // Reset wllama cache if in wllama mode
+            if (this.currentMode === 'wllama' && this.wllama) {
                 try {
                     this.wllama.samplingReset();
                     console.log('Wllama cache reset for new conversation');
                 } catch (error) {
                     console.warn('Failed to reset wllama cache:', error);
-                }
-            }
-
-            // Reset WebLLM chat if in GPU mode
-            if (this.currentMode === 'gpu' && this.engine) {
-                try {
-                    if (typeof this.engine.resetChat === 'function') {
-                        this.engine.resetChat();
-                        console.log('WebLLM cache reset for new conversation');
-                    }
-                } catch (error) {
-                    console.warn('Failed to reset WebLLM cache:', error);
                 }
             }
 

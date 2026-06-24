@@ -19,7 +19,7 @@
     <div class="container" role="main" aria-label="Ask Anton Chat Application">
         <header role="banner">
             <h1 id="app-title">🎓 Ask Anton</h1>
-            <p class="subtitle" id="app-subtitle">A sample AI assistant for educational purposes only</p>
+            <p class="subtitle" id="app-subtitle">An AI assistant to support your learning journey</p>
         </header>
 
         <div class="chat-wrapper">
@@ -38,7 +38,7 @@
                     <p class="progress-info" aria-live="polite">First-time download may take a few minutes...</p>
                     <p class="progress-cancel">
                         <a href="#" id="cancel-loading-link" class="cancel-link" tabindex="0">Cancel and start in Basic
-                            Mode</a>
+                            Mode with no model</a>
                     </p>
                 </div>
             </div>
@@ -64,9 +64,8 @@
                                     <span class="visually-hidden">Choose a model</span>
                                 </label>
                                 <select id="mode-select" class="mode-select" aria-label="Choose a model">
-                                    <option value="gpu">🟢 Phi 3.5 (GPU)</option>
-                                    <option value="cpu">🟠 Phi 3.1 (CPU)</option>
-                                    <option value="basic">⚪ None (Basic Q&A)</option>
+                                    <option value="wllama">🟢 Phi 3.5-mini</option>
+                                    <option value="basic">⚪ None</option>
                                 </select>
                             </div>
                             <button class="restart-btn" id="restart-btn" title="Restart conversation"
@@ -85,13 +84,13 @@
                         </div>
                         <div class="message-content">
                             <p class="message-author">Anton</p>
-                            <p>Hi! I'm Anton, a basic example of an AI assistant.<br>
+                            <p>Hi! I'm Anton, an AI assistant designed to help you learn about artificial intelligence.<br>
                                 I'm <u>not</u> a supported Microsoft product, or an official component of
                                 Microsoft Learn or AI Skills Navigator; but ask me about AI concepts, and I'll
                                 do my best to answer.</p>
                             <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">I use a
-                                Microsoft Phi model to generate AI responses. On older, or lower-spec devices, my
-                                responses may be slow.<br>You can switch the model to "None (Basic Q&A)" for simpler,
+                                Microsoft Phi model to generate AI responses. On some devices, my
+                                responses may be slow.<br>You can switch the model to "None" for simpler,
                                 but
                                 faster responses.</p>
                         </div>
@@ -180,10 +179,7 @@
                 </p>
                 <h3>Features</h3>
                 <ul>
-                    <li><strong>Multiple Response Modes:</strong> GPU mode (WebLLM with Phi-3.5-mini for fast
-                        inference),
-                        CPU mode (wllama with Phi-3.1 for broader compatibility), and Basic mode (knowledge-base content
-                        without model inference)</li>
+                    <li><strong>Multiple Response Modes:</strong> AI model mode (Microsoft Phi-3.5-mini running in wllama), and Basic mode (knowledge-base content without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
                     <li><strong>Search Integration:</strong> Seamlessly search Microsoft Learn documentation for AI
@@ -193,12 +189,10 @@
                 </ul>
 
                 <h3>How It Works</h3>
-                <p>Ask Anton runs AI models entirely in your browser, so your questions remain private. No data is sent
-                    to external servers. Use the mode list in the chat header to switch between GPU, CPU, and Basic
-                    responses.</p>
+                <p>Ask Anton runs an AI model in your browser. The initial download may take a few minutes, but once loaded, the model will run locally on your device. The model generates responses to questions about AI-related topics, and can also use the Microsoft Learn MCP tool to provide links to related documentation.</p>
 
                 <h3>Getting Started</h3>
-                <p>Try asking a question like "What is machine learning?" or "Explain artificial intelligence" to get
+                <p>Try asking a question like "What is generative AI?" or "Explain MCP" to get
                     started.</p>
                 <div style="margin: 18px 0 0 0;">
                     <a href="https://forms.office.com/r/fC0ndfBQeK" target="_blank" rel="noopener noreferrer"
@@ -221,39 +215,27 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title">🤖 About Response Modes</h2>
-                <button class="modal-close" id="modal-close" aria-label="Close GPU mode dialog" title="Close"
+                <button class="modal-close" id="modal-close" aria-label="Close AI mode dialog" title="Close"
                     type="button">×</button>
             </div>
             <div class="modal-body" id="ai-mode-modal-description">
-                <p>GPU mode uses WebLLM with the Phi-3.5-mini model, which requires <strong>WebGPU support</strong> in
-                    your browser for fast, GPU-accelerated inference.</p>
+                <p>AI model mode uses wllama with the Phi-3.5-mini model running directly in your browser.  No data is uploaded to Microsoft's servers.</p>
 
-                <p>CPU mode uses wllama with Phi-3.1 when GPU mode is unavailable or when you prefer a broader
-                    browser-compatible option. Basic mode skips model inference entirely and returns matching content
+                <p>Setting the model to <i>None</i> skips model inference entirely and returns matching content
                     directly from the built-in knowledge base.</p>
 
-                <p>If you are using a Windows computer with an ARM64 CPU (such as a Snapdragon processor) that has an
-                    integrated GPU, you may need to explicitly enable WebGPU support in your browser's settings:</p>
-
-                <ul>
-                    <li>In <strong>Microsoft Edge</strong>, go to <code>edge://flags</code></li>
-                    <li>In <strong>Google Chrome</strong>, go to <code>chrome://flags</code></li>
-                </ul>
-
-                <p class="warning"><strong>Remember to disable it again when you're finished!</strong></p>
-
-                <p>If the GPU and CPU models are both unavailable, the app automatically switches to Basic mode so you
-                    can still search the built-in AI content.</p>
+                <p>If the AI model cannot be loaded, the app automatically switches to Basic mode (<i>None</i>) so you
+                    can still search the built-in knowledge base content and Microsoft Learn documentation.</p>
             </div>
             <div class="modal-footer">
-                <button class="modal-btn" id="modal-ok" aria-label="Acknowledge GPU mode dialog" type="button">Got
+                <button class="modal-btn" id="modal-ok" aria-label="Acknowledge AI mode dialog" type="button">Got
                     it!</button>
             </div>
         </div>
     </div>
 
     <!-- Scripts -->
-    <script type="module" src="script.js?v=66"></script>
+    <script type="module" src="script.js?v=93"></script>
 </body>
 
 </html>
