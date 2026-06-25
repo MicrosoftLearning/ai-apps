@@ -1,14 +1,11 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
-import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js";
+import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
 
 const WASM_PATHS = {
-    "single-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm",
-    "multi-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm"
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
 
-const PHI2_REPO = "Felladrin/gguf-sharded-phi-2-orange-v2";
-const PHI2_FILE = "phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf";
-const PHI3_MODEL_ID = "Phi-3-mini-4k-instruct-q4f16_1-MLC";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_QUANT = "Q4_K_M";
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
 const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
 const WIKIPEDIA_MODEL_NAME = "Wikipedia API (Basic Chat)";
@@ -243,12 +240,10 @@ function validateMessages(messages, label = "messages") {
 
 class ModelCoderLLM {
     constructor() {
-        this.engine = null;  // WebLLM engine for GPU mode
-        this.wllama = null;  // wllama engine for CPU mode
-        this.usingWllama = false;  // Track which engine is active
+        this.wllama = null;  // wllama engine for Phi 3.5-mini
+        this.usingWllama = false;  // Track if wllama is active
         this.usingBasic = false;  // Basic Chat Wikipedia mode
-        this.webllmAvailable = false;  // Track if WebLLM model successfully loaded
-        this.availableModes = { gpu: false, cpu: true, basic: true };
+        this.availableModes = { cpu: true, basic: true };
         this.isReady = false;
         this.isLoading = false;
         this.statusCallback = null;
@@ -262,6 +257,24 @@ class ModelCoderLLM {
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = null;
         this.initSessionId = 0;  // Track which init session we're in
+        this.gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
+        this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
+    }
+
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
     }
 
     async _ensureModerationTerms() {
@@ -482,11 +495,8 @@ class ModelCoderLLM {
         // Clean up any loading state
         this.isLoading = false;
 
-        // Switch to basic mode WITHOUT marking other modes unavailable
-        // (Don't use _activateBasicMode as it sets webllmAvailable = false)
         this.usingBasic = true;
         this.usingWllama = false;
-        // Keep webllmAvailable and availableModes as they are
         this.isReady = true;
 
         this._status("ready", `${WIKIPEDIA_MODEL_NAME} ready (user cancelled loading)`);
@@ -508,12 +518,8 @@ class ModelCoderLLM {
             ]);
         }
 
-        // Clear KV cache for wllama if it's being used
-        if (this.wllama && this.usingWllama) {
-            await this.wllama.kvClear().catch(() => { });
-        }
-
-        // Note: WebLLM engine doesn't require explicit KV cache clearing
+        // Note: KV cache clearing removed - not needed when doing hard resets
+        // and not supported in all wllama versions
     }
 
     async hardResetSession(options = {}) {
@@ -526,12 +532,10 @@ class ModelCoderLLM {
         await this.resetSession();
 
         // Preserve availability information before reset
-        const preservedGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
         const preservedCpuAvailable = this.availableModes.cpu;
 
         // Cancel any ongoing model loading only if actually loading
         if (this.isLoading) {
-            console.log('[Model Reset] Cancelling ongoing model loading');
             this.modelLoadingCancelled = true;
             if (this.modelLoadingAbortController) {
                 this.modelLoadingAbortController.abort();
@@ -541,21 +545,14 @@ class ModelCoderLLM {
         }
 
         const currentWllama = this.wllama;
-        const currentEngine = this.engine;
 
         this.wllama = null;
-        this.engine = null;
         this.isReady = false;
         this.isLoading = false;
         this.usingWllama = false;
         this.usingBasic = false;
 
-        // Only reset webllmAvailable if GPU was never successfully loaded
-        // Preserve it if WebGPU is supported or was previously loaded
-        this.webllmAvailable = preservedGpuAvailable;
-
         // Preserve mode availability knowledge
-        this.availableModes.gpu = preservedGpuAvailable;
         this.availableModes.cpu = preservedCpuAvailable;
 
         // Clean up wllama
@@ -568,12 +565,6 @@ class ModelCoderLLM {
             }
         }
 
-        // Clean up WebLLM engine
-        if (currentEngine) {
-            // WebLLM engine cleanup if needed
-            // Currently no explicit cleanup required for WebLLM
-        }
-
         // Only reinitialize if not skipping (default behavior for backward compatibility)
         if (!skipReinit) {
             await this.initialize(2);
@@ -584,12 +575,11 @@ class ModelCoderLLM {
         if (this.usingBasic) {
             return "basic";
         }
-        return this.usingWllama ? "cpu" : "gpu";
+        return "cpu";
     }
 
     getAvailableModes() {
         return {
-            gpu: Boolean(this.availableModes.gpu),
             cpu: Boolean(this.availableModes.cpu),
             basic: Boolean(this.availableModes.basic)
         };
@@ -598,7 +588,6 @@ class ModelCoderLLM {
     _activateBasicMode(reason = "Local model unavailable") {
         this.usingBasic = true;
         this.usingWllama = false;
-        this.webllmAvailable = false;
         this.availableModes.basic = true;
         this._status("ready", `${WIKIPEDIA_MODEL_NAME} ready (${reason})`);
     }
@@ -609,17 +598,8 @@ class ModelCoderLLM {
         }
     }
 
-    checkWebGPUSupport() {
-        // Check if WebGPU is available in the browser
-        if (!navigator.gpu) {
-            console.log('WebGPU not supported in this browser');
-            return false;
-        }
-        return true;
-    }
-
     async initialize(maxRetries = 3, options = {}) {
-        const { forceCPU = false, forceGPU = false, forceBasic = false } = options;
+        const { forceBasic = false } = options;
 
         if (this.isReady) {
             return;
@@ -629,20 +609,25 @@ class ModelCoderLLM {
             return;
         }
 
-        // Reset cancellation flag for new initialization
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
-        this.initSessionId++;  // Increment to invalidate any previous load callbacks
-        console.log(`[Initialize] Session ID incremented to ${this.initSessionId}, forceCPU=${forceCPU}, forceGPU=${forceGPU}`);
+        this.initSessionId++;
+        console.log(`[Initialize] Session ID incremented to ${this.initSessionId}`);
 
-        // Preserve GPU availability if previously available or if WebGPU supported
-        const preservedGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
         this.availableModes = {
-            gpu: preservedGpuAvailable,
             cpu: true,
             basic: true
         };
+
+        // Check hardware requirements before attempting to load model
+        if (!forceBasic && !this.checkHardwareRequirements()) {
+            this.availableModes.cpu = false;
+            this._activateBasicMode("AI model hardware requirements not met");
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        }
 
         if (forceBasic) {
             this._activateBasicMode("forced fallback mode");
@@ -651,228 +636,32 @@ class ModelCoderLLM {
             return;
         }
 
-        // If forcing CPU mode, skip GPU check and go straight to wllama
-        if (forceCPU) {
-            console.log('Forcing CPU mode (wllama)');
-            this._status("loading", "Initializing CPU mode (Phi-2)...");
-            this.webllmAvailable = false;
-            this.usingBasic = false;
-            try {
-                await this._loadWllama(maxRetries);
+        this._status("loading", "Initializing Phi 3.5-mini...");
+        this.usingBasic = false;
 
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                this.usingWllama = true;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this.isLoading = false;
-                throw wllamaError;
-            }
-        }
-
-        // Check for WebGPU support before attempting to load WebLLM
-        const hasWebGPU = this.checkWebGPUSupport();
-
-        if (!hasWebGPU) {
-            if (forceGPU) {
-                this.isLoading = false;
-                throw new Error('GPU mode requested but WebGPU is not available');
-            }
-            console.log('WebGPU not available, using wllama (CPU mode)');
-            this._status("loading", "WebGPU not available - using CPU mode...");
-            this.webllmAvailable = false;
-            this.availableModes.gpu = false;
-            this.usingBasic = false;
-            try {
-                await this._loadWllama(maxRetries);
-
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                this.usingWllama = true;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this._activateBasicMode("GPU unavailable and CPU init failed");
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            }
-        }
-
-        // Try WebLLM first (faster with GPU) unless forcing CPU
-        // Set GPU as available before attempting to load
-        this.availableModes.gpu = true;
-        this._status("loading", "Initializing GPU mode (Phi-3)...");
         try {
-            console.log('Attempting to initialize WebLLM with WebGPU...');
-            await this._loadWebLLM();
+            await this._loadWllama(maxRetries);
 
-            // Check if cancelled during loading
             if (this.modelLoadingCancelled) {
-                console.log('WebLLM loading was cancelled by user - GPU stays available');
+                console.log('Wllama loading was cancelled by user');
                 return;
             }
 
-            console.log('WebLLM initialized successfully');
-            this.webllmAvailable = true;
-            this.usingWllama = false;
-            this.usingBasic = false;
-            this.availableModes.gpu = true;
+            this.usingWllama = true;
+            this.availableModes.cpu = true;
             this.isReady = true;
             this.isLoading = false;
-            return;
-        } catch (error) {
-            // Only mark unavailable if there was a genuine error (not cancellation)
-            if (this.modelLoadingCancelled || (error.message && error.message.includes('cancelled by user'))) {
-                console.log('WebLLM loading was cancelled by user - GPU stays available');
+        } catch (wllamaError) {
+            if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
+                console.log('Wllama loading was cancelled by user');
                 return;
             }
 
-            console.error('WebLLM initialization failed, loading wllama fallback:', error);
-            this.webllmAvailable = false;
-            this.availableModes.gpu = false;
-
-            if (forceGPU) {
-                this.isLoading = false;
-                throw new Error('GPU mode requested but WebLLM failed to initialize: ' + error.message);
-            }
-
-            try {
-                await this._loadWllama(maxRetries);
-
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.log('Wllama initialized successfully as fallback');
-                this.usingWllama = true;
-                this.usingBasic = false;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Both WebLLM and wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this._activateBasicMode("GPU and CPU init failed");
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            }
-        }
-    }
-
-    async _loadWebLLM() {
-        console.log('_loadWebLLM called - starting model initialization');
-        this._status("loading", "Discovering available models...");
-
-        // Check if WebLLM is available
-        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
-            console.error('WebLLM check failed');
-            throw new Error('WebLLM not properly loaded');
-        }
-
-        // Get available models from WebLLM
-        const models = webllm.prebuiltAppConfig.model_list;
-        console.log('All available models:', models.map(m => m.model_id));
-
-        // Filter for the specific Phi-3 model only
-        let availableModels = models.filter(model =>
-            model.model_id === PHI3_MODEL_ID
-        );
-
-        if (availableModels.length === 0) {
-            throw new Error('Phi-3-mini-4k-instruct model not found');
-        }
-
-        console.log('Available models for loading:', availableModels.map(m => m.model_id));
-        this._status("loading", "Loading WebLLM model (GPU mode)...");
-
-        // Try to load the model
-        try {
-            console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
-
-            // Capture current session ID to detect stale callbacks
-            const currentSessionId = this.initSessionId;
-            console.log(`[GPU Load] Starting with session ID ${currentSessionId}`);
-
-            this.engine = await webllm.CreateMLCEngine(
-                PHI3_MODEL_ID,
-                {
-                    initProgressCallback: (progress) => {
-                        // Ignore callbacks from old initialization sessions
-                        if (this.initSessionId !== currentSessionId) {
-                            console.log(`[GPU Progress] Ignoring stale callback - current:${this.initSessionId}, expected:${currentSessionId}`);
-                            return;
-                        }
-
-                        // Check for cancellation during progress updates
-                        if (this.modelLoadingCancelled) {
-                            console.log('[GPU Progress] Cancelled - ignoring');
-                            return;
-                        }
-
-                        console.log('Progress:', progress);
-                        const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-                        const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
-                        this._status("loading", progressText);
-                    }
-                }
-            );
-
-            // Check if this load is from a stale session
-            if (this.initSessionId !== currentSessionId) {
-                console.log('GPU load completed but session has changed - discarding result');
-                throw new Error('Session changed during loading');
-            }
-
-            // Check if cancelled after loading
-            if (this.modelLoadingCancelled) {
-                throw new Error('Loading cancelled by user');
-            }
-
-            console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
-            this._status("ready", "Model ready: Phi-3 (GPU mode)");
-        } catch (modelError) {
-            console.error(`Failed to load ${PHI3_MODEL_ID}:`, modelError);
-            throw modelError;
+            console.error('Wllama initialization failed:', wllamaError);
+            this.availableModes.cpu = false;
+            this._activateBasicMode("AI model failed to load");
+            this.isReady = true;
+            this.isLoading = false;
         }
     }
 
@@ -909,7 +698,7 @@ class ModelCoderLLM {
                     throw new Error('Loading cancelled by user');
                 }
 
-                this._status("ready", "Model ready: Phi-2 (CPU mode)");
+                this._status("ready", "Model ready: Phi 3.5-mini");
                 return;
             } catch (error) {
                 // If cancelled, rethrow immediately
@@ -929,65 +718,118 @@ class ModelCoderLLM {
     }
 
     async _loadWllamaModel() {
-        this.wllama = new Wllama(WASM_PATHS);
+        this.wllamaUsedGPU = false;
+
+        // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+        let gpuEnabled = !this.gpuFailed && !!navigator.gpu;
+        if (gpuEnabled) {
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                    const vendor = (info?.vendor || '').toLowerCase();
+                    if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                        // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                        console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                        gpuEnabled = false;
+                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                        // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                        console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                        gpuEnabled = false;
+                    }
+                } else {
+                    gpuEnabled = false;
+                }
+            } catch (e) {
+                console.warn('Could not query WebGPU adapter info:', e);
+                gpuEnabled = false;
+            }
+        }
 
         const useMultiThread = window.crossOriginIsolated === true;
         const availableThreads = navigator.hardwareConcurrency || 4;
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
 
-        const baseConfig = {
-            n_ctx: 384,
-            n_threads: preferredThreads,
-            progressCallback: ({ loaded, total }) => {
-                if (!total) {
-                    this._status("loading", "Loading local model...");
-                    return;
-                }
-                const pct = Math.round((loaded / total) * 100);
-                this._status("loading", `Downloading model: ${pct}%`);
+        const progressCallback = ({ loaded, total }) => {
+            if (!total) {
+                this._status("loading", "Loading Phi 3.5-mini...");
+                return;
             }
+            const pct = Math.round((loaded / total) * 100);
+            this._status("loading", `Downloading Phi 3.5-mini: ${pct}%`);
         };
 
-        try {
-            await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, baseConfig);
-        } catch (multiErr) {
-            if (preferredThreads > 1) {
-                await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, {
-                    ...baseConfig,
-                    n_threads: 1
-                });
-            } else {
-                throw multiErr;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const attemptLoad = async (n_gpu_layers, n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
+        };
+
+        if (gpuEnabled) {
+            try {
+                console.log('Attempting GPU load (32 layers)...');
+                this._status("loading", "Loading with GPU acceleration...");
+                await attemptLoad(32, preferredThreads);
+                this.wllamaUsedGPU = true;
+                console.log('Model loaded with GPU acceleration.');
+                return;
+            } catch (gpuErr) {
+                console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                this.wllamaUsedGPU = false;
             }
         }
 
-        await this._warmWllamaCache();
-    }
-
-    async _warmWllamaCache() {
-        if (!this.wllama) {
-            return;
+        if (preferredThreads > 1) {
+            try {
+                console.log('Attempting CPU load (multi-thread)...');
+                this._status("loading", "Loading with CPU (multi-thread)...");
+                await attemptLoad(0, preferredThreads);
+                return;
+            } catch (multiErr) {
+                console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+            }
         }
 
-        const systemInstruction = '<|im_start|>system\nYou are a helpful coding assistant.\n<|im_end|>';
-        try {
-            await this.wllama.createCompletion(systemInstruction, {
-                nPredict: 1,
-                sampling: {
-                    temp: 0.0
-                }
-            });
-        } catch (error) {
-            console.log('[wllama] Cache warmup failed (non-critical):', error?.message || error);
+        console.log('Attempting CPU load (single-thread)...');
+        this._status("loading", "Loading with CPU (single-thread)...");
+        await attemptLoad(0, 1);
+    }
+
+    /**
+     * Tears down wllama and reloads the model CPU-only.
+     * Called when GPU inference produces empty output at runtime.
+     */
+    async _reloadOnCpu() {
+        console.warn('GPU produced empty response — reloading model on CPU.');
+        this.gpuFailed = true;
+        this.wllamaUsedGPU = false;
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async (n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
         }
     }
 
     _ensureClient(model) {
-        if (!this.isReady || (!this.usingBasic && !this.wllama && !this.engine)) {
+        if (!this.isReady || (!this.usingBasic && !this.wllama)) {
             throw new Error("Model is not ready yet.");
         }
-        if (model !== "local-llm") {
-            throw new Error("The model parameter must be 'local-llm'.");
+        if (model !== "phi") {
+            throw new Error("The model parameter must be 'phi'.");
         }
     }
 
@@ -1000,30 +842,6 @@ class ModelCoderLLM {
         }
         prompt += "<|im_start|>assistant\n";
         return prompt;
-    }
-
-    _translateToPhi3Prompt(messages) {
-        // For Phi-3, we just pass messages through without aggressive translation
-        // Phi-3 is capable enough to handle the requests as-is
-        // We only need to ensure consistent role mapping
-        console.log('[Phi-3] Original messages:', messages);
-
-        const translatedMessages = [];
-
-        for (const message of messages) {
-            const role = message.role;
-            const content = contentToText(message.content);
-
-            // Map developer/system to system, keep everything else as-is
-            if (role === "developer") {
-                translatedMessages.push({ role: "system", content });
-            } else {
-                translatedMessages.push({ role, content });
-            }
-        }
-
-        console.log('[Phi-3] Translated messages:', translatedMessages);
-        return translatedMessages;
     }
 
     _buildResponsesMessages(input, instructions, previousResponseId) {
@@ -1065,86 +883,61 @@ class ModelCoderLLM {
             return String(summary || "").trim();
         }
 
-        // Route to appropriate engine
-        if (this.usingWllama) {
-            // wllama expects ChatML prompt
-            const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt);
-            return await this._completeWithWllama(prompt, onDelta, expectedSessionVersion);
-        } else {
-            // WebLLM expects messages array
-            const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
-            return await this._completeWithWebLLM(messages, onDelta, expectedSessionVersion);
-        }
+        const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
+        return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
     }
 
-    async _completeWithWllama(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
-        console.log('[wllama] Sending to Phi-2 (ChatML):', prompt.substring(0, 200) + '...');
+    async _completeWithWllama(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
+        const useStreaming = typeof onDelta === "function";
+        console.log(`[wllama] Phi 3.5-mini (${useStreaming ? "stream" : "sync"}):`, messages);
 
-        let previousText = "";
-        let fullText = "";
-
-        const stream = await this.wllama.createCompletion(prompt, {
-            nPredict: 200,
-            seed: -1,
-            sampling: {
-                temp: 0.1,
-                top_k: 20,
+        if (useStreaming) {
+            let fullText = "";
+            const completion = await this.wllama.createChatCompletion({
+                messages,
+                max_tokens: 512,
+                temperature: 0.2,
+                top_k: 30,
                 top_p: 0.85,
-                penalty_repeat: 1.1,
-                mirostat: 0
-            },
-            stopTokens: ["<|im_end|>", "<|im_start|>"],
-            stream: true
-        });
-
-        for await (const chunk of stream) {
-            if (expectedSessionVersion !== this.sessionVersion) {
-                break;
-            }
-
-            if (!chunk.currentText) {
-                continue;
-            }
-
-            fullText = chunk.currentText;
-            const delta = fullText.slice(previousText.length);
-            if (delta && typeof onDelta === "function") {
-                onDelta(delta);
-            }
-            previousText = fullText;
-        }
-
-        await this.wllama.kvClear().catch(() => { });
-        return fullText.trim();
-    }
-
-    async _completeWithWebLLM(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
-        // WebLLM expects messages array directly (not ChatML)
-        console.log('[WebLLM] Sending to Phi-3-mini:', messages);
-        let fullText = "";
-
-        const completion = await this.engine.chat.completions.create({
-            messages: messages,
-            temperature: 0.7,
-            max_tokens: 320,
-            stream: true
-        });
-
-        for await (const chunk of completion) {
-            if (expectedSessionVersion !== this.sessionVersion) {
-                break;
-            }
-
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-                fullText += content;
-                if (typeof onDelta === "function") {
-                    onDelta(content);
+                repeat_penalty: 1.1,
+                repeat_last_n: 64,
+                cache_prompt: false,
+                stream: true
+            });
+            for await (const chunk of completion) {
+                if (expectedSessionVersion !== this.sessionVersion) break;
+                const token = chunk.choices?.[0]?.delta?.content ?? '';
+                if (token) {
+                    fullText += token;
+                    onDelta(token);
                 }
             }
+            const trimmed = fullText.trim();
+            if (!trimmed && this.wllamaUsedGPU && !this.gpuFailed) {
+                await this._reloadOnCpu();
+                return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+            }
+            return trimmed;
         }
 
-        return fullText.trim();
+        // Non-streaming: single completion call, returns when fully generated
+        const result = await this.wllama.createChatCompletion({
+            messages,
+            max_tokens: 512,
+            temperature: 0.2,
+            top_k: 30,
+            top_p: 0.85,
+            repeat_penalty: 1.1,
+            repeat_last_n: 64,
+            cache_prompt: false,
+            stream: false
+        });
+        const text = String(result?.choices?.[0]?.message?.content ?? '').trim();
+        if (!text && this.wllamaUsedGPU && !this.gpuFailed) {
+            await this._reloadOnCpu();
+            return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+        }
+        return text;
     }
 
     _parseChatMLToMessages(chatMLPrompt) {
@@ -1550,11 +1343,6 @@ class ModelCoderLLM {
                 };
             }
 
-            // Translate messages for Phi-3 when using WebLLM
-            if (!this.usingWllama) {
-                messages = this._translateToPhi3Prompt(messages);
-            }
-
             if (payload.stream) {
                 const streamMeta = await this._createStreamSession(messages, "chat", payload.run_id);
                 return {
@@ -1652,11 +1440,6 @@ class ModelCoderLLM {
                 };
             }
 
-            // Translate messages for Phi-3 when using WebLLM
-            if (!this.usingWllama) {
-                messages = this._translateToPhi3Prompt(messages);
-            }
-
             if (payload.stream) {
                 const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id);
                 return {
@@ -1708,13 +1491,9 @@ const modelCoderInit = async (maxRetries = 3, options = {}) => {
 };
 
 const modelCoderInitWithMode = async (mode = 'auto', maxRetries = 3) => {
-    // mode can be 'auto', 'gpu', 'cpu', or 'basic'
+    // mode can be 'cpu', 'basic', or 'auto'
     const options = {};
-    if (mode === 'gpu') {
-        options.forceGPU = true;
-    } else if (mode === 'cpu') {
-        options.forceCPU = true;
-    } else if (mode === 'basic') {
+    if (mode === 'basic') {
         options.forceBasic = true;
     }
     await llmRuntime.initialize(maxRetries, options);

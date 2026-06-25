@@ -4,7 +4,7 @@ This repository contains source code and published web apps for educational use.
 
 > **Important**: These apps are <u>not</u> supported Microsoft services or products. They are educational resources to support practical exercises in training courses; and are provided as-is without warranty of any kind. Performance issues and occasional failures are to be expected.
 
-Most of the apps (with two Azure-based exceptions) are designed to run locally in-browser. No data is uploaded to Microsoft, though some apps make use of external web services for speech support or web search. To run the apps successfully, you need a modern browser, such as Microsoft Edge. In some cases, the full app functionality is only available on computers that include a GPU (integrated or dedicated) and browser support for WebGPU. When using Windows on ARM64 computers, you can choose to enable WebGPU in your browser flag settings (for example at [edge://flags](edge://flags) or [chrome://flags](chrome://flags)). For most features, the apps are designed to use a "fallback" mode with some functionality restrictions when WebGPU is available.
+Most of the apps (with two Azure-based exceptions) are designed to run locally in-browser. No data is uploaded to Microsoft, though some apps make use of external web services for speech support or web search. To run the apps successfully, you need a modern browser, such as Microsoft Edge. In some cases, the full app functionality is only available on computers that include a GPU (integrated or dedicated) and browser support for WebGPU. For most features, the apps are designed to use a "fallback" mode with some functionality restrictions when WebGPU is available.
 
 ## Apps
 
@@ -43,13 +43,9 @@ The Azure-based **Ask Anton** and **Computing History** apps use a model that yo
 
 #### Local (in-browser) LLMs
 
-Browser-based apps use [Microsoft Phi](https://azure.microsoft.com/products/phi) models. Specifically:
+Browser-based apps use a [Microsoft Phi](https://azure.microsoft.com/products/phi) model; specifically *Microsoft Phi 3.5-mini*.
 
-- Microsoft Phi 3.5-mini
-- Microsoft Phi 3.1-mini
-- Microsoft Phi 2
-
-In computer and browser combinations that support it, Phi models are loaded and run using the [WebLLM](https://webllm.mlc.ai/) engine, running on WebGPU. In cases where no GPU is available, or WebGPU is not supported, the [Wllama](https://github.com/ngxson/wllama/blob/master/README.md) WASM-based runtime is used, running on CPU (which may be considerably slower). In most apps, a failsafe "basic" mode in which no model is used and queries are processed using simple string-handling logic and JavaScript libraries is also available as an "option of last resort".
+In computer and browser combinations that support the minimum specifications, the Phi model is loaded and run using the [Wllama](https://github.com/ngxson/wllama/blob/master/README.md) WASM-based runtime, with GPU-accelleration where available, or running on CPU (which may be considerably slower). In most apps, a failsafe "basic" mode in which no model is used and queries are processed using simple string-handling logic and JavaScript libraries is also available as an "option of last resort".
 
 All in-browser LLM-based apps include a *minimal* content moderation solution in which the app validates input for common potentially offensive or harmful terms, and returns an appropriate message without submitting the prompt to the model. In some cases, legitimately non-offensive and non-harmful prompts may be blocked by this mechanism.
 

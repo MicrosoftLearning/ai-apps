@@ -1,5 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm";
-import { Wllama } from '@wllama/wllama';
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 const chatContainer = document.getElementById('chat-messages');
 const textInput = document.getElementById('text-input');
@@ -17,27 +16,26 @@ let isVoiceInput = false; // Tracks if current message was spoken
 let isResponding = false; // Tracks if bot is currently responding
 let shouldStopResponse = false; // Flag to cancel ongoing response
 let isStoppingResponse = false; // Prevent new prompts while stream cleanup is running
-let engine = null; // WebLLM engine for GPU mode
 let wllama = null; // Wllama instance for CPU mode
 let wllamaReady = false; // Track if wllama is initialized
+let wllamaUsedGPU = false; // True if current wllama instance was loaded with GPU layers
+let gpuFailed = false; // True after a GPU session crash; suppresses future GPU attempts
 let mobilenetReady = false; // Track if MobileNet is initialized
 let mobilenetLoadPromise = null; // Coalesce concurrent lazy-load requests
 let conversationHistory = []; // Track conversation for context
 let inappropriateWords = []; // Loaded from moderation file
-let webGPUAvailable = false; // Track if WebGPU is available
-let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
-const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
+let currentMode = 'basic'; // Track which engine is active: 'cpu' or 'basic'
+const availableModes = { cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
 let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 let modelLoadingCancelled = false; // Track if user cancelled model loading
 let modelLoadingAbortController = null; // Track abort controller for model loading
-const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
-const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
+const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in AI mode.\nIf this keeps happening, please try switching to Basic (Wikipedia) mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
-// Shared prompt constants for both WebLLM and Wllama
-const SYSTEM_PROMPT = 'You are a friendly and helpful expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context. Respond with a single succinct and factually accurate paragraph.';
+// Shared prompt constants for Wllama and Wikipedia modes
+const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond with a single paragraph, using short sentences.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -172,20 +170,36 @@ function buildClassInfoPrompt(classIndex) {
 }
 
 // ============================================================================
-// INITIALIZATION FUNCTIONS
+// HARDWARE REQUIREMENTS CHECK
 // ============================================================================
 
 /**
- * Checks if WebGPU is available in the browser
- * @returns {boolean} True if WebGPU is supported
+ * Check if the device meets minimum hardware requirements for running
+ * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+ * are below the minimum thresholds.
+ * @returns {boolean} true if hardware meets requirements, false otherwise.
  */
-function checkWebGPUSupport() {
-    if (!navigator.gpu) {
-        console.log('WebGPU not supported in this browser');
+function checkHardwareRequirements() {
+    const MIN_MEMORY_GB = 8;
+    const MIN_CORES = 8;
+
+    const deviceMemory = navigator.deviceMemory || 0;
+    const cores = navigator.hardwareConcurrency || 0;
+
+    console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+    console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+    if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+        console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
         return false;
     }
+
     return true;
 }
+
+// ============================================================================
+// INITIALIZATION FUNCTIONS
+// ============================================================================
 
 /**
  * Initializes the application by loading ML models and AI engines
@@ -196,13 +210,11 @@ async function init() {
 
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
-    updateLoadingStatus('smollm', 'loading', 'Loading...');
+    updateLoadingStatus('phi', 'loading', 'Loading...');
 
     // Pin TFJS to the CPU backend before any tf.* calls so it never grabs a
     // WebGL context. The image classifier is small (~470K params) and runs
-    // fine on CPU; keeping it off the GPU leaves the full VRAM budget for the
-    // WebGPU LLM and its KV cache, which is the main cause of device-lost
-    // errors during long GPU-mode generations.
+    // fine on CPU.
     try {
         await tf.setBackend('cpu');
         await tf.ready();
@@ -222,79 +234,51 @@ async function init() {
             console.warn('Image model preload failed (will retry on demand):', err);
         });
 
-        // Check for WebGPU support
-        const hasWebGPU = checkWebGPUSupport();
-
         // Create abort controller for model loading
         modelLoadingAbortController = new AbortController();
 
-        if (!hasWebGPU) {
-            console.log('WebGPU not available, trying wllama (CPU mode)');
-            try {
-                await initWllama();
-                currentMode = 'cpu';
-            } catch (error) {
-                console.log('Wllama also failed, using Basic mode (Wikipedia)');
-                currentMode = 'basic';
-                availableModes.cpu = false;
-                updateModelName('Wikipedia API (Basic)');
-                updateLoadingStatus('smollm', 'ready', 'Basic');
+        // Check hardware requirements before attempting to load model
+        if (!checkHardwareRequirements()) {
+            console.log('Hardware requirements not met, using Basic mode only');
+            currentMode = 'basic';
+            availableModes.cpu = false;
+            updateModelName('Wikipedia API (Basic)');
+            updateLoadingStatus('phi', 'ready', 'Basic');
+            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. Using Basic (Wikipedia) mode.';
+            hideLoadingOverlay();
+            updateModeSelect();
+            setTimeout(() => {
+                textInput.focus();
+                addMessage(infoMsg, 'bot');
+            }, 550);
+            return;
+        }
+
+        console.log('Initializing wllama (CPU mode)...');
+        try {
+            await initWllama();
+            currentMode = 'cpu';
+        } catch (error) {
+            if (modelLoadingCancelled) {
+                return;
             }
-        } else {
-            // WebGPU is available - mark it as an available mode
-            availableModes.gpu = true;
-            webGPUAvailable = true;
-
-            // Try WebLLM first (faster with GPU)
-            try {
-                await initializeWebLLM();
-                // Check if cancelled during initialization
-                if (modelLoadingCancelled) {
-                    return;
-                }
-                // currentMode = 'gpu' is set inside initializeWebLLM
-            } catch (error) {
-                // Check if cancelled during initialization
-                if (modelLoadingCancelled) {
-                    // Keep GPU available for retry - user just cancelled, didn't fail
-                    console.log('Model loading was cancelled by user');
-                    return;
-                }
-
-                // Genuine failure (not cancellation) - mark GPU mode as unavailable
-                console.log('WebLLM initialization failed, falling back to wllama');
-                availableModes.gpu = false;
-                webGPUAvailable = false;
-
-                try {
-                    await initWllama();
-                    // Check if cancelled during initialization
-                    if (modelLoadingCancelled) {
-                        return;
-                    }
-                    currentMode = 'cpu';
-                } catch (error2) {
-                    // Check if cancelled during initialization
-                    if (modelLoadingCancelled) {
-                        return;
-                    }
-                    console.log('Wllama also failed, using Basic mode (Wikipedia)');
-                    currentMode = 'basic';
-                    availableModes.cpu = false;
-                    updateModelName('Wikipedia API (Basic)');
-                    updateLoadingStatus('smollm', 'ready', 'Basic');
-                }
-            }
+            console.log('Wllama failed, using Basic mode (Wikipedia)');
+            currentMode = 'basic';
+            availableModes.cpu = false;
+            updateModelName('Wikipedia API (Basic)');
+            updateLoadingStatus('phi', 'ready', 'Basic');
         }
 
         hideLoadingOverlay();
         updateModeSelect();
+        setTimeout(() => textInput.focus(), 550);
     } catch (e) {
         console.error("Initialization error:", e);
         // Show error but still try to hide overlay after a delay
         setTimeout(() => {
             hideLoadingOverlay();
             addMessage(`Error loading models: ${escapeHtml(e.message)}. Some features may be unavailable.`, "bot");
+            setTimeout(() => textInput.focus(), 550);
         }, 2000);
     }
 }
@@ -338,12 +322,11 @@ function cancelModelLoading() {
         modelLoadingAbortController.abort();
     }
 
-    // Clean up any partially loaded models
-    if (engine) {
-        engine = null;
-    }
+    // Clean up any partially loaded wllama instance
     if (wllama) {
+        const _old = wllama;
         wllama = null;
+        _old.exit().catch(() => { });
     }
 
     // Hide the cancel link immediately
@@ -356,263 +339,15 @@ function cancelModelLoading() {
     // Switch to Basic mode
     currentMode = 'basic';
     updateModelName('Wikipedia API (Basic)');
-    updateLoadingStatus('smollm', 'ready', 'Basic');
+    updateLoadingStatus('phi', 'ready', 'Basic');
 
     hideLoadingOverlay();
     updateModeSelect();
+    setTimeout(() => textInput.focus(), 550);
 
     setTimeout(() => {
         addMessage('Model loading was cancelled. You can switch modes anytime from the mode selector.', 'bot');
     }, 500);
-}
-
-/**
- * Initializes WebLLM for GPU mode
- */
-async function initializeWebLLM() {
-    try {
-        updateModelName('Phi-3.5-mini (WebGPU)');
-        updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
-
-        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
-
-        const appConfig = {
-            model_list: [
-                {
-                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
-                    vram_required_MB: 3672.07,
-                    low_resource_required: false,
-                    overrides: {
-                        context_window_size: 1024
-                    }
-                }
-            ]
-        };
-
-        engine = await webllm.CreateMLCEngine(
-            targetModelId,
-            {
-                appConfig: appConfig,
-                initProgressCallback: (progress) => {
-                    // Check if user cancelled loading
-                    if (modelLoadingCancelled) {
-                        return;
-                    }
-
-                    const percentage = Math.round(progress.progress * 100);
-                    updateLoadingStatus('smollm', 'loading', `${percentage}%`);
-
-                    // Show cancel link when loading starts
-                    showCancelLink();
-                }
-            }
-        );
-
-        // Check if cancelled before finalizing
-        if (modelLoadingCancelled) {
-            engine = null;
-            throw new Error('Model loading cancelled by user');
-        }
-
-        updateLoadingStatus('smollm', 'ready', '100%');
-        console.log('WebLLM engine initialized successfully');
-        currentMode = 'gpu';
-
-    } catch (error) {
-        console.error('Failed to initialize WebLLM:', error);
-        throw error; // Re-throw to trigger fallback
-    }
-}
-
-// ============================================================================
-// ERROR RECOVERY FUNCTIONS
-// ============================================================================
-
-/**
- * Recovers from a GPU mode failure (e.g., lost WebGPU device) by disposing
- * the engine and reinitializing it. Falls back to CPU or Basic mode if recovery fails.
- * @returns {Promise<string|null>} The new mode after recovery, or null if already recovering
- */
-async function recoverGpuModeOrFallback() {
-    if (gpuRecoveryInProgress) return null;
-    if (currentMode !== 'gpu') return currentMode;
-    gpuRecoveryInProgress = true;
-
-    const prevDisabled = {
-        send: sendBtn.disabled,
-        text: textInput.disabled,
-        mic: micBtn.disabled,
-        upload: uploadBtn.disabled,
-        mode: modeSelect ? modeSelect.disabled : false
-    };
-    sendBtn.disabled = true;
-    textInput.disabled = true;
-    micBtn.disabled = true;
-    uploadBtn.disabled = true;
-    if (modeSelect) modeSelect.disabled = true;
-
-    const loadingMsg = addMessage('Reinitializing GPU model...', 'bot');
-    const loadingBubble = loadingMsg.bubble;
-
-    try {
-        if (engine) {
-            try {
-                if (typeof engine.unload === 'function') {
-                    await engine.unload();
-                }
-            } catch (cleanupErr) {
-                console.warn('Engine cleanup failed (continuing):', cleanupErr);
-            }
-        }
-        engine = null;
-
-        await initializeWebLLM();
-
-        if (loadingBubble) {
-            setBubbleContent(loadingBubble, 'GPU model reloaded. You can continue.');
-        }
-    } catch (err) {
-        console.warn('GPU recovery failed, falling back:', err);
-        availableModes.gpu = false;
-        webGPUAvailable = false;
-        engine = null;
-
-        try {
-            if (!wllama) {
-                if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'GPU mode unavailable. Loading CPU model... 0%');
-                }
-                await initWllama((progress) => {
-                    if (loadingBubble) {
-                        const percentage = Math.round(progress * 100);
-                        setBubbleContent(loadingBubble, `GPU mode unavailable. Loading CPU model... ${percentage}%`);
-                    }
-                });
-            }
-            currentMode = 'cpu';
-            if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 3.1-mini).');
-            }
-        } catch (cpuErr) {
-            console.error('CPU fallback also failed:', cpuErr);
-            availableModes.cpu = false;
-            currentMode = 'basic';
-            if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'GPU and CPU modes unavailable. Switched to Basic mode (Wikipedia).');
-            }
-        }
-    } finally {
-        sendBtn.disabled = prevDisabled.send;
-        textInput.disabled = prevDisabled.text;
-        micBtn.disabled = prevDisabled.mic;
-        uploadBtn.disabled = prevDisabled.upload;
-        if (modeSelect) modeSelect.disabled = prevDisabled.mode;
-        updateModeSelect();
-        gpuRecoveryInProgress = false;
-    }
-    return currentMode;
-}
-
-/**
- * Re-issues a query through the currently-active engine after a recovery or
- * fallback. Streams into a fresh bot bubble and updates conversation history.
- * Optionally prefixes the bubble with a leading reply block (used by the
- * image-classification path so the classification result stays visible).
- */
-async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPrompt = null } = {}) {
-    if (!query) return;
-    startResponse();
-    const prefixHtml = replyPrefix ? replyPrefix + '<br><br>' : '';
-
-    // CPU and GPU modes use the typing indicator instead of streaming into a
-    // bubble incrementally. Voice input also skips streaming so that per-token
-    // DOM updates don't contend with the GPU. Basic mode streams into a bubble.
-    const useTypingIndicator = currentMode === 'cpu' || currentMode === 'gpu' || isVoiceInput;
-    let bubble = null;
-    if (!useTypingIndicator) {
-        bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
-        if (replyPrefix) {
-            setBubbleContent(bubble, prefixHtml);
-        }
-    } else {
-        showTyping();
-    }
-
-    try {
-        const writer = useTypingIndicator ? null : createBatchedStreamWriter(bubble, prefixHtml);
-
-        // For CPU mode with typing indicator, pass the bubble to generateComputingInfo
-        let cpuBubble = null;
-        if (currentMode === 'cpu' && useTypingIndicator) {
-            removeTyping();
-            cpuBubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
-        }
-
-        const summary = await generateComputingInfo(
-            query,
-            writer,
-            cpuBubble,
-            prefixHtml
-        );
-        writer?.cancel();
-
-        if (useTypingIndicator && !cpuBubble) {
-            removeTyping();
-        }
-        if (checkStopResponse()) return;
-
-        if (summary) {
-            if (useTypingIndicator) {
-                // Use existing CPU bubble if available, otherwise create new one for GPU/CPU mode
-                if (cpuBubble) {
-                    bubble = cpuBubble;
-                } else {
-                    bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
-                    // Animate the text being typed (escape HTML and convert newlines to <br>)
-                    if (prefixHtml) {
-                        setBubbleContent(bubble, prefixHtml);
-                    }
-                    await typeTextInBubble(bubble, prefixHtml + escapeHtml(summary), 20, prefixHtml);
-                    if (checkStopResponse()) return;
-                }
-            } else {
-                setBubbleContent(bubble, prefixHtml + escapeHtml(summary));
-            }
-            conversationHistory.push({
-                user: truncateToFirstSentence(historyUserPrompt || query),
-                assistant: truncateToFirstSentence(summary)
-            });
-            if (conversationHistory.length > 2) {
-                conversationHistory.shift();
-            }
-            if (isVoiceInput && bubble) {
-                speakText(bubble);
-                isVoiceInput = false;
-            }
-        } else {
-            const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.";
-            if (useTypingIndicator) {
-                addMessage(errorText, 'bot');
-            } else {
-                setBubbleContent(bubble, errorText);
-            }
-        }
-    } catch (err) {
-        console.warn('Retry after recovery failed:', err);
-        if (useTypingIndicator) {
-            removeTyping();
-        }
-        const errorText = prefixHtml + "I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.";
-        if (useTypingIndicator || !bubble) {
-            addMessage(errorText, 'bot');
-        } else {
-            setBubbleContent(bubble, errorText);
-        }
-    } finally {
-        endResponse();
-    }
 }
 
 // ============================================================================
@@ -855,7 +590,7 @@ function ensureImageModelLoaded() {
 
 /**
  * Loads the MobileNet base model and custom classifier for image classification.
- * Pins TFJS to CPU backend to preserve GPU memory for WebLLM.
+ * Pins TFJS to CPU backend for the image classifier.
  * @throws {Error} If models fail to load
  */
 async function loadModel() {
@@ -905,29 +640,17 @@ async function loadModel() {
  * Initializes the Wllama language model for CPU mode text generation
  * @throws {Error} If Wllama initialization fails
  */
-async function initWllama(progressCallback = null, options = {}) {
+async function initWllama(progressCallback = null) {
     try {
-        const { forceReload = false } = options;
-
         // Check if already initialized
-        if (wllama && !forceReload) {
+        if (wllama) {
             console.log('Wllama already initialized');
             return;
         }
 
-        if (forceReload) {
-            // Reset instance so loadModelFromHF runs again and starts a fresh session.
-            wllama = null;
-            wllamaReady = false;
-        }
-
-        const isLazyLoad = webGPUAvailable; // If WebGPU is available, this is a lazy load
-
-        if (!isLazyLoad) {
-            console.log("Initializing wllama...");
-            updateModelName('Phi 3.1-mini (CPU)');
-            updateLoadingStatus('smollm', 'loading', '10%');
-        }
+        console.log("Initializing wllama...");
+        updateModelName('Phi 3.5-mini (AI mode)');
+        updateLoadingStatus('phi', 'loading', '10%');
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
@@ -941,15 +664,14 @@ async function initWllama(progressCallback = null, options = {}) {
             }
 
             const progress = loaded / total;
-            if (!isLazyLoad) {
-                const percentage = Math.round((progress * 100));
-                const adjustedProgress = Math.round(20 + (percentage * 0.8)); // 20% to 100%
-                updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
-                console.log(`Loading wllama: ${percentage}%`);
+            const percentage = Math.round(progress * 100);
+            const adjustedProgress = Math.round(20 + (percentage * 0.8)); // 20% to 100%
+            updateLoadingStatus('phi', 'loading', `${adjustedProgress}%`);
+            console.log(`Loading wllama: ${percentage}%`);
 
-                // Show cancel link when loading starts
-                showCancelLink();
-            }
+            // Show cancel link when loading starts
+            showCancelLink();
+
             if (progressCallback) {
                 progressCallback(progress);
             }
@@ -957,171 +679,113 @@ async function initWllama(progressCallback = null, options = {}) {
 
         // Try multithreaded first if cross-origin isolated, fall back to single-threaded
         const useMultiThread = window.crossOriginIsolated === true;
-        const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+        const availableThreads = navigator.hardwareConcurrency || 4;
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
-        await withWebGpuDisabledForWorkers(async () => {
+        const modelRef = {
+            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+            quant: 'Q4_K_M'
+        };
+
+        // Detect GPU vendor; disable WebGPU for known-broken implementations or
+        // if a previous GPU session crashed (gpuFailed=true).
+        let GPU_ENABLED = !gpuFailed && !!navigator.gpu;
+        if (GPU_ENABLED) {
             try {
-                wllama = new Wllama(CONFIG_PATHS);
-                if (!isLazyLoad) {
-                    updateLoadingStatus('smollm', 'loading', '20%');
-                }
-
-                await wllama.loadModelFromHF(
-                    {
-                        repo: 'ngxson/wllama-split-models',
-                        file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
-                    },
-                    {
-                        n_ctx: 512,
-                        n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
-                        offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
-                        n_threads: preferredThreads,
-                        progressCallback: internalProgressCallback
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    // Chrome 121+: adapter.info is synchronous. Older: requestAdapterInfo().
+                    const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                    const vendor = (info?.vendor || '').toLowerCase();
+                    if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                        // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
+                        console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
+                        GPU_ENABLED = false;
+                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                        // which predates the fix. Fall back to CPU until wllama is upgraded.
+                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
+                        GPU_ENABLED = false;
                     }
-                );
-
-                // Check if cancelled before finalizing
-                if (modelLoadingCancelled) {
-                    wllama = null;
-                    throw new Error('Model loading cancelled by user');
-                }
-
-                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-            } catch (multiErr) {
-                if (preferredThreads > 1) {
-                    console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                    if (!isLazyLoad) {
-                        updateLoadingStatus('smollm', 'loading', '20%');
-                    }
-
-                    wllama = new Wllama(CONFIG_PATHS);
-                    await wllama.loadModelFromHF(
-                        {
-                            repo: 'ngxson/wllama-split-models',
-                            file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
-                        },
-                        {
-                            n_ctx: 512,
-                            n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
-                            offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
-                            n_threads: 1,
-                            progressCallback: internalProgressCallback
-                        }
-                    );
-
-                    // Check if cancelled before finalizing (fallback path)
-                    if (modelLoadingCancelled) {
-                        wllama = null;
-                        throw new Error('Model loading cancelled by user');
-                    }
-
-                    console.log("Wllama initialized successfully with 1 thread (fallback)");
                 } else {
-                    throw multiErr;
+                    GPU_ENABLED = false; // requestAdapter returned null — no WebGPU
+                }
+            } catch (e) {
+                console.warn('Could not query WebGPU adapter info:', e);
+                GPU_ENABLED = false;
+            }
+        }
+
+        const baseParams = {
+            n_ctx: 712,
+            progressCallback: internalProgressCallback
+        };
+
+        // Helper: create a fresh Wllama instance and load the model.
+        const attemptLoad = async (n_gpu_layers, n_threads) => {
+            wllama = new Wllama(CONFIG_PATHS);
+            await wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
+        };
+
+        updateLoadingStatus('phi', 'loading', '20%');
+
+        const loadWithFallback = async () => {
+            if (GPU_ENABLED) {
+                try {
+                    // Full GPU offload (all 32 layers). Full offload avoids the precision
+                    // mismatch at CPU/GPU layer boundaries that caused garbled tokens.
+                    await attemptLoad(32, preferredThreads);
+                    wllamaUsedGPU = true;
+                    console.log(`Wllama initialized with GPU (32 layers) + ${preferredThreads} thread(s)`);
+                    return;
+                } catch (gpuErr) {
+                    if (modelLoadingCancelled) throw gpuErr;
+                    console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
+                    if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
+                }
+            } else {
+                console.log('Skipping GPU: using CPU directly');
+            }
+
+            // CPU multi-threaded
+            try {
+                await attemptLoad(0, preferredThreads);
+                wllamaUsedGPU = false;
+                console.log(`Wllama initialized on CPU with ${preferredThreads} thread(s)`);
+            } catch (cpuErr) {
+                if (modelLoadingCancelled) throw cpuErr;
+                if (preferredThreads > 1) {
+                    console.warn(`Multi-thread CPU init failed (${cpuErr.message}), retrying with 1 thread`);
+                    if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
+                    // Final attempt: CPU single-threaded
+                    await attemptLoad(0, 1);
+                    wllamaUsedGPU = false;
+                    console.log('Wllama initialized on CPU with 1 thread');
+                } else {
+                    throw cpuErr;
                 }
             }
-        });
+        };
+
+        await loadWithFallback();
+
+        // Check if cancelled before finalizing
+        if (modelLoadingCancelled) {
+            if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
+            throw new Error('Model loading cancelled by user');
+        }
 
         wllamaReady = true;
-        if (!isLazyLoad) {
-            updateLoadingStatus('smollm', 'ready', '100%');
-        }
+        updateLoadingStatus('phi', 'ready', '100%');
+        console.log(`Wllama initialized successfully (GPU: ${wllamaUsedGPU})`);
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
-        if (!webGPUAvailable) {
-            updateLoadingStatus('smollm', 'error', 'Failed');
-        }
+        if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
+        updateLoadingStatus('phi', 'error', 'Failed');
         wllamaReady = false;
         throw error;
-    }
-}
-
-async function withWebGpuTemporarilyDisabled(task) {
-    const nav = navigator;
-    const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
-    const ownGpuDescriptor = hadOwnGpu ? Object.getOwnPropertyDescriptor(nav, 'gpu') : null;
-    let gpuMasked = false;
-
-    const unavailableGpu = {
-        requestAdapter: async () => null
-    };
-
-    try {
-        Object.defineProperty(nav, 'gpu', {
-            configurable: true,
-            enumerable: false,
-            get: () => unavailableGpu
-        });
-        gpuMasked = true;
-        console.log('Temporarily stubbed navigator.gpu as unavailable for wllama initialization');
-    } catch (error) {
-        console.warn('Unable to mask navigator.gpu during wllama initialization:', error);
-    }
-
-    try {
-        return await task();
-    } finally {
-        if (!gpuMasked) {
-            return;
-        }
-
-        try {
-            if (hadOwnGpu && ownGpuDescriptor) {
-                Object.defineProperty(nav, 'gpu', ownGpuDescriptor);
-            } else {
-                delete nav.gpu;
-            }
-            console.log('Restored navigator.gpu after wllama initialization');
-        } catch (error) {
-            console.warn('Unable to restore navigator.gpu after wllama initialization:', error);
-        }
-    }
-}
-
-async function withWebGpuDisabledForWorkers(task) {
-    const NativeWorker = window.Worker;
-    let workerPatched = false;
-
-    try {
-        if (typeof NativeWorker === 'function') {
-            window.Worker = class WorkerWithoutWebGPU extends NativeWorker {
-                constructor(scriptURL, options) {
-                    let wrappedURL = scriptURL;
-                    let createdWrappedBlobUrl = false;
-
-                    try {
-                        const workerType = options?.type === 'module' ? 'module' : 'classic';
-                        const source = workerType === 'module'
-                            ? `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimport ${JSON.stringify(String(scriptURL))};`
-                            : `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimportScripts(${JSON.stringify(String(scriptURL))});`;
-
-                        wrappedURL = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-                        createdWrappedBlobUrl = true;
-                    } catch (error) {
-                        wrappedURL = scriptURL;
-                        createdWrappedBlobUrl = false;
-                    }
-
-                    super(wrappedURL, options);
-
-                    if (createdWrappedBlobUrl) {
-                        setTimeout(() => URL.revokeObjectURL(wrappedURL), 0);
-                    }
-                }
-            };
-
-            workerPatched = true;
-            console.log('Temporarily patched Worker to disable WebGPU inside wllama workers');
-        }
-
-        return await withWebGpuTemporarilyDisabled(task);
-    } finally {
-        if (workerPatched) {
-            window.Worker = NativeWorker;
-            console.log('Restored Worker after wllama initialization');
-        }
     }
 }
 
@@ -1130,7 +794,7 @@ async function withWebGpuDisabledForWorkers(task) {
  * @param {string} modelName - The name of the model being loaded
  */
 function updateModelName(modelName) {
-    const statusTextElement = document.getElementById('smollmStatusText');
+    const statusTextElement = document.getElementById('phiStatusText');
     if (statusTextElement) {
         statusTextElement.textContent = modelName;
     }
@@ -1138,13 +802,13 @@ function updateModelName(modelName) {
 
 /**
  * Updates the loading status display for a specific model
- * @param {string} modelType - Either 'mobilenet' or 'smollm'
+ * @param {string} modelType - Either 'mobilenet' or 'phi'
  * @param {string} status - One of 'loading', 'ready', or 'error'
  * @param {string} progress - Progress text to display
  */
 function updateLoadingStatus(modelType, status, progress) {
-    const statusId = modelType === 'mobilenet' ? 'mobilenetStatus' : 'smollmStatus';
-    const progressId = modelType === 'mobilenet' ? 'mobilenetProgress' : 'smollmProgress';
+    const statusId = modelType === 'mobilenet' ? 'mobilenetStatus' : 'phiStatus';
+    const progressId = modelType === 'mobilenet' ? 'mobilenetProgress' : 'phiProgress';
 
     const statusElement = document.getElementById(statusId);
     const progressElement = document.getElementById(progressId);
@@ -1199,42 +863,6 @@ function setBubbleContent(bubble, text) {
     } else {
         bubble.textContent = text;
     }
-}
-
-/**
- * Returns a writer that accumulates streamed chunks and flushes them to the
- * bubble at most once per animation frame. This avoids per-token DOM updates
- * that contend with WebLLM for the GPU on tight-VRAM systems and can
- * contribute to device-lost errors. Call writer.cancel() after the stream
- * resolves so any pending flush doesn't overwrite the cleaned final text.
- */
-function createBatchedStreamWriter(bubble, prefixHtml = '') {
-    let accumulated = '';
-    let rafId = 0;
-
-    const flush = () => {
-        rafId = 0;
-        if (!bubble) return;
-        setBubbleContent(bubble, prefixHtml + escapeHtml(accumulated));
-        scrollToBottom();
-    };
-
-    const writer = (chunk) => {
-        if (!chunk || !bubble) return;
-        accumulated += chunk;
-        if (!rafId) {
-            rafId = requestAnimationFrame(flush);
-        }
-    };
-
-    writer.cancel = () => {
-        if (rafId) {
-            cancelAnimationFrame(rafId);
-            rafId = 0;
-        }
-    };
-
-    return writer;
 }
 
 function addMessage(text, sender, imageUrl = null, options = {}) {
@@ -1422,7 +1050,7 @@ function showTyping() {
                 <div class="dot"></div>
                 <div class="dot"></div>
             </div>
-            <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>
+            <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow one some devices. Thanks for your patience!)</p>
         `;
     } else {
         bubble.innerHTML = `
@@ -1703,18 +1331,56 @@ async function handleSend() {
         return;
     }
 
-    // For GPU mode, use typing indicator (non-streaming)
-    if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        showTyping();
+    // CPU and Basic mode response handling
+    showTyping();
 
-        try {
+    try {
+        let bubble = null;
+
+        // For CPU mode, create the bubble before calling generateComputingInfo
+        // so it can update it with the waiting message if needed
+        if (currentMode === 'cpu') {
+            removeTyping();
+            const msgResult = addMessage('', "bot", null, { deferCompletion: true });
+            bubble = msgResult.bubble;
+            startResponse();
+
+            // Show initial message with typing indicator and CPU patience note
+            let initialMessage = '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
+                '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow on some devices. Thanks for your patience!)</p>';
+            setBubbleContent(bubble, initialMessage);
+            scrollToBottom();
+
+            const summary = await generateComputingInfo(text, null, bubble, '');
+
+            if (checkStopResponse()) return;
+
+            if (summary) {
+                // Summary already streamed to bubble, just finalize
+                // Handle voice output if needed
+                if (isVoiceInput) {
+                    speakText(bubble);
+                    isVoiceInput = false;
+                }
+
+                endResponse();
+            } else {
+                if (lastWllamaCompletionErrored) {
+                    setBubbleContent(bubble, CPU_MODE_FAILURE_MESSAGE);
+                } else {
+                    setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
+                }
+                endResponse();
+            }
+        } else {
+            // Basic mode - original behavior
             const summary = await generateComputingInfo(text);
             removeTyping();
 
             if (checkStopResponse()) return;
 
             if (summary) {
-                const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
                 startResponse();
 
                 // In voice mode, speak immediately while the text animates.
@@ -1729,118 +1395,22 @@ async function handleSend() {
                 if (checkStopResponse()) return;
 
                 endResponse();
-
-                // Store in conversation history
-                conversationHistory.push({
-                    user: truncateToFirstSentence(text),
-                    assistant: truncateToFirstSentence(summary)
-                });
-                if (conversationHistory.length > 2) {
-                    conversationHistory.shift();
-                }
             } else {
-                removeTyping();
-                // If summary is null, it could be an error or just an empty response
-                // Check console logs to determine if GPU is actually failing
-                console.warn('GPU mode returned null/empty summary for query:', text);
-                addMessage("I'm sorry, I couldn't generate a response. Please try again.\nIf this happens again, try switching to CPU or Basic mode.", "bot");
-                endResponse();
+                addMessage(`I'm sorry. I don't know about that topic.`, "bot");
             }
-        } catch (e) {
-            removeTyping();
-            if (checkStopResponse()) return;
-            console.error('GPU mode error:', e);
-            addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
-            endResponse();
-            const newMode = await recoverGpuModeOrFallback();
-            if (newMode) await retryQueryAfterRecovery(text);
         }
-    } else {
-        // CPU mode without streaming - use existing approach
-        showTyping();
 
-        try {
-            let bubble = null;
-
-            // For CPU mode, create the bubble before calling generateComputingInfo
-            // so it can update it with the waiting message if needed
-            if (currentMode === 'cpu') {
-                removeTyping();
-                const msgResult = addMessage('', "bot", null, { deferCompletion: true });
-                bubble = msgResult.bubble;
-                startResponse();
-
-                // Show initial message with typing indicator and CPU patience note
-                let initialMessage = '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
-                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
-                setBubbleContent(bubble, initialMessage);
-                scrollToBottom();
-
-                const summary = await generateComputingInfo(text, null, bubble, '');
-
-                if (checkStopResponse()) return;
-
-                if (summary) {
-                    // Summary already streamed to bubble, just finalize
-                    // Handle voice output if needed
-                    if (isVoiceInput) {
-                        speakText(bubble);
-                        isVoiceInput = false;
-                    }
-
-                    endResponse();
-                } else {
-                    if (lastWllamaCompletionErrored) {
-                        setBubbleContent(bubble, CPU_MODE_FAILURE_MESSAGE);
-                    } else {
-                        setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
-                    }
-                    endResponse();
-                }
-            } else {
-                // Basic mode - original behavior
-                const summary = await generateComputingInfo(text);
-                removeTyping();
-
-                if (checkStopResponse()) return;
-
-                if (summary) {
-                    bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
-                    startResponse();
-
-                    // In voice mode, speak immediately while the text animates.
-                    if (isVoiceInput) {
-                        speakTextContent(summary);
-                        isVoiceInput = false;
-                    }
-
-                    // Animate the response text (escape HTML and convert newlines to <br>)
-                    await typeTextInBubble(bubble, escapeHtml(summary), 20);
-
-                    if (checkStopResponse()) return;
-
-                    endResponse();
-                } else {
-                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
-                }
-            }
-
-            // Store in conversation history (if we got a summary)
-            if (bubble && bubble.textContent && bubble.textContent.trim().length > 0) {
-                const summary = bubble.textContent.trim();
-                conversationHistory.push({
-                    user: truncateToFirstSentence(text),
-                    assistant: truncateToFirstSentence(summary)
-                });
-                if (conversationHistory.length > 2) {
-                    conversationHistory.shift();
-                }
-            }
-        } catch (e) {
-            removeTyping();
-            if (checkStopResponse()) return;
-            addMessage("Sorry, I had trouble searching via text. " + escapeHtml(e.message), "bot");
+        // Store in conversation history (if we got a summary)
+        if (bubble && bubble.textContent && bubble.textContent.trim().length > 0) {
+            const summary = bubble.textContent.trim();
+            conversationHistory = [
+                { user: truncateToFirstSentence(text), assistant: truncateToFirstSentence(summary) }
+            ];
         }
+    } catch (e) {
+        removeTyping();
+        if (checkStopResponse()) return;
+        addMessage("Sorry, I had trouble searching via text. " + escapeHtml(e.message), "bot");
     }
 }
 
@@ -2228,151 +1798,77 @@ async function performClassification(imgEl, userText = "") {
 
             // AI-generated info for classes 0, 1, 2, 3
             if ([0, 1, 2, 3].includes(classIndex)) {
-                // For GPU mode with streaming, add message and stream into it
-                if (currentMode === 'gpu' && webGPUAvailable && engine) {
-                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
-                    startResponse();
+                // CPU and Basic modes
+                const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                startResponse();
 
-                    try {
-                        // Step 1: Type the classification message slowly
-                        await typeTextInBubble(bubble, reply, 30);
+                try {
+                    // Step 1: Type the classification message slowly
+                    await typeTextInBubble(bubble, reply, 30);
 
-                        if (checkStopResponse()) {
-                            return;
-                        }
-
-                        // Step 2: Add "I'm researching details..." and thinking dots
-                        const researchingMessage = reply + '<br><br>I\'m researching details...<br><br>' +
-                            '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
-                        setBubbleContent(bubble, researchingMessage);
-                        scrollToBottom();
-
-                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
-                        const infoPrompt = buildClassInfoPrompt(classIndex);
-                        const modelQuery = infoPrompt || topMatch.className;
-                        console.log('[Image Classification] Sending query to model:', modelQuery);
-
-                        // Step 3: Generate the response without streaming (complete response at once)
-                        const summary = await generateComputingInfo(modelQuery);
-
-                        if (checkStopResponse()) {
-                            return;
-                        }
-
-                        if (summary) {
-                            // Animate typing the summary after the classification
-                            const finalPrefix = reply + `<br><br>`;
-                            setBubbleContent(bubble, finalPrefix);
-                            await typeTextInBubble(bubble, finalPrefix + escapeHtml(summary), 20, finalPrefix);
-
-                            if (checkStopResponse()) {
-                                return;
-                            }
-
-                            conversationHistory.push({
-                                user: historyUserPrompt,
-                                assistant: truncateToFirstSentence(summary)
-                            });
-                            if (conversationHistory.length > 2) {
-                                conversationHistory.shift();
-                            }
-                        } else {
-                            console.warn('GPU mode returned null/empty summary for image classification');
-                            setBubbleContent(bubble, reply + `<br><br>I'm sorry, I couldn't generate additional details.`);
-                        }
-
-                        // Handle voice output if needed
-                        if (isVoiceInput) {
-                            speakText(bubble);
-                            isVoiceInput = false;
-                        } else {
-                            endResponse();
-                        }
-                    } catch (e) {
-                        console.error("GPU mode error during image classification:", e);
-                        setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
-                        endResponse();
-                        const newMode = await recoverGpuModeOrFallback();
-                        if (newMode) await retryQueryAfterRecovery(modelQuery, { replyPrefix: reply, historyUserPrompt });
+                    if (checkStopResponse()) {
+                        return;
                     }
-                    return; // Exit early since we already added the message
-                } else {
-                    // CPU and Basic modes - use non-streaming approach
-                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
-                    startResponse();
 
-                    try {
-                        // Step 1: Type the classification message slowly
-                        await typeTextInBubble(bubble, reply, 30);
+                    // Step 2: Add "I'm researching details..." and thinking dots (with CPU patience message if CPU mode)
+                    let researchingMessage = reply + '<br><br>I\'m researching details...<br><br>' +
+                        '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
 
-                        if (checkStopResponse()) {
-                            return;
+                    if (currentMode === 'cpu') {
+                        researchingMessage += '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in AI mode. Thanks for your patience!)</p>';
+                    }
+
+                    setBubbleContent(bubble, researchingMessage);
+                    scrollToBottom();
+
+                    const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
+                    const infoPrompt = buildClassInfoPrompt(classIndex);
+                    const modelQuery = currentMode === 'basic'
+                        ? topMatch.className
+                        : (infoPrompt || topMatch.className);
+                    console.log('[Image Classification] Sending query to model:', modelQuery);
+
+                    // Step 3: Generate the response
+                    // For CPU mode, pass bubble and prefix so waiting message can be shown
+                    const summary = await generateComputingInfo(
+                        modelQuery,
+                        null,
+                        currentMode === 'cpu' ? bubble : null,
+                        currentMode === 'cpu' ? reply + '<br><br>' : ''
+                    );
+
+                    if (checkStopResponse()) {
+                        return;
+                    }
+
+                    if (summary) {
+                        // For Basic mode, update bubble with final result
+                        // For CPU mode, already streamed to bubble
+                        if (currentMode === 'basic') {
+                            const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
+                            setBubbleContent(bubble, finalMessage);
+                            scrollToBottom();
                         }
 
-                        // Step 2: Add "I'm researching details..." and thinking dots (with CPU patience message if CPU mode)
-                        let researchingMessage = reply + '<br><br>I\'m researching details...<br><br>' +
-                            '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+                        conversationHistory = [
+                            { user: historyUserPrompt, assistant: truncateToFirstSentence(summary) }
+                        ];
+                    } else if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
+                        setBubbleContent(bubble, reply + `<br><br>${CPU_MODE_FAILURE_MESSAGE}`);
+                    }
 
-                        if (currentMode === 'cpu') {
-                            researchingMessage += '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
-                        }
-
-                        setBubbleContent(bubble, researchingMessage);
-                        scrollToBottom();
-
-                        const historyUserPrompt = `Tell me about the ${topMatch.className} computer`;
-                        const infoPrompt = buildClassInfoPrompt(classIndex);
-                        const modelQuery = currentMode === 'basic'
-                            ? topMatch.className
-                            : (infoPrompt || topMatch.className);
-                        console.log('[Image Classification] Sending query to model:', modelQuery);
-
-                        // Step 3: Generate the response
-                        // For CPU mode, pass bubble and prefix so waiting message can be shown
-                        const summary = await generateComputingInfo(
-                            modelQuery,
-                            null,
-                            currentMode === 'cpu' ? bubble : null,
-                            currentMode === 'cpu' ? reply + '<br><br>' : ''
-                        );
-
-                        if (checkStopResponse()) {
-                            return;
-                        }
-
-                        if (summary) {
-                            // For Basic mode, update bubble with final result
-                            // For CPU mode, already streamed to bubble
-                            if (currentMode === 'basic') {
-                                const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
-                                setBubbleContent(bubble, finalMessage);
-                                scrollToBottom();
-                            }
-
-                            conversationHistory.push({
-                                user: historyUserPrompt,
-                                assistant: truncateToFirstSentence(summary)
-                            });
-                            if (conversationHistory.length > 2) {
-                                conversationHistory.shift();
-                            }
-                        } else if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
-                            setBubbleContent(bubble, reply + `<br><br>${CPU_MODE_FAILURE_MESSAGE}`);
-                        }
-
-                        // Handle voice output if needed
-                        if (isVoiceInput) {
-                            speakText(bubble);
-                            isVoiceInput = false;
-                        } else {
-                            endResponse();
-                        }
-                    } catch (e) {
-                        console.warn("Info generation failed", e);
+                    // Handle voice output if needed
+                    if (isVoiceInput) {
+                        speakText(bubble);
+                        isVoiceInput = false;
+                    } else {
                         endResponse();
                     }
-                    return; // Exit early since we already added the message
+                } catch (e) {
+                    console.warn("Info generation failed", e);
+                    endResponse();
                 }
+                return; // Exit early since we already added the message
             }
 
             // Class 4: Computer - Add uncertainty message
@@ -2390,10 +1886,7 @@ async function performClassification(imgEl, userText = "") {
     }
 }
 
-// Long user prompts inflate the prefill pass (the largest single GPU job in a
-// generation), which on tight-VRAM systems is a common trigger for WebGPU
-// device-lost / driver TDR. Cap incoming queries at a safe length and cut at
-// a word boundary when possible so we don't slice mid-word.
+// Cap incoming queries at a safe length and cut at a word boundary.
 const MAX_QUERY_CHARS = 1200;
 
 function clampQueryLength(query) {
@@ -2412,20 +1905,17 @@ function clampQueryLength(query) {
 // ============================================================================
 
 /**
- * Generates computing-related information using AI (WebLLM, Wllama, or Wikipedia)
+ * Generates computing-related information using AI (Wllama or Wikipedia)
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
+ * @param {*} _onChunk - Unused (kept for call-site compatibility)
  * @param {HTMLElement} bubbleElement - Optional bubble element for CPU mode waiting message
  * @param {string} bubblePrefix - Optional HTML prefix for bubble (e.g., classification result)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
-async function generateComputingInfo(query, onChunk = null, bubbleElement = null, bubblePrefix = '') {
+async function generateComputingInfo(query, _onChunk = null, bubbleElement = null, bubblePrefix = '') {
     const safeQuery = clampQueryLength(query);
 
-    // Use WebLLM if available and enabled, otherwise use wllama
-    if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        return await generateWithWebLLM(safeQuery, onChunk);
-    } else if (currentMode === 'cpu' && wllamaReady && wllama) {
+    if (currentMode === 'cpu' && wllamaReady && wllama) {
         return await generateWithWllama(safeQuery, bubbleElement, bubblePrefix);
     } else if (currentMode === 'basic') {
         return await generateWithWikipedia(safeQuery);
@@ -2436,161 +1926,40 @@ async function generateComputingInfo(query, onChunk = null, bubbleElement = null
 }
 
 /**
- * Generates text using WebLLM (GPU mode) without streaming
+ * Generates text using Wllama (CPU mode)
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Deprecated parameter, no longer used
+ * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
+ * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWebLLM(query, onChunk = null) {
-    try {
-        // Force a clean KV cache each turn. We rebuild the full message list
-        // (system + history + current query) below, so WebLLM's cross-turn KV
-        // reuse buys us nothing but does grow VRAM usage and can contribute to
-        // device-lost errors over a session. resetChat is best-effort.
-        try {
-            if (engine && typeof engine.resetChat === 'function') {
-                await engine.resetChat();
-                console.log('WebLLM chat state reset before generation');
-            }
-        } catch (resetErr) {
-            console.warn('engine.resetChat before generation failed (continuing):', resetErr);
-        }
-
-        // Build messages array for WebLLM chat format
-        const messages = [
-            {
-                role: "system",
-                content: SYSTEM_PROMPT
-            }
-        ];
-
-        // Include conversation history for context (last 2 exchanges)
-        if (conversationHistory.length > 0) {
-            conversationHistory.forEach(exchange => {
-                messages.push({ role: "user", content: exchange.user });
-                messages.push({ role: "assistant", content: exchange.assistant });
-            });
-        }
-
-        // Add current query
-        messages.push({
-            role: "user",
-            content: query
-        });
-
-        console.log('Generating info with WebLLM for:', query);
-
-        // Generate without streaming (complete response at once)
-        const completion = await engine.chat.completions.create({
-            messages,
-            temperature: 0.1,
-            top_p: 0.9,
-            max_tokens: 250,
-            stream: false
-        });
-
-        if (shouldStopResponse) {
-            return null;
-        }
-
-        let responseText = completion.choices[0]?.message?.content || '';
-
-        console.log('WebLLM raw response:', responseText);
-
-        // Clean up the response
-        responseText = trimIncompleteSentence(responseText.trim());
-
-        if (!responseText || responseText.length < 5) {
-            console.warn('WebLLM response too short or empty after cleanup:', responseText);
-
-            // If we get an empty response, it might be due to stale engine state
-            // (e.g., after an interrupt). Try resetting and regenerating once.
-            if (!responseText && engine && typeof engine.resetChat === 'function') {
-                console.log('Attempting recovery: resetting chat state and retrying generation...');
-                try {
-                    await engine.resetChat();
-                    // Small delay to let the engine settle
-                    await new Promise(resolve => setTimeout(resolve, 100));
-
-                    // Retry the generation
-                    const retryCompletion = await engine.chat.completions.create({
-                        messages,
-                        temperature: 0.1,
-                        top_p: 0.9,
-                        max_tokens: 250,
-                        stream: false
-                    });
-
-                    const retryResponse = retryCompletion.choices[0]?.message?.content || '';
-                    console.log('WebLLM retry response:', retryResponse);
-
-                    if (retryResponse && retryResponse.trim().length >= 5) {
-                        responseText = retryResponse.trim();
-                        console.log('Recovery successful, using retry response');
-                    } else {
-                        console.warn('Retry also returned empty response');
-                        return null;
-                    }
-                } catch (retryErr) {
-                    console.error('Retry generation failed:', retryErr);
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        }
-
-        console.log('WebLLM final response:', responseText);
-        return responseText;
-
-    } catch (error) {
-        console.error('Error generating info with WebLLM:', error);
-        return null;
-    }
-}
-
 /**
  * Generates text using Wllama (CPU mode)
  * @param {string} query - The query to generate information about
  * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
  * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
+async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '', isGpuRetry = false) {
+    let slowResponseTimeout;
+    let stallDetectionTimer = null;  // Fires if no new token arrives mid-stream
+    let stalledMidStream = false;    // Set when the stall timer fires
+    let responseText = '';           // Declared here so catch block can read partial content
     try {
         lastWllamaCompletionErrored = false;
 
-        // Build messages array (same structure as WebLLM)
+        // Build messages array
         const messages = [
-            {
-                role: "system",
-                content: SYSTEM_PROMPT
-            }
+            { role: 'system', content: SYSTEM_PROMPT }
         ];
 
-        // Include conversation history for context (last 2 exchanges)
-        if (conversationHistory.length > 0) {
-            conversationHistory.forEach(exchange => {
-                messages.push({ role: "user", content: exchange.user });
-                messages.push({ role: "assistant", content: exchange.assistant });
-            });
+        // Only include previous exchange when the query looks like a follow-up
+        // (contains a pronoun or demonstrative that refers back to prior context)
+        const isFollowUp = /\b(it|its|they|their|them|that|this|those|these|he|she|him|her)\b/i.test(query);
+        if (isFollowUp && conversationHistory.length > 0) {
+            const lastExchange = conversationHistory[conversationHistory.length - 1];
+            messages.push({ role: 'user', content: lastExchange.user });
+            messages.push({ role: 'assistant', content: lastExchange.assistant });
         }
 
-        // Add current query
-        messages.push({
-            role: "user",
-            content: query
-        });
-
-        // Convert messages array to simple prompt format (same logical structure as WebLLM)
-        let prompt = messages[0].content + '\n\n'; // System message
-
-        // Add conversation history
-        for (let i = 1; i < messages.length; i++) {
-            const msg = messages[i];
-            const role = msg.role === 'user' ? 'User' : 'Assistant';
-            prompt += `${role}: ${msg.content}\n\n`;
-        }
-
-        prompt += 'Assistant:';
+        messages.push({ role: 'user', content: query });
 
         console.log('Generating info with Wllama for:', query);
 
@@ -2602,7 +1971,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         let waitingMessageShown = false;
 
         // Set up 20-second timeout for slow responses
-        const slowResponseTimeout = setTimeout(() => {
+        slowResponseTimeout = setTimeout(() => {
             if (!firstChunkReceived && !shouldStopResponse && bubbleElement) {
                 waitingMessageShown = true;
                 const waitingHtml = bubblePrefix + '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
@@ -2613,29 +1982,35 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             }
         }, 20000);
 
-        // Generate response
-        let responseText = '';
-        const completion = await wllama.createCompletion({
-            prompt: prompt,
-            max_tokens: 250,
-            temperature: 0.1,
-            top_k: 40,
+        // Generate response using createChatCompletion with streaming
+        const completion = await wllama.createChatCompletion({
+            messages,
+            max_tokens: 512,
+            temperature: 0.3,
+            top_k: 30,
             top_p: 0.9,
-            frequency_penalty: 1.1,
-            stop: ['\n', 'User:', 'Assistant:', '---'],
-            signal: currentAbortController.signal,
+            repeat_penalty: 1.1,
+            repeat_last_n: 64,
+            cache_prompt: false,
+            stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
+            abortSignal: currentAbortController.signal,
             stream: true
         });
 
         // Store stream reference for cleanup
         currentStream = completion;
 
+        // Throttle DOM updates to the browser's render cycle to prevent
+        // layout-reflow stuttering as the chat history grows.
+        let rafPending = false;
+
         for await (const chunk of completion) {
             if (shouldStopResponse) {
                 console.log('Wllama generation stopped by user');
                 break;
             }
-            if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+            if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta?.content) {
+                const text = chunk.choices[0].delta.content;
                 // Clear timeout on first chunk
                 if (!firstChunkReceived) {
                     clearTimeout(slowResponseTimeout);
@@ -2645,12 +2020,29 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
                         setBubbleContent(bubbleElement, bubblePrefix);
                     }
                 }
-                responseText += chunk.choices[0].text;
 
-                // Stream to bubble if provided
-                if (bubbleElement) {
-                    setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
-                    scrollToBottom();
+                // Reset the mid-stream stall timer on every content chunk.
+                // If no new token arrives within 30 s the generation is aborted
+                // and whatever partial text was received is returned to the caller.
+                if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
+                stallDetectionTimer = setTimeout(() => {
+                    stalledMidStream = true;
+                    console.warn('Wllama stream stalled (no new token for 30s), aborting');
+                    if (currentAbortController) {
+                        currentAbortController.abort();
+                    }
+                }, 30000);
+
+                responseText += text;
+
+                // Stream to bubble if provided, throttled to one DOM update per frame
+                if (bubbleElement && !rafPending) {
+                    rafPending = true;
+                    requestAnimationFrame(() => {
+                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+                        scrollToBottom();
+                        rafPending = false;
+                    });
                 }
             }
         }
@@ -2658,8 +2050,9 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         currentAbortController = null;
         currentStream = null;
 
-        // Clear timeout if still pending
+        // Clear both timeouts now that the stream has finished
         clearTimeout(slowResponseTimeout);
+        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
 
         // If stopped by user, return null
         if (shouldStopResponse) {
@@ -2680,11 +2073,40 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }
 
         console.log('Wllama final response:', responseText);
+
+        // GPU failure recovery: if GPU was used and the response is empty or errored,
+        // the GPU session likely crashed. Tear down, switch to CPU, and retry once.
+        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse &&
+            (lastWllamaCompletionErrored || !responseText.trim())) {
+            console.warn('GPU inference produced no output; switching to CPU and retrying...');
+            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
+            return null; // caller will use whatever handleGpuFailureAndRetry wrote to the bubble
+        }
+
         return responseText;
 
     } catch (error) {
         clearTimeout(slowResponseTimeout);
+        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
+        currentStream = null;
         if (error.name === 'AbortError') {
+            if (stalledMidStream) {
+                // Stream stalled after partial content was received.
+                // Return whatever we have so the user sees something useful.
+                const partial = trimIncompleteSentence(responseText.trim());
+                if (partial && partial.length >= 10) {
+                    console.warn('Returning partial response from stalled stream');
+                    if (bubbleElement) {
+                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(partial));
+                        scrollToBottom();
+                    }
+                    return partial;
+                }
+                // No usable partial content – fall through to the error path
+                console.warn('Stream stalled with no usable partial response');
+                lastWllamaCompletionErrored = true;
+                return null;
+            }
             console.log('Generation aborted by user');
             lastWllamaCompletionErrored = false;
             return null;
@@ -2692,7 +2114,66 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         console.error('Error generating info with Wllama:', error);
         currentAbortController = null;
         lastWllamaCompletionErrored = true;
+
+        // GPU failure recovery for unexpected exceptions during inference.
+        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse) {
+            console.warn('GPU inference threw an exception; switching to CPU and retrying...');
+            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
+        }
+
         return null;
+    }
+}
+
+/**
+ * Tears down the failed GPU wllama instance, re-initialises on CPU, and
+ * retries the query once. Updates bubbleElement in-place throughout.
+ * @param {string} query
+ * @param {HTMLElement|null} bubbleElement
+ * @param {string} bubblePrefix
+ */
+async function handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix) {
+    gpuFailed = true;
+    wllamaUsedGPU = false;
+    wllamaReady = false;
+
+    const deadWllama = wllama;
+    wllama = null;
+    deadWllama?.exit().catch(() => { });
+
+    if (bubbleElement) {
+        setBubbleContent(bubbleElement,
+            bubblePrefix +
+            "I'm sorry, but I encountered an issue with the GPU. " +
+            "Switching to CPU mode and trying again — please wait..."
+        );
+        scrollToBottom();
+    }
+
+    try {
+        await initWllama();
+    } catch (reinitErr) {
+        console.error('CPU re-initialisation failed after GPU crash:', reinitErr);
+        if (bubbleElement) {
+            setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
+            scrollToBottom();
+        }
+        return;
+    }
+
+    if (!wllama || shouldStopResponse) return;
+
+    // Clear the failure notice so the retry streams cleanly into the bubble.
+    if (bubbleElement) {
+        setBubbleContent(bubbleElement, bubblePrefix);
+        scrollToBottom();
+    }
+
+    lastWllamaCompletionErrored = false;
+    const retryResult = await generateWithWllama(query, bubbleElement, bubblePrefix, true);
+    if (!retryResult && bubbleElement) {
+        setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
+        scrollToBottom();
     }
 }
 
@@ -2891,65 +2372,9 @@ function selectMode() {
     // Reset cancellation flag when switching modes
     modelLoadingCancelled = false;
 
-    if (selected === 'gpu') {
-        if (!availableModes.gpu || !webGPUAvailable) {
-            addMessage('GPU mode is not available in your browser.', 'bot');
-            updateModeSelect(); // revert dropdown to current mode
-            return;
-        }
-
-        // Check if engine needs to be loaded (e.g., after cancellation)
-        if (!engine) {
-            modeSelect.disabled = true;
-            sendBtn.disabled = true;
-            textInput.disabled = true;
-            micBtn.disabled = true;
-            uploadBtn.disabled = true;
-            const loadingMsg = addMessage('Switching to GPU mode - loading model...', 'bot');
-            const loadingBubble = loadingMsg.bubble;
-
-            initializeWebLLM().then(() => {
-                currentMode = 'gpu';
-                if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to GPU mode (Phi-3.5-mini)');
-                }
-                modeSelect.disabled = false;
-                sendBtn.disabled = false;
-                textInput.disabled = false;
-                micBtn.disabled = false;
-                uploadBtn.disabled = false;
-                updateModeSelect();
-            }).catch(error => {
-                console.error('Failed to load WebLLM:', error);
-                availableModes.gpu = false;
-                // Fall back to CPU if available, otherwise stay on Basic
-                if (availableModes.cpu && wllama) {
-                    currentMode = 'cpu';
-                    if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Failed to load GPU mode. Switched to CPU mode.');
-                    }
-                } else {
-                    currentMode = 'basic';
-                    if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Failed to load GPU mode. Switched to Basic mode.');
-                    }
-                }
-                modeSelect.disabled = false;
-                sendBtn.disabled = false;
-                textInput.disabled = false;
-                micBtn.disabled = false;
-                uploadBtn.disabled = false;
-                updateModeSelect();
-            });
-            return;
-        }
-
-        currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
-        updateModeSelect();
-    } else if (selected === 'cpu') {
+    if (selected === 'cpu') {
         if (!availableModes.cpu) {
-            addMessage('CPU mode is not available. The model failed to load.', 'bot');
+            addMessage('AI mode is not available. The model failed to load.', 'bot');
             updateModeSelect(); // revert dropdown to current mode
             return;
         }
@@ -2960,18 +2385,18 @@ function selectMode() {
             textInput.disabled = true;
             micBtn.disabled = true;
             uploadBtn.disabled = true;
-            const loadingMsg = addMessage('Switching to CPU mode - loading model... 0%', 'bot');
+            const loadingMsg = addMessage('Switching to AI mode - loading model... 0%', 'bot');
             const loadingBubble = loadingMsg.bubble;
 
             initWllama((progress) => {
                 if (loadingBubble) {
                     const percentage = Math.round(progress * 100);
-                    setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
+                    setBubbleContent(loadingBubble, `Switching to AI mode - loading model... ${percentage}%`);
                 }
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
+                    setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2982,17 +2407,9 @@ function selectMode() {
             }).catch(error => {
                 console.error('Failed to load wllama:', error);
                 availableModes.cpu = false;
-                // Fall back to GPU if available, otherwise stay on Basic
-                if (availableModes.gpu && webGPUAvailable && engine) {
-                    currentMode = 'gpu';
-                    if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Failed to load CPU mode. Switched to GPU mode.');
-                    }
-                } else {
-                    currentMode = 'basic';
-                    if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Failed to load CPU mode. Switched to Basic mode.');
-                    }
+                currentMode = 'basic';
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'Failed to load AI mode. Switched to Basic (Wikipedia) mode.');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -3012,7 +2429,7 @@ function selectMode() {
             textInput.disabled = true;
             micBtn.disabled = true;
             uploadBtn.disabled = true;
-            const loadingMsg = addMessage('Switching to CPU mode - preparing model...', 'bot');
+            const loadingMsg = addMessage('Switching to AI mode - preparing model...', 'bot');
             const loadingBubble = loadingMsg.bubble;
 
             // Poll for readiness (should be quick since model is already loaded)
@@ -3021,7 +2438,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
+                        setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -3037,10 +2454,10 @@ function selectMode() {
                 if (!wllamaReady) {
                     clearInterval(checkReady);
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'CPU mode unavailable - model not ready');
+                        setBubbleContent(loadingBubble, 'AI mode unavailable - model not ready');
                     }
                     availableModes.cpu = false;
-                    currentMode = availableModes.gpu ? 'gpu' : 'basic';
+                    currentMode = 'basic';
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
                     textInput.disabled = false;
@@ -3053,7 +2470,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to CPU mode (Phi 3.1-mini)', 'bot');
+        addMessage('Switched to AI mode (Phi 3.5-mini)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -3072,28 +2489,20 @@ function updateModeSelect() {
     modeSelect.value = currentMode;
 
     // Dynamically update each option's text and disabled state based on availability
-    const gpuOption = modeSelect.querySelector('option[value="gpu"]');
     const cpuOption = modeSelect.querySelector('option[value="cpu"]');
     const basicOption = modeSelect.querySelector('option[value="basic"]');
 
-    if (gpuOption) {
-        const gpuReady = availableModes.gpu && webGPUAvailable;
-        gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
-    }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 3.1-mini)' : '⚫ CPU (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟢 AI mode (Phi 3.5-mini)' : '⚫ AI mode (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
-        : currentMode === 'cpu' ? 'CPU (Phi 3.1-mini)'
-            : 'Basic (Wikipedia)';
+    const modeLabel = currentMode === 'cpu' ? 'AI mode (Phi 3.5-mini)' : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
 }
@@ -3480,17 +2889,6 @@ async function handleStopResponse() {
     shouldStopResponse = true;
     isStoppingResponse = true;
 
-    // Interrupt WebLLM generation if active (works for both streaming and non-streaming)
-    if (currentMode === 'gpu' && engine) {
-        try {
-            if (typeof engine.interruptGenerate === 'function') {
-                await engine.interruptGenerate();
-            }
-        } catch (error) {
-            console.warn('engine.interruptGenerate failed:', error);
-        }
-    }
-
     // Abort Wllama generation if active
     if (currentAbortController) {
         currentAbortController.abort();
@@ -3547,49 +2945,7 @@ async function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
 
-        // For GPU mode, fully reload the engine to clear all internal state
-        if (currentMode === 'gpu' && engine) {
-            // Disable all inputs during reload
-            sendBtn.disabled = true;
-            textInput.disabled = true;
-            micBtn.disabled = true;
-            uploadBtn.disabled = true;
-            if (modeSelect) modeSelect.disabled = true;
-
-            const loadingMsg = addMessage('Reloading AI model...', 'bot');
-            const loadingBubble = loadingMsg.bubble;
-
-            try {
-                // Dispose the old engine
-                if (typeof engine.unload === 'function') {
-                    await engine.unload();
-                }
-                engine = null;
-
-                // Reinitialize WebLLM
-                await initializeWebLLM();
-
-                if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'AI model reloaded. Ready to chat!');
-                }
-
-                console.log('Conversation restarted with fresh GPU engine');
-            } catch (error) {
-                console.error('Failed to reload GPU model:', error);
-                if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Failed to reload model. Please refresh the page.');
-                }
-            } finally {
-                // Re-enable inputs
-                sendBtn.disabled = false;
-                textInput.disabled = false;
-                micBtn.disabled = false;
-                uploadBtn.disabled = false;
-                if (modeSelect) modeSelect.disabled = false;
-            }
-        } else {
-            console.log('Conversation restarted');
-        }
+        console.log('Conversation restarted');
     }
 }
 
@@ -3631,12 +2987,10 @@ function showAppDetails() {
 
     // Update model name based on current mode
     if (modelNameElement) {
-        if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
-        } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 3.1-mini (CPU - running locally)';
+        if (currentMode === 'cpu' && wllamaReady && wllama) {
+            modelNameElement.textContent = 'Phi 3.5-mini';
         } else if (currentMode === 'basic') {
-            modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
+            modelNameElement.textContent = 'None (Wikipedia API)';
         } else {
             modelNameElement.textContent = 'Loading...';
         }

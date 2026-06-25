@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Language Playground</title>
     <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='86'>📑</text></svg>">
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='86'>🧾</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="coi-serviceworker.js"></script>
     <script src="https://unpkg.com/compromise"></script>
@@ -19,7 +19,15 @@
             <h1>Language Playground</h1>
             <div class="toolbar-right">
                 <div class="model-controls">
-                    <span id="model-status" class="model-status-text ready">Rule-based extraction ready</span>
+                    <label for="mode-select" class="sr-only">Analysis mode</label>
+                    <select id="mode-select" class="mode-select" title="Choose analysis mode" aria-label="Choose analysis mode" disabled>
+                        <option value="ai">Use AI model</option>
+                        <option value="basic">Use pattern matching</option>
+                    </select>
+                    <div class="model-status-wrap">
+                        <span id="model-status" class="model-status-text ready">Rule-based extraction ready</span>
+                        <a href="#" id="cancel-model-link" class="cancel-link" style="display: none;" aria-label="Cancel model loading and use basic mode">Cancel and use basic mode</a>
+                    </div>
                 </div>
                 <div class="theme-toggle-wrap" role="group" aria-label="Theme controls">
                     <span aria-hidden="true">☀</span>

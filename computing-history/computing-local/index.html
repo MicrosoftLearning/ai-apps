@@ -19,14 +19,6 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <!-- Vosk for offline speech recognition -->
     <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js"></script>
-    <!-- Wllama -->
-    <script type="importmap">
-        {
-            "imports": {
-                "@wllama/wllama": "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js"
-            }
-        }
-    </script>
 </head>
 
 <body>
@@ -43,17 +35,17 @@
                     <span class="status-progress" id="mobilenetProgress"
                         aria-label="MobileNet loading progress">0%</span>
                 </div>
-                <div class="model-status" id="smollmStatus">
+                <div class="model-status" id="phiStatus">
                     <span class="status-icon" aria-hidden="true">⏳</span>
-                    <span class="status-text" id="smollmStatusText">Text Generation Model</span>
-                    <span class="status-progress" id="smollmProgress" aria-label="Text model loading progress">0%</span>
+                    <span class="status-text" id="phiStatusText">Text Generation Model</span>
+                    <span class="status-progress" id="phiProgress" aria-label="Text model loading progress">0%</span>
                 </div>
             </div>
             <p class="loading-note" style="margin-top: 1rem; font-size: 0.9em; color: #ccc; text-align: center;">
                 On first-time use, model loading may take a few minutes. Subsequent loads will be faster.
             </p>
             <p class="loading-cancel" style="margin-top: 10px; text-align: center;">
-                <a href="#" id="cancel-loading-link" class="cancel-link" tabindex="0">Cancel and start in Basic Mode</a>
+                <a href="#" id="cancel-loading-link" class="cancel-link" tabindex="0">Cancel and start in Basic (Wikipedia) mode</a>
             </p>
         </div>
     </div>
@@ -71,9 +63,8 @@
                     aria-label="View agent configuration" tabindex="1">&#128195;</button>
                 <div class="mode-select-container" role="group" aria-label="Mode selection">
                     <select id="mode-select" class="mode-select-input" aria-label="Select AI mode">
-                        <option value="gpu">GPU</option>
-                        <option value="cpu">CPU</option>
-                        <option value="basic" selected>Basic</option>
+                        <option value="cpu">AI mode (Phi 4-mini)</option>
+                        <option value="basic" selected>Basic (Wikipedia)</option>
                     </select>
                 </div>
                 <button class="restart-btn" id="restartBtn" title="Restart conversation"
@@ -119,7 +110,7 @@
                         <p>This app is an educational example designed to help you explore examples of AI capabilities,
                             including generative AI chat, image classification, and speech recognition.</p>
                         <p style="margin-top: 1em;">It runs AI models entirely in your browser using TensorFlow.js and
-                            WebLLM or Wllama, with no cloud services required.</p>
+                            Wllama, with no cloud services required.</p>
                     </div>
                     <div class="modal-section">
                         <h3>Guided Tour</h3>
@@ -156,7 +147,7 @@
         </div>
     </div>
     <p class="model-footer">Powered by Microsoft Phi</p>
-    <script type="module" src="app.js?v=3"></script>
+    <script type="module" src="app.js?v=9"></script>
 </body>
 
 </html>

@@ -24,7 +24,7 @@ except Exception:
 
 _BRIDGE_DEBUG = False
 _EXPECTED_API_KEY = "key123"
-_EXPECTED_MODEL_NAMES = ["local-llm"]  # Support both CPU and GPU models
+_EXPECTED_MODEL_NAMES = ["phi"]
 
 
 def _to_ns(value: Any) -> Any:

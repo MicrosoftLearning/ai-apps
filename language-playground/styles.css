@@ -119,6 +119,41 @@ body.dark {
     /* Steady state - no animation */
 }
 
+.model-status-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.cancel-link {
+    font-size: 0.74rem;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    text-align: center;
+}
+
+.cancel-link:hover {
+    color: var(--danger);
+}
+
+.mode-select {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    height: 32px;
+    padding: 4px 8px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 0.84rem;
+    cursor: pointer;
+}
+
+.mode-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 /* Dark mode uses CSS variables, no overrides needed */
 
 @keyframes pulse {
@@ -126,10 +161,12 @@ body.dark {
     0%,
     100% {
         opacity: 1;
+        transform: scale(1);
     }
 
     50% {
-        opacity: 0.6;
+        opacity: 0.4;
+        transform: scale(1.02);
     }
 }
 

@@ -1,3 +1,11 @@
+import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
+
+const WASM_PATHS = {
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
+};
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_QUANT = "Q4_K_M";
+
 (function () {
     "use strict";
 
@@ -72,6 +80,14 @@
         originalText: ""
     };
 
+    let wllamaInstance = null;
+    let isModelLoaded = false;
+    let isLoadingModel = false;
+    let modelLoadingCancelled = false;
+    let modelLoadingAbortController = null;
+    let gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
+    let wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
+
     const elements = {
         analyzerSelect: document.getElementById("analyzer-select"),
         sourceText: document.getElementById("source-text"),
@@ -86,7 +102,9 @@
         results: document.getElementById("results"),
         announcer: document.getElementById("aria-announcer"),
         themeToggle: document.getElementById("theme-toggle"),
-        modelStatus: document.getElementById("model-status")
+        modelStatus: document.getElementById("model-status"),
+        cancelLink: document.getElementById("cancel-model-link"),
+        modeSelect: document.getElementById("mode-select")
     };
 
     function announce(text) {
@@ -117,42 +135,42 @@
         elements.results.hidden = false;
         elements.results.style.display = "flex";
         elements.results.innerHTML = "<div class='loading-state'><div class='loading-message'></div><div class='loading-dots'><span></span><span></span><span></span></div></div>";
-        
+
         // Clear any existing timers
         clearLoadingTimers();
-        
+
         // Set up progressive loading messages
         const messageEl = elements.results.querySelector('.loading-message');
         if (messageEl) {
             // After 5 seconds: "Analyzing"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Analyzing";
             }, 5000));
-            
+
             // After 20 seconds: "Still analyzing"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Still analyzing";
             }, 20000));
-            
+
             // After 35 seconds: "Almost there"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Almost there";
             }, 35000));
-            
+
             // After 50 seconds: "Hold tight"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Hold tight";
             }, 50000));
 
             // After 65 seconds: "Nearly done"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Nearly done";
             }, 65000));
         }
     }
-    
+
     function clearLoadingTimers() {
-        loadingTimers.forEach(function(timer) {
+        loadingTimers.forEach(function (timer) {
             clearTimeout(timer);
         });
         loadingTimers = [];
@@ -188,6 +206,81 @@
 
         elements.modelStatus.textContent = message;
         elements.modelStatus.className = 'model-status-text ' + (isLoading ? 'loading' : 'ready');
+    }
+
+    function isUsingAI() {
+        return isModelLoaded && Boolean(wllamaInstance) &&
+            (!elements.modeSelect || elements.modeSelect.value === "ai");
+    }
+
+    function setupCancelLink() {
+        if (!elements.cancelLink) return;
+        elements.cancelLink.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelModelLoad();
+        });
+        elements.cancelLink.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                cancelModelLoad();
+            }
+        });
+    }
+
+    function showCancelLink() {
+        if (elements.cancelLink && !modelLoadingCancelled) {
+            elements.cancelLink.style.display = "inline-block";
+        }
+    }
+
+    function cancelModelLoad() {
+        modelLoadingCancelled = true;
+        if (modelLoadingAbortController) {
+            modelLoadingAbortController.abort();
+        }
+        if (wllamaInstance) {
+            const _old = wllamaInstance;
+            wllamaInstance = null;
+            _old.exit().catch(function () { });
+        }
+        if (elements.cancelLink) elements.cancelLink.style.display = "none";
+        isLoadingModel = false;
+        isModelLoaded = false;
+        updateModelStatus("Rule-based extraction ready", false);
+        enableUI();
+    }
+
+    function disableUI() {
+        elements.analyzerSelect.disabled = true;
+        elements.sampleSelect.disabled = true;
+        elements.attachBtn.disabled = true;
+        elements.detectBtn.disabled = true;
+        elements.sourceText.disabled = true;
+        if (elements.modeSelect) elements.modeSelect.disabled = true;
+    }
+
+    function enableUI() {
+        elements.analyzerSelect.disabled = false;
+        elements.sampleSelect.disabled = false;
+        elements.attachBtn.disabled = false;
+        elements.sourceText.disabled = false;
+        if (elements.modeSelect) elements.modeSelect.disabled = false;
+        updateDetectButton();
+        updateModeSelect();
+    }
+
+    function updateModeSelect() {
+        if (!elements.modeSelect) return;
+        const aiAvailable = isModelLoaded && Boolean(wllamaInstance);
+        const aiOption = elements.modeSelect.querySelector('option[value="ai"]');
+        if (aiOption) {
+            aiOption.disabled = !aiAvailable;
+            aiOption.textContent = aiAvailable ? "Use AI model" : "AI model unavailable";
+        }
+        if (!aiAvailable) {
+            elements.modeSelect.value = "basic";
+        }
     }
 
     function dedupeStrings(values) {
@@ -367,8 +460,6 @@
             return right.rawScore - left.rawScore;
         });
 
-        const best = scores[0];
-        const second = scores[1] || { rawScore: 0 };
         const totalScore = scores.reduce(function (sum, item) {
             return sum + item.rawScore;
         }, 0) || 1;
@@ -385,8 +476,6 @@
         });
 
         const bestNormalized = normalizedScores[0];
-        const secondNormalized = normalizedScores[1] || { probability: 0 };
-        const margin = Math.max(0, bestNormalized.probability - secondNormalized.probability);
         const confidence = Math.max(1, Math.min(99, Math.round(bestNormalized.probability)));
 
         return {
@@ -647,6 +736,279 @@
         reader.readAsText(file);
     }
 
+    function checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
+    }
+
+    async function initializeModel() {
+        if (isLoadingModel || isModelLoaded) return;
+
+        // Check hardware requirements before attempting to load model
+        if (!checkHardwareRequirements()) {
+            isModelLoaded = false;
+            updateModelStatus("Rule-based detection ready", false);
+            enableUI();
+            console.log('Model loading skipped - hardware requirements not met');
+            return;
+        }
+
+        isLoadingModel = true;
+        wllamaUsedGPU = false;
+        modelLoadingCancelled = false;
+        modelLoadingAbortController = new AbortController();
+        disableUI();
+        setupCancelLink();
+        updateModelStatus("Loading Phi 3.5-mini...", true);
+
+        try {
+            // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+            let gpuEnabled = !gpuFailed && !!navigator.gpu;
+            if (gpuEnabled) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                            console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        }
+                    } else {
+                        gpuEnabled = false;
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                    gpuEnabled = false;
+                }
+            }
+
+            const useMultiThread = window.crossOriginIsolated === true;
+            const availableThreads = navigator.hardwareConcurrency || 4;
+            const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+
+            const progressCallback = function ({ loaded, total }) {
+                if (modelLoadingCancelled) return;
+                if (!total) {
+                    updateModelStatus("Loading Phi 3.5-mini...", true);
+                    return;
+                }
+                const pct = Math.round((loaded / total) * 100);
+                updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
+                showCancelLink();
+            };
+
+            const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+            const attemptLoad = async function (n_gpu_layers, n_threads) {
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
+                wllamaInstance = new Wllama(WASM_PATHS);
+                await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
+            };
+
+            const loadWithFallback = async function () {
+                if (gpuEnabled) {
+                    try {
+                        console.log('Attempting GPU load (32 layers)...');
+                        updateModelStatus("Loading with GPU acceleration...", true);
+                        await attemptLoad(32, preferredThreads);
+                        wllamaUsedGPU = true;
+                        console.log('Model loaded with GPU acceleration.');
+                        return;
+                    } catch (gpuErr) {
+                        console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                        wllamaUsedGPU = false;
+                    }
+                }
+                if (preferredThreads > 1) {
+                    try {
+                        console.log('Attempting CPU load (multi-thread)...');
+                        updateModelStatus("Loading with CPU (multi-thread)...", true);
+                        await attemptLoad(0, preferredThreads);
+                        return;
+                    } catch (multiErr) {
+                        if (modelLoadingCancelled) throw multiErr;
+                        console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+                    }
+                }
+                console.log('Attempting CPU load (single-thread)...');
+                updateModelStatus("Loading with CPU (single-thread)...", true);
+                await attemptLoad(0, 1);
+            };
+
+            await loadWithFallback();
+
+            if (modelLoadingCancelled) {
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
+                return;
+            }
+
+            isModelLoaded = true;
+            isLoadingModel = false;
+            if (elements.cancelLink) elements.cancelLink.style.display = "none";
+            updateModelStatus("Phi 3.5-mini ready", false);
+            enableUI();
+            console.log("Phi 3.5-mini loaded successfully");
+
+        } catch (error) {
+            if (modelLoadingCancelled) return;
+            console.error("Failed to load Phi 3.5-mini:", error);
+            isModelLoaded = false;
+            isLoadingModel = false;
+            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
+            if (elements.cancelLink) elements.cancelLink.style.display = "none";
+            updateModelStatus("Rule-based extraction ready", false);
+            enableUI();
+        }
+    }
+
+    /**
+     * Tears down wllama and reloads the model CPU-only.
+     * Called when GPU inference produces empty or invalid output at runtime.
+     */
+    async function reloadModelOnCpu() {
+        gpuFailed = true;
+        wllamaUsedGPU = false;
+        isModelLoaded = false;
+        if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async function (n_threads) {
+            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
+            wllamaInstance = new Wllama(WASM_PATHS);
+            await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: function () { } });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
+        }
+        isModelLoaded = true;
+    }
+
+    async function detectLanguageWithAI(text) {
+        // Truncate to keep well within the 712-token context
+        const inputText = text.length > 500 ? text.substring(0, 500) : text;
+
+        const response = await wllamaInstance.createChatCompletion({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a language detection assistant. Respond with ONLY a valid JSON object, no other text."
+                },
+                {
+                    role: "user",
+                    content: "Detect the language of the following text. Respond with ONLY a JSON object with fields: \"language\" (full name), \"code\" (ISO 639-1 two-letter code), \"confidence\" (integer 1-99).\n\nText:\n---\n" + inputText + "\n---"
+                }
+            ],
+            max_tokens: 80,
+            temperature: 0.1,
+            top_k: 30,
+            top_p: 0.85,
+            cache_prompt: false,
+            stream: false
+        });
+
+        const content = response && response.choices && response.choices[0] && response.choices[0].message
+            ? response.choices[0].message.content : null;
+        if (!content) throw new Error("Empty response from model");
+
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON in model response");
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (!parsed.language || !parsed.code) throw new Error("Invalid response structure");
+
+        return {
+            language: parsed.language,
+            code: parsed.code,
+            confidence: Math.max(1, Math.min(99, parseInt(parsed.confidence) || 75)),
+            probabilities: [],
+            alternatives: []
+        };
+    }
+
+    async function detectPiiWithAI(text) {
+        // Truncate to keep well within the 712-token context
+        const inputText = text.length > 600 ? text.substring(0, 600) : text;
+
+        const response = await wllamaInstance.createChatCompletion({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a PII extraction assistant. Respond with ONLY a valid JSON array, no other text."
+                },
+                {
+                    role: "user",
+                    content: "Extract all personally identifiable information (PII) from the following text. Find: person names, email addresses, phone numbers, and physical postal addresses.\n\nRespond with ONLY a JSON array of objects, each with \"type\" (one of: \"Person\", \"Email\", \"Phone\", \"Address\") and \"value\" (exact text as it appears).\n\nText:\n---\n" + inputText + "\n---"
+                }
+            ],
+            max_tokens: 300,
+            temperature: 0.1,
+            top_k: 30,
+            top_p: 0.85,
+            cache_prompt: false,
+            stream: false
+        });
+
+        const content = response && response.choices && response.choices[0] && response.choices[0].message
+            ? response.choices[0].message.content : null;
+        if (!content) throw new Error("Empty response from model");
+
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error("No JSON array in model response");
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (!Array.isArray(parsed)) throw new Error("Model response is not an array");
+
+        const seen = new Set();
+        const uniqueEntities = parsed.filter(function (entity) {
+            if (!entity.type || !entity.value) return false;
+            const key = entity.type + "|" + String(entity.value).toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        const replacements = {
+            Person: "[PERSON]",
+            Phone: "[PHONENUMBER]",
+            Email: "[EMAIL]",
+            Address: "[ADDRESS]"
+        };
+
+        const redactedText = uniqueEntities
+            .slice()
+            .sort(function (a, b) { return b.value.length - a.value.length; })
+            .reduce(function (current, entity) {
+                const rep = replacements[entity.type];
+                if (!rep) return current;
+                return current.replace(new RegExp(escapeRegExp(String(entity.value)), "g"), rep);
+            }, text);
+
+        return { entities: uniqueEntities, redactedText: redactedText };
+    }
+
     async function analyze() {
         const text = elements.sourceText.value.trim();
         if (!text) {
@@ -655,36 +1017,83 @@
         }
 
         state.originalText = text;
-
-        // Show loading state
         showLoading();
+        elements.detectBtn.disabled = true;
+        elements.detectBtn.textContent = "Analyzing...";
 
         try {
             if (state.mode === "language") {
-                renderLanguage(detectLanguage(text));
+                let result;
+                if (isUsingAI()) {
+                    try {
+                        result = await detectLanguageWithAI(text);
+                    } catch (aiErr) {
+                        if (wllamaUsedGPU && !gpuFailed) {
+                            console.warn("GPU language detection failed, switching to CPU and retrying:", aiErr);
+                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                            try {
+                                await reloadModelOnCpu();
+                                updateModelStatus("Phi 3.5-mini ready", false);
+                                result = await detectLanguageWithAI(text);
+                            } catch (cpuErr) {
+                                console.warn("CPU language detection also failed, using rule-based fallback:", cpuErr);
+                                result = detectLanguage(text);
+                            }
+                        } else {
+                            console.warn("AI language detection failed, using rule-based fallback:", aiErr);
+                            result = detectLanguage(text);
+                        }
+                    }
+                } else {
+                    result = detectLanguage(text);
+                }
+                renderLanguage(result);
                 announce("Detected language");
                 lockEditor();
             } else {
-                // Disable button and show loading state for PII detection
-                elements.detectBtn.disabled = true;
-                elements.detectBtn.textContent = "Analyzing...";
-                showStatus("Detecting PII using compromise and regex rules...", false);
+                const usingAI = isUsingAI();
+                showStatus(usingAI ? "Detecting PII with Phi 3.5-mini..." : "Detecting PII using rules...", false);
 
-                const result = await detectPii(text);
+                let result;
+                if (usingAI) {
+                    try {
+                        result = await detectPiiWithAI(text);
+                    } catch (aiErr) {
+                        if (wllamaUsedGPU && !gpuFailed) {
+                            console.warn("GPU PII detection failed, switching to CPU and retrying:", aiErr);
+                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                            try {
+                                await reloadModelOnCpu();
+                                updateModelStatus("Phi 3.5-mini ready", false);
+                                result = await detectPiiWithAI(text);
+                            } catch (cpuErr) {
+                                console.warn("CPU PII detection also failed, using rule-based fallback:", cpuErr);
+                                result = await detectPii(text);
+                            }
+                        } else {
+                            console.warn("AI PII detection failed, using rule-based fallback:", aiErr);
+                            result = await detectPii(text);
+                        }
+                    }
+                } else {
+                    result = await detectPii(text);
+                }
+
                 elements.sourceText.value = result.redactedText;
                 renderPii(result);
                 announce("PII extraction complete");
                 showStatus("", false);
                 lockEditor();
-
-                elements.detectBtn.disabled = false;
             }
         } catch (error) {
             console.error(error);
             renderError(error instanceof Error ? error.message : "Unexpected error while analyzing text.");
-            elements.detectBtn.disabled = false;
-            elements.detectBtn.textContent = "Detect";
             showStatus(error.message || "Error during analysis", true);
+        } finally {
+            if (!state.locked) {
+                elements.detectBtn.disabled = elements.sourceText.value.trim().length === 0;
+                elements.detectBtn.textContent = "Detect";
+            }
         }
     }
 
@@ -703,7 +1112,14 @@
         updatePlaceholder();
         updateDetectButton();
 
-        updateModelStatus("Rule-based extraction ready", false);
+        initializeModel();
+
+        if (elements.modeSelect) {
+            elements.modeSelect.addEventListener("change", function () {
+                const isAI = elements.modeSelect.value === "ai";
+                announce(isAI ? "Switched to Phi 3.5-mini mode" : "Switched to basic pattern matching mode");
+            });
+        }
 
         elements.analyzerSelect.addEventListener("change", function () {
             state.mode = elements.analyzerSelect.value;
@@ -750,6 +1166,12 @@
             const dark = elements.themeToggle.checked;
             document.body.classList.toggle("dark", dark);
             localStorage.setItem("language-playground-theme", dark ? "dark" : "light");
+        });
+
+        window.addEventListener("beforeunload", function () {
+            if (wllamaInstance) {
+                wllamaInstance.exit().catch(function () { });
+            }
         });
 
     }

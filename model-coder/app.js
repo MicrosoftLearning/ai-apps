@@ -1,4 +1,4 @@
-import "./llm.js?v=20260612-cancel-fix-v2";
+import "./llm.js?v=20260625-final";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
@@ -79,7 +79,7 @@ def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -130,7 +130,7 @@ def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -173,7 +173,7 @@ def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -229,7 +229,7 @@ def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -279,7 +279,7 @@ def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         openai_client = OpenAI(
@@ -332,7 +332,7 @@ async def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize an async OpenAI client
         async_client = AsyncOpenAI(
@@ -383,7 +383,7 @@ async def main():
         # Configuration settings 
         endpoint = "https://local/openai"
         key = "key123"
-        model_name = "local-llm"
+        model_name = "phi"
 
         # Initialize the OpenAI client
         async_client = AsyncOpenAI(
@@ -443,7 +443,7 @@ const state = {
     activeRunId: 0,
     aboutReturnFocus: null,
     switchingTemplate: false,
-    availableModes: { gpu: false, cpu: true, basic: true },
+    availableModes: { cpu: true, basic: true },
     currentMode: "basic",
     switchingMode: false,  // Track if we're switching modes
 };
@@ -748,7 +748,7 @@ function getTerminal() {
 
 function normalizeMode(modeValue) {
     const value = String(modeValue || "").toLowerCase();
-    if (value === "gpu" || value === "cpu" || value === "basic") {
+    if (value === "cpu" || value === "basic") {
         return value;
     }
     return "basic";
@@ -759,7 +759,6 @@ function syncModeStateFromRuntime() {
         const availableModes = window.modelCoderGetAvailableModes();
         if (availableModes && typeof availableModes === "object") {
             state.availableModes = {
-                gpu: Boolean(availableModes.gpu),
                 cpu: Boolean(availableModes.cpu),
                 basic: true
             };
@@ -772,7 +771,7 @@ function syncModeStateFromRuntime() {
     }
 
     if (typeof window.modelCoderIsUsingCPUMode === "function") {
-        state.currentMode = window.modelCoderIsUsingCPUMode() ? "cpu" : "gpu";
+        state.currentMode = window.modelCoderIsUsingCPUMode() ? "cpu" : "basic";
     }
 }
 
@@ -1204,9 +1203,7 @@ async function loadSelectedTemplate() {
         if (templateChanged) {
             clearTerminalOutput({ resetModel: false });
 
-            // Both GPU mode (WebLLM/Phi-3) and CPU mode (wllama/Phi-2) now use soft reset.
-            // Phi-2 is stable enough to avoid expensive model reloads; just clear conversation history and cache.
-            // This was a workaround for SmolLM2's behavior issues and is no longer needed.
+            // Soft reset on template change: just clear conversation history and KV cache without reloading the model.
             console.log(`Template switching: soft reset (clear conversation history and cache)`);
 
             // Soft reset clears conversation history and KV cache without unloading the model
@@ -1356,7 +1353,7 @@ function buildExecutionCode(userCode, runId, isCPUMode) {
     const serializedNopenai = JSON.stringify(state.nopenaiSource || "");
     const serializedUserCode = JSON.stringify(String(userCode || ""));
     const serializedRunId = Number.isFinite(runId) ? runId : -1;
-    const readyMessage = "Model Coder ready. Running script..." + (isCPUMode ? " (responses in CPU mode may be slow)" : "");
+    const readyMessage = "Model Coder ready. Running script..." + (isCPUMode ? " (responses on some devices may be slow)" : "");
     return `
 import sys
 import types
@@ -1503,20 +1500,13 @@ function updateModeSelectDropdown() {
 
     modeSelect.value = normalizeMode(state.currentMode);
 
-    const gpuOption = modeSelect.querySelector('option[value="gpu"]');
     const cpuOption = modeSelect.querySelector('option[value="cpu"]');
     const basicOption = modeSelect.querySelector('option[value="basic"]');
-
-    if (gpuOption) {
-        const enabled = Boolean(state.availableModes?.gpu);
-        gpuOption.disabled = !enabled;
-        gpuOption.textContent = enabled ? "GPU (Phi-3)" : "GPU (unavailable)";
-    }
 
     if (cpuOption) {
         const enabled = Boolean(state.availableModes?.cpu);
         cpuOption.disabled = !enabled;
-        cpuOption.textContent = enabled ? "CPU (Phi-2)" : "CPU (unavailable)";
+        cpuOption.textContent = enabled ? "Phi 3.5-mini" : "Phi 3.5-mini (unavailable)";
     }
 
     if (basicOption) {
@@ -1525,11 +1515,9 @@ function updateModeSelectDropdown() {
     }
 
     const modeLabel =
-        state.currentMode === "gpu"
-            ? "GPU (Phi-3)"
-            : state.currentMode === "cpu"
-                ? "CPU (Phi-2)"
-                : "Basic Chat (Wikipedia)";
+        state.currentMode === "cpu"
+            ? "Phi 3.5-mini"
+            : "Basic Chat (Wikipedia)";
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute("aria-label", `Select AI mode. Currently: ${modeLabel}`);
 
@@ -1552,6 +1540,7 @@ async function switchMode(targetMode) {
     }
 
     state.switchingMode = true;
+    state.modelReady = false;
     updateRunState();
 
     try {
@@ -1563,25 +1552,27 @@ async function switchMode(targetMode) {
 
         // Re-initialize with the target mode
         if (typeof window.modelCoderInitWithMode === "function") {
-            console.log(`[Mode Select] Initializing with mode: ${normalizedTarget}`);
             await window.modelCoderInitWithMode(normalizedTarget, 3);
         } else {
             // Fallback to regular init if new function not available
             console.warn("[Mode Select] modelCoderInitWithMode not available, using regular init");
             await window.modelCoderInit(3);
         }
+        state.modelReady = true;
 
+        // Sync available modes from runtime
         syncModeStateFromRuntime();
-        if (!state.currentMode) {
-            state.currentMode = normalizedTarget;
-        }
 
-        console.log(`[Mode Select] Switched to ${state.currentMode.toUpperCase()} mode`);
+        // Ensure currentMode is still correct after sync
+        state.currentMode = normalizedTarget;
+
+        console.log(`[Mode Select] Successfully switched to ${state.currentMode.toUpperCase()} mode`);
         updateModeSelectDropdown();
     } catch (error) {
         console.error("[Mode Select] Failed to switch mode:", error);
         setPill(statusModel, `Mode switch failed: ${error.message}`, "error");
 
+        state.modelReady = false;
         syncModeStateFromRuntime();
         updateModeSelectDropdown();
     } finally {

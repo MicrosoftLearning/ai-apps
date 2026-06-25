@@ -1,4 +1,11 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
+
+const WASM_PATHS = {
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
+};
+
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_QUANT = "Q4_K_M";
 
 // Information Extractor Application
 // Extract structured information from images
@@ -16,12 +23,13 @@ class InfoExtractorApp {
         this.selectedImageIndex = -1;
         this.ocrData = null;
         this.extractedFields = null;
-        this.engine = null;
+        this.wllama = null;
         this.isModelLoaded = false;
-        this.currentModelId = null;
         this.useAI = true; // Default to using AI if available
         this.isLoadingModel = false; // Track if model is currently loading
         this.cancelModelLoad = false; // Flag to cancel model loading
+        this.gpuFailed = false; // True after a GPU inference failure; forces CPU-only on next load
+        this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
 
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -34,6 +42,22 @@ class InfoExtractorApp {
         this.applyTheme();
         this.showModelLoading();
         this.initializeModel();
+    }
+
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
     }
 
     showModelLoading() {
@@ -179,7 +203,6 @@ class InfoExtractorApp {
     }
 
     async handleAIToggle(event) {
-        const wasChecked = this.useAI;
         this.useAI = event.target.checked;
         console.log('AI toggle changed. Use AI:', this.useAI);
 
@@ -493,136 +516,182 @@ class InfoExtractorApp {
     }
 
     async initializeModel() {
+        // Check hardware requirements before attempting to load model
+        if (!this.checkHardwareRequirements()) {
+            this.isModelLoaded = false;
+            this.useAI = false;
+            this.hideModelLoading();
+
+            // Disable AI toggle since model cannot load
+            if (this.aiToggle) {
+                this.aiToggle.disabled = true;
+                this.aiToggle.checked = false;
+            }
+
+            // Load the default receipt image
+            this.loadDefaultReceipt();
+
+            return;
+        }
+
         // Reset cancellation flag and set loading state
         this.cancelModelLoad = false;
         this.isLoadingModel = true;
+        this.wllamaUsedGPU = false;
 
         try {
-            console.log('Initializing WebLLM model...');
-            this.updateModelLoadingProgress(10, 'Checking WebLLM availability...');
+            console.log('Initializing Phi 3.5-mini (wllama)...');
+            this.updateModelLoadingProgress(10, 'Initializing Phi 3.5-mini...');
 
-            // Check for cancellation
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user');
                 return;
             }
 
-            // Check if WebLLM is available
-            if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
-                console.error('WebLLM not available:', {
-                    webllm: !!webllm,
-                    CreateMLCEngine: !!webllm?.CreateMLCEngine,
-                    prebuiltAppConfig: !!webllm?.prebuiltAppConfig
-                });
-                throw new Error('WebLLM not properly loaded');
-            }
-
-            this.updateModelLoadingProgress(20, 'Loading available models...');
-
-            // Check for cancellation
-            if (this.cancelModelLoad) {
-                console.log('Model loading cancelled by user');
-                return;
-            }
-
-            // Get available models from WebLLM
-            const models = webllm.prebuiltAppConfig.model_list;
-            console.log('Available models:', models.map(m => m.model_id));
-
-            // Filter for Phi models first
-            let availableModels = models.filter(model =>
-                model.model_id.toLowerCase().includes('phi')
-            );
-
-            // If no Phi models, try other small models
-            if (availableModels.length === 0) {
-                availableModels = models.filter(model =>
-                    model.model_id.toLowerCase().includes('llama-3.2-1b') ||
-                    model.model_id.toLowerCase().includes('gemma-2-2b') ||
-                    model.model_id.toLowerCase().includes('qwen')
-                );
-            }
-
-            if (availableModels.length === 0) {
-                console.error('No compatible models found in:', models.map(m => m.model_id));
-                throw new Error('No compatible models found');
-            }
-
-            // Check for cancellation before loading
-            if (this.cancelModelLoad) {
-                console.log('Model loading cancelled by user');
-                return;
-            }
-
-            console.log('Attempting to load model:', availableModels[0].model_id);
-            this.updateModelLoadingProgress(30, `Loading ${availableModels[0].model_id}...`);
-
-            // Load the first available model
-            this.engine = await webllm.CreateMLCEngine(
-                availableModels[0].model_id,
-                {
-                    initProgressCallback: (progress) => {
-                        // Check for cancellation during progress
-                        if (this.cancelModelLoad) {
-                            console.log('Model loading cancelled by user during download');
-                            return;
+            // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+            let gpuEnabled = !this.gpuFailed && !!navigator.gpu;
+            if (gpuEnabled) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                            console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                            gpuEnabled = false;
                         }
-                        const percentage = 30 + Math.round(progress.progress * 70); // 30-100%
-                        const progressText = `Loading ${availableModels[0].model_id}: ${Math.round(progress.progress * 100)}%`;
-                        this.updateModelLoadingProgress(percentage, progressText);
-                        console.log('Model loading progress:', Math.round(progress.progress * 100) + '%');
+                    } else {
+                        gpuEnabled = false;
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                    gpuEnabled = false;
+                }
+            }
+
+            const useMultiThread = window.crossOriginIsolated === true;
+            const availableThreads = navigator.hardwareConcurrency || 4;
+            const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+
+            const progressCallback = ({ loaded, total }) => {
+                if (this.cancelModelLoad) return;
+                if (!total) {
+                    this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
+                    return;
+                }
+                const pct = Math.round((loaded / total) * 100);
+                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
+            };
+
+            const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+            const attemptLoad = async (n_gpu_layers, n_threads) => {
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+                this.wllama = new Wllama(WASM_PATHS);
+                await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers, n_threads, progressCallback });
+            };
+
+            const loadWithFallback = async () => {
+                if (gpuEnabled) {
+                    try {
+                        console.log('Attempting GPU load (32 layers)...');
+                        this.updateModelLoadingProgress(15, 'Loading with GPU acceleration...');
+                        await attemptLoad(32, preferredThreads);
+                        this.wllamaUsedGPU = true;
+                        console.log('Model loaded with GPU acceleration.');
+                        return;
+                    } catch (gpuErr) {
+                        console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                        this.wllamaUsedGPU = false;
                     }
                 }
-            );
+                if (preferredThreads > 1) {
+                    try {
+                        console.log('Attempting CPU load (multi-thread)...');
+                        this.updateModelLoadingProgress(15, 'Loading with CPU (multi-thread)...');
+                        await attemptLoad(0, preferredThreads);
+                        return;
+                    } catch (multiErr) {
+                        console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+                    }
+                }
+                console.log('Attempting CPU load (single-thread)...');
+                this.updateModelLoadingProgress(15, 'Loading with CPU (single-thread)...');
+                await attemptLoad(0, 1);
+            };
 
-            // Check if cancelled after model load attempt
+            await loadWithFallback();
+
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user after download');
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                 return;
             }
 
-            this.currentModelId = availableModels[0].model_id;
             this.isModelLoaded = true;
             this.isLoadingModel = false;
-            this.updateModelLoadingProgress(100, 'Model ready!');
-            console.log('Model loaded successfully:', this.currentModelId);
+            this.updateModelLoadingProgress(100, 'Phi 3.5-mini ready!');
+            console.log('Phi 3.5-mini loaded successfully');
 
-            // Hide loading screen after a brief delay
             setTimeout(() => {
                 this.hideModelLoading();
-                // Load the default receipt image
                 this.loadDefaultReceipt();
             }, 1000);
 
         } catch (error) {
-            // Only handle as an error if it wasn't cancelled by user
             if (!this.cancelModelLoad) {
-                console.error('Failed to initialize model:', error);
-                console.error('Error details:', error.message);
-                console.error('Error stack:', error.stack);
+                console.error('Failed to initialize Phi 3.5-mini:', error);
                 this.isModelLoaded = false;
                 this.isLoadingModel = false;
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
 
-                // Update loading screen to indicate fallback mode
                 this.updateModelLoadingProgress(100, 'Using pattern-based extraction mode...');
 
-                // Hide loading screen and activate fallback mode silently
                 setTimeout(() => {
                     this.hideModelLoading();
-                    // Disable the AI toggle since model failed to load with an error
                     this.aiToggle.checked = false;
                     this.aiToggle.disabled = true;
                     this.useAI = false;
-                    // Quietly proceed in fallback mode - no error modal shown
                     console.log('Fallback mode activated: Using OCR and pattern-matching for field extraction');
-                    // Still load the default receipt even if model fails
                     this.loadDefaultReceipt();
                 }, 1000);
             } else {
-                // Cancellation was already handled
                 console.log('Model loading was cancelled, no error handling needed');
             }
         }
+    }
+
+    /**
+     * Tears down the current wllama instance and reloads the model on CPU only.
+     * Called when GPU inference produces empty output at runtime.
+     */
+    async _reloadModelOnCpu() {
+        this.gpuFailed = true;
+        this.wllamaUsedGPU = false;
+        this.isModelLoaded = false;
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async (n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
+        }
+        this.isModelLoaded = true;
     }
 
     async analyzeCurrentImage() {
@@ -641,9 +710,9 @@ class InfoExtractorApp {
             await this.performOCR(imageData.file);
 
             // Step 2: Extract fields with LLM (only if model is loaded AND user wants to use AI)
-            if (this.isModelLoaded && this.engine && this.useAI) {
+            if (this.isModelLoaded && this.wllama && this.useAI) {
                 console.log('Model is loaded and AI is enabled, proceeding with field extraction');
-                this.updateProgress(60, 'Extracting field information with AI...');
+                this.updateProgress(60, 'Extracting field values with AI (may be slow on some devices)...');
                 try {
                     await this.extractFields();
                 } catch (aiError) {
@@ -670,7 +739,7 @@ class InfoExtractorApp {
                 if (!this.useAI) {
                     console.log('AI disabled by user, using heuristic field extraction');
                 } else {
-                    console.log('AI model not loaded, using heuristic field extraction. isModelLoaded:', this.isModelLoaded, 'engine:', !!this.engine);
+                    console.log('AI model not loaded, using heuristic field extraction. isModelLoaded:', this.isModelLoaded, 'wllama:', !!this.wllama);
                 }
                 this.updateProgress(60, 'Extracting fields using pattern matching...');
                 this.extractFieldsHeuristic();
@@ -687,8 +756,7 @@ class InfoExtractorApp {
             }, 1000);
 
         } catch (error) {
-            console.error('Analysis error details:', error);
-            console.error('Error stack:', error.stack);
+            console.error('Analysis failed:', error);
             let errorMessage = 'Failed to analyze the image. Please try again.';
 
             // Provide more specific error messages
@@ -698,7 +766,7 @@ class InfoExtractorApp {
                 errorMessage = 'No text could be extracted from this image. Please try a clearer image.';
             } else if (error.message.includes('OCR')) {
                 errorMessage = 'Failed to read text from the image. Please try a different image.';
-            } else if (error.message.includes('WebLLM') || error.message.includes('engine')) {
+            } else if (error.message.includes('model')) {
                 errorMessage = 'AI model error. Please refresh the page and try again.';
             }
 
@@ -715,9 +783,8 @@ class InfoExtractorApp {
             // Initialize Tesseract with progress tracking
             const worker = await Tesseract.createWorker('eng', 1, {
                 logger: m => {
-                    console.log('Tesseract log:', m);
                     if (m.status === 'recognizing text') {
-                        const ocrProgress = Math.round(m.progress * 40); // OCR takes 40% of total progress
+                        const ocrProgress = Math.round(m.progress * 40);
                         this.updateProgress(10 + ocrProgress, `OCR: ${Math.round(m.progress * 100)}%`);
                     }
                 }
@@ -745,8 +812,8 @@ class InfoExtractorApp {
     }
 
     async extractFields() {
-        if (!this.isModelLoaded || !this.engine) {
-            console.error('Model not loaded. Model loaded:', this.isModelLoaded, 'Engine:', !!this.engine);
+        if (!this.isModelLoaded || !this.wllama) {
+            console.error('Model not loaded. Model loaded:', this.isModelLoaded, 'wllama:', !!this.wllama);
             throw new Error('AI model not loaded. Please wait and try again.');
         }
 
@@ -755,9 +822,15 @@ class InfoExtractorApp {
         }
 
         try {
+            // Truncate OCR text to avoid overflowing the model's context window
+            const MAX_OCR_CHARS = 1200;
+            const ocrText = this.ocrData.text.length > MAX_OCR_CHARS
+                ? this.ocrData.text.substring(0, MAX_OCR_CHARS) + '...'
+                : this.ocrData.text;
+
             const prompt = `The following text was extracted from a scanned receipt:
 ---
-${this.ocrData.text}
+${ocrText}
 ---
 Please identify the most likely values for these fields:
 - Vendor
@@ -771,44 +844,79 @@ Date fields should be formatted as mm/dd/yyyy
 
 Respond as a list of fields with their values.`;
 
-            console.log('Sending prompt to LLM. Model ID:', this.currentModelId);
-            console.log('Prompt length:', prompt.length);
+            console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
-            const response = await this.engine.chat.completions.create({
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values."
-                    },
-                    {
-                        role: "user",
-                        content: prompt
+            const abortController = new AbortController();
+            const timeoutId = setTimeout(() => {
+                console.warn('AI extraction timed out after 120 seconds, aborting');
+                abortController.abort();
+            }, 120000);
+
+            // Estimate expected output length to scale the progress bar (60→88%)
+            const MAX_TOKENS = 200;
+            const EXPECTED_CHARS = MAX_TOKENS * 4; // ~4 chars per token
+            let accumulatedText = '';
+
+            try {
+                const stream = await this.wllama.createChatCompletion({
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values."
+                        },
+                        {
+                            role: "user",
+                            content: prompt
+                        }
+                    ],
+                    max_tokens: MAX_TOKENS,
+                    temperature: 0.1,
+                    top_k: 30,
+                    top_p: 0.85,
+                    repeat_penalty: 1.1,
+                    cache_prompt: false,
+                    stream: true,
+                    abortSignal: abortController.signal,
+                });
+
+                for await (const chunk of stream) {
+                    if (abortController.signal.aborted) break;
+                    const delta = chunk?.choices?.[0]?.delta?.content ?? '';
+                    if (delta) {
+                        accumulatedText += delta;
+                        const pct = Math.min(accumulatedText.length / EXPECTED_CHARS, 1);
+                        this.updateProgress(60 + Math.round(pct * 28), `Matching extracted values to fields...`);
                     }
-                ],
-                max_tokens: 500,
-                temperature: 0.1
-            });
-
-            if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
-                console.error('Invalid response from LLM:', response);
-                throw new Error('Invalid response from AI model');
+                }
+            } finally {
+                clearTimeout(timeoutId);
             }
 
-            const result = response.choices[0].message.content;
-            console.log('LLM response received. Length:', result?.length || 0);
-            console.log('LLM response:', result);
+            if (abortController.signal.aborted) {
+                throw new Error('AI extraction timed out. Please try again, or disable the AI toggle to use pattern-based extraction instead.');
+            }
 
-            if (!result || result.trim().length === 0) {
+            console.log('Phi 3.5-mini response:', accumulatedText);
+
+            if (!accumulatedText || accumulatedText.trim().length === 0) {
+                if (this.wllamaUsedGPU && !this.gpuFailed) {
+                    console.warn('GPU produced empty extraction response. Switching to CPU and retrying...');
+                    this.updateProgress(60, 'GPU issue detected — retrying with CPU...');
+                    try {
+                        await this._reloadModelOnCpu();
+                        return await this.extractFields();
+                    } catch (cpuErr) {
+                        console.error('CPU reload failed:', cpuErr);
+                    }
+                }
                 throw new Error('Empty response from AI model');
             }
 
-            this.extractedFields = this.parseFieldsFromResponse(result);
+            this.extractedFields = this.parseFieldsFromResponse(accumulatedText);
             console.log('Parsed fields:', this.extractedFields);
 
         } catch (error) {
-            console.error('LLM Error details:', error);
-            console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
+            console.error('Phi 3.5-mini extraction failed:', error);
             throw new Error('Failed to extract field information: ' + error.message);
         }
     }
@@ -1345,14 +1453,7 @@ Respond as a list of fields with their values.`;
             }
         });
 
-        // Force styling for fallback mode
-        if (title === 'Fallback mode activated') {
-            this.errorSection.style.borderColor = '#007acc';
-            this.errorSection.style.color = '#333';
-            errorHeading.style.color = '#333';
-            this.errorMessage.style.color = '#333';
-        }
-
+        // Force styling for fallback mode — reserved for future use
         this.errorSection.style.display = 'block';
         this.hideProgress();
     }
@@ -1365,6 +1466,16 @@ Respond as a list of fields with their values.`;
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new InfoExtractorApp();
+});
+
+// Release blob URLs and shut down the wllama worker on unload to avoid leaks
+window.addEventListener('beforeunload', () => {
+    if (window.app) {
+        window.app.uploadedImages.forEach(img => URL.revokeObjectURL(img.url));
+        if (window.app.wllama) {
+            window.app.wllama.exit().catch(() => { });
+        }
+    }
 });
 
 // Handle any uncaught errors
