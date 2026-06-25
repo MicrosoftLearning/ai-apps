@@ -840,8 +840,6 @@ Please identify the most likely values for these fields:
 - Receipt-Time
 - Total-spent
 
-Date fields should be formatted as mm/dd/yyyy
-
 Respond as a list of fields with their values.`;
 
             console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
