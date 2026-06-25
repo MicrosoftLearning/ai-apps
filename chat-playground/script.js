@@ -3360,69 +3360,82 @@ class ChatPlayground {
     async retrySpeechInput() {
         this.closeSpeechModelModal();
 
+        // Start a NEW interaction using Vosk
+        await this.startSpeechRecognition();
+    }
 
+    openVoiceInputErrorModal(errorCode = '') {
+        const modal = document.getElementById('voice-input-error-modal');
+        const input = document.getElementById('voice-fallback-input');
+        const submitBtn = document.getElementById('voice-input-error-submit');
+        const description = modal ? modal.querySelector('.voice-fallback-description') : null;
 
-        openVoiceInputErrorModal(errorCode = '') {
-            const modal = document.getElementById('voice-input-error-modal');
-            const input = document.getElementById('voice-fallback-input');
-            const submitBtn = document.getElementById('voice-input-error-submit');
-            const description = modal ? modal.querySelector('.voice-fallback-description') : null;
-
-            if (!modal || !input) {
-                this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
-                return;
-            }
-
-            if (description) {
-                const details = errorCode ? ` (${errorCode})` : '';
-                description.textContent = `A speech recognition error${details} prevented voice input for this turn. You can type your message below and continue the conversation.`;
-            }
-
-            input.value = '';
-            if (submitBtn) {
-                submitBtn.disabled = true;
-            }
-
-            modal.style.display = 'flex';
-
-            setTimeout(() => {
-                input.focus();
-            }, 50);
+        if (!modal || !input) {
+            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+            return;
         }
 
-        closeVoiceInputErrorModal() {
-            const modal = document.getElementById('voice-input-error-modal');
-            if (!modal) return;
-
-            modal.style.display = 'none';
+        if (description) {
+            const details = errorCode ? ` (${errorCode})` : '';
+            description.textContent = `A speech recognition error${details} prevented voice input for this turn. You can type your message below and continue the conversation.`;
         }
 
-        submitTypedVoiceFallback() {
-            const input = document.getElementById('voice-fallback-input');
-            if (!input) return;
-
-            const typedPrompt = input.value.trim();
-            if (!typedPrompt) {
-                return;
-            }
-
-            this.closeVoiceInputErrorModal();
-            this.handleSpokenInput(typedPrompt);
+        input.value = '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
         }
+
+        modal.style.display = 'flex';
+
+        setTimeout(() => {
+            input.focus();
+        }, 50);
+    }
+
+    closeVoiceInputErrorModal() {
+        const modal = document.getElementById('voice-input-error-modal');
+        if (!modal) return;
+
+        modal.style.display = 'none';
+    }
+
+    submitTypedVoiceFallback() {
+        const input = document.getElementById('voice-fallback-input');
+        if (!input) return;
+
+        const typedPrompt = input.value.trim();
+        if (!typedPrompt) {
+            return;
+        }
+
+        this.closeVoiceInputErrorModal();
+        this.handleSpokenInput(typedPrompt);
+    }
 
     async startVoiceInput() {
-            // If already listening, stop
-            if (this.isListening || this.isRecording) {
-                this.stopSpeechRecognition(true);
-                return;
-            }
+        // If already listening, stop
+        if (this.isListening || this.isRecording) {
+            this.stopSpeechRecognition(true);
+            return;
+        }
 
-            // Clear conversation history when starting a new session
-            await this.clearChat();
+        // Clear conversation history when starting a new session
+        await this.clearChat();
 
-            // Reset cancelled flag
-            this.voiceInteractionCancelled = false;
+        // Reset cancelled flag
+        this.voiceInteractionCancelled = false;
 
+        // Start speech recognition using the appropriate engine
+        await this.startSpeechRecognition();
+    }
+
+    async startSpeechRecognition() {
+        // Setup common listening UI
+        this.setupListeningUI();
+
+        // Use the appropriate speech recognition engine
+        if (this.usingWebSpeech) {
+            await this.startWebSpeechRecognition();
         } else {
             await this.startVoskRecognition();
         }
