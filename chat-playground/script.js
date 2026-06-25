@@ -706,7 +706,19 @@ class ChatPlayground {
         const previewBtn = document.getElementById('preview-voice-btn');
 
         if (isEnabled) {
+            // Clear conversation history
+            await this.clearChat();
 
+            // Switch to voice mode UI - hide text input
+            if (chatPanel) {
+                chatPanel.classList.add('voice-mode');
+            }
+            if (voiceControls) {
+                voiceControls.style.display = 'flex';
+            }
+            if (textInputWrapper) {
+                textInputWrapper.style.display = 'none';
+            }
             if (textWelcome) {
                 textWelcome.style.display = 'none';
             }
@@ -4067,7 +4079,13 @@ class ChatPlayground {
             return;
         }
 
+        // Otherwise, automatically start listening again for follow-up
+        console.log('Speech complete, automatically starting listening for follow-up...');
+        this.startSpeechRecognition();
+    }
 
+    resetVoiceUI() {
+        const chatIcon = document.querySelector('.voice-chat-icon');
         const startBtn = document.getElementById('voice-start-btn');
         const cancelBtn = document.getElementById('voice-cancel-btn');
         const ccBtn = document.getElementById('voice-cc-btn');
