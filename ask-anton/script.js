@@ -82,6 +82,7 @@ class AskAnton {
         this.isLoadingModel = false;
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = null;
+        this.isDownloadingModel = false;
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
@@ -93,6 +94,7 @@ class AskAnton {
         this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
         this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
         this._retryMessageDiv = null;   // set by generateWithWllama when GPU recovery creates a new bubble
+        this.previousKeywords = null;   // track keywords from previous prompt for enhanced Bing search
 
         // Vosk speech recognition (lazy-loaded fallback)
         this.voskModel = null;
@@ -121,6 +123,7 @@ class AskAnton {
             progressFill: document.getElementById('progress-fill'),
             progressText: document.getElementById('progress-text'),
             cancelLoadingLink: document.getElementById('cancel-loading-link'),
+            antonImage: document.querySelector('.anton-image'),
             chatContainer: document.getElementById('chat-container'),
             chatMessages: document.getElementById('chat-messages'),
             userInput: document.getElementById('user-input'),
@@ -516,6 +519,11 @@ class AskAnton {
             }
 
             if (!isLazyLoad) {
+                // Reset download flag and set initial image to static anton.png
+                this.isDownloadingModel = false;
+                if (this.elements.antonImage) {
+                    this.elements.antonImage.src = 'images/anton.png';
+                }
                 this.updateProgress(15, 'Loading AI model...');
             }
 
@@ -533,6 +541,16 @@ class AskAnton {
                 if (this.modelLoadingCancelled) return;
                 const percentage = Math.min(100, Math.max(15, Math.round((loaded / total) * 85) + 15));
                 const progress = loaded / total;
+
+                // Detect if we're downloading (loaded is less than 90% of total on first call)
+                // If loading from cache, loaded typically equals total immediately
+                if (!this.isDownloadingModel && loaded < total * 0.9) {
+                    this.isDownloadingModel = true;
+                    if (this.elements.antonImage) {
+                        this.elements.antonImage.src = 'images/anton.gif';
+                    }
+                }
+
                 if (!isLazyLoad) {
                     this.updateProgress(percentage, `Loading model: ${Math.round((loaded / total) * 100)}%`);
                 } else {
@@ -753,6 +771,12 @@ class AskAnton {
         if (this.elements.chatContainer.style.display === 'flex') {
             return;
         }
+
+        // Reset anton image to static version
+        if (this.elements.antonImage) {
+            this.elements.antonImage.src = 'images/anton.png';
+        }
+        this.isDownloadingModel = false;
 
         this.elements.progressSection.style.display = 'none';
         this.elements.chatContainer.style.display = 'flex';
@@ -1990,6 +2014,9 @@ class AskAnton {
                 { role: 'user', content: userMessage },
                 { role: 'assistant', content: historyAssistantMessage }
             ];
+
+            // Track keywords for next potential no-results search
+            this.previousKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -2006,13 +2033,21 @@ class AskAnton {
      * and otherwise offers a Bing search link.
      */
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
-        const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
-        const encodedKeywords = encodeURIComponent(bingKeywords);
+        const currentKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
+
+        // Combine previous and current keywords for enhanced search
+        let combinedKeywords = currentKeywords;
+        if (this.previousKeywords) {
+            combinedKeywords = `${this.previousKeywords} ${currentKeywords}`;
+        }
+
+        const encodedKeywords = encodeURIComponent(combinedKeywords);
         const bingUrl = `https://www.bing.com/search?q=${encodedKeywords}`;
-        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.\n\nAsk me about AI-related topics and I'll do my best to help!`;
+        const fallbackNote = '\n\n*Note: You can ask me to "Search for details about {X}" or "Find documentation for {Y}" to look for information about Microsoft AI technologies in Microsoft Learn.*';
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.` + fallbackNote;
         const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = this.currentMode === 'wllama' && this.hasPreviousUserPrompt();
-        const fallbackNote = '\n\n*Note: You can ask me to "Search for details about {X}" or "Find documentation for {Y}" to look for information about Microsoft AI technologies in Microsoft Learn.*';
+
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -2085,6 +2120,9 @@ class AskAnton {
 
             // Don't add to conversation history when no context is found
             // to avoid the model repeating this message on the next turn
+
+            // Update previous keywords with current for next turn (sliding window)
+            this.previousKeywords = currentKeywords;
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -2151,6 +2189,11 @@ class AskAnton {
                 ];
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
+            }
+
+            // Track keywords for next potential no-results search (only when response is successful)
+            if (!this.stopRequested && assistantMessage.trim()) {
+                this.previousKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
             }
 
         } catch (error) {
