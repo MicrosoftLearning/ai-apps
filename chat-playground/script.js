@@ -706,19 +706,7 @@ class ChatPlayground {
         const previewBtn = document.getElementById('preview-voice-btn');
 
         if (isEnabled) {
-            // Clear conversation history
-            await this.clearChat();
 
-            // Switch to voice mode UI - hide text input
-            if (chatPanel) {
-                chatPanel.classList.add('voice-mode');
-            }
-            if (voiceControls) {
-                voiceControls.style.display = 'flex';
-            }
-            if (textInputWrapper) {
-                textInputWrapper.style.display = 'none';
-            }
             if (textWelcome) {
                 textWelcome.style.display = 'none';
             }
@@ -3189,1209 +3177,1179 @@ class ChatPlayground {
 
             // Ignore 'no-speech' errors - these are normal when user doesn't speak
             if (event.error === 'no-speech') {
-                console.log('No speech detected, continuing in voice mode');
-                // In voice mode, automatically restart listening after no-speech
-                if (this.voiceMode) {
-                    setTimeout(() => {
-                        if (this.voiceMode && !this.isListening && !this.isGenerating && !this.isSpeaking && !this.voiceInteractionCancelled) {
-                            this.startSpeechRecognition();
-                        }
-                    }, 500);
-                } else {
-                    this.resetVoiceUI();
+                console.log('No speech detected, stopping voice recognition');
+                this.resetVoiceUI();
+
+                // In voice mode, try Vosk failover only for network/service errors
+                // Don't failover for audio-capture, language-not-supported, or other benign errors
+                if (this.voiceMode && (event.error === 'network' || event.error === 'service-not-allowed')) {
+                    this.handleSpeechRecognitionFailure(event.error);
+                    return;
                 }
-                return;
-            }
 
-            // In voice mode, try Vosk failover only for network/service errors
-            // Don't failover for audio-capture, language-not-supported, or other benign errors
-            if (this.voiceMode && (event.error === 'network' || event.error === 'service-not-allowed')) {
-                this.handleSpeechRecognitionFailure(event.error);
-                return;
-            }
+                this.resetVoiceUI();
 
-            this.resetVoiceUI();
-
-            // Show appropriate error message
-            if (this.voiceMode && event.error !== 'not-allowed') {
-                this.openVoiceInputErrorModal(event.error);
-            } else if (event.error !== 'not-allowed') {
-                this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
-            }
-        };
-    }
+                // Show appropriate error message
+                if (this.voiceMode && event.error !== 'not-allowed') {
+                    this.openVoiceInputErrorModal(event.error);
+                } else if (event.error !== 'not-allowed') {
+                    this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+                }
+            };
+        }
 
     async handleSpeechRecognitionFailure(errorCode) {
-        // Permission denied - show error modal, don't fallback
-        if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
-            this.resetVoiceUI();
-            this.openVoiceInputErrorModal(errorCode);
-            return;
-        }
+            // Permission denied - show error modal, don't fallback
+            if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+                this.resetVoiceUI();
+                this.openVoiceInputErrorModal(errorCode);
+                return;
+            }
 
-        // Try Vosk failover - STOP current interaction and switch to Vosk mode
-        console.log('Web Speech API failed, switching to Vosk mode...');
-        this.usingWebSpeech = false;
+            // Try Vosk failover - STOP current interaction and switch to Vosk mode
+            console.log('Web Speech API failed, switching to Vosk mode...');
+            this.usingWebSpeech = false;
 
-        // Load Vosk model if not already loaded
-        if (!this.voskLoaded && !this.voskLoadingFailed) {
-            await this.loadVoskModel();
-            // Modal is now showing with Cancel/Retry buttons
-            // User will decide whether to retry or cancel
-        } else if (this.voskLoaded) {
-            // Vosk already loaded from a previous failover
-            // Show a simple message and let them retry manually
-            this.resetVoiceUI();
-            this.showToast('Switched to offline speech recognition. Click Start Session to continue.');
-        } else {
-            // Vosk failed to load previously
-            this.resetVoiceUI();
-            this.openVoiceInputErrorModal(errorCode);
+            // Load Vosk model if not already loaded
+            if (!this.voskLoaded && !this.voskLoadingFailed) {
+                await this.loadVoskModel();
+                // Modal is now showing with Cancel/Retry buttons
+                // User will decide whether to retry or cancel
+            } else if (this.voskLoaded) {
+                // Vosk already loaded from a previous failover
+                // Show a simple message and let them retry manually
+                this.resetVoiceUI();
+                this.showToast('Switched to offline speech recognition. Click Start Session to continue.');
+            } else {
+                // Vosk failed to load previously
+                this.resetVoiceUI();
+                this.openVoiceInputErrorModal(errorCode);
+            }
         }
-    }
 
     async loadVoskModel() {
-        if (this.voskLoaded || this.voskLoadingFailed) {
-            return this.voskLoaded;
-        }
-
-        try {
-            console.log('Loading Vosk speech model from', this.speechModelUrl);
-
-            if (!window.Vosk || typeof Vosk.createModel !== 'function') {
-                console.warn('Vosk library not loaded');
-                this.voskLoadingFailed = true;
-                return false;
+            if (this.voskLoaded || this.voskLoadingFailed) {
+                return this.voskLoaded;
             }
-
-            // Show modal
-            this.openSpeechModelModal();
-
-            this.voskModel = await Vosk.createModel(this.speechModelUrl);
-            this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
-
-            // Set up recognizer event handlers
-            this.voskRecognizer.on("result", (message) => {
-                const result = message.result;
-                if (result && result.text) {
-                    // Clear no-speech timer since we got speech
-                    if (this.noSpeechTimer) {
-                        clearTimeout(this.noSpeechTimer);
-                        this.noSpeechTimer = null;
-                    }
-
-                    // Append the recognized text to a temporary buffer
-                    if (!this.voskTranscript) {
-                        this.voskTranscript = '';
-                    }
-                    this.voskTranscript += (this.voskTranscript ? " " : "") + result.text;
-                    this.hasSpeech = true;
-                    this.lastSpeechTime = Date.now();
-                    this.resetSilenceTimer();
-                }
-            });
-
-            this.voskRecognizer.on("partialresult", (message) => {
-                // Reset silence timer on partial results too
-                const result = message.result;
-                if (result && result.partial && result.partial.trim()) {
-                    // Clear no-speech timer on partial results
-                    if (this.noSpeechTimer) {
-                        clearTimeout(this.noSpeechTimer);
-                        this.noSpeechTimer = null;
-                    }
-
-                    // Mark that we have speech so auto-stop can work
-                    this.hasSpeech = true;
-                    // Store the partial transcript as fallback
-                    this.voskPartialTranscript = result.partial;
-                    this.lastSpeechTime = Date.now();
-                    this.resetSilenceTimer();
-                }
-            });
-
-            this.voskLoaded = true;
-            console.log('Vosk speech model loaded successfully');
-
-            // Update modal to show ready state
-            this.updateSpeechModelModal('Offline speech model ready!', true);
-
-            return true;
-        } catch (error) {
-            console.error('Failed to load Vosk model:', error);
-            this.voskLoadingFailed = true;
-            this.updateSpeechModelModal('Failed to load offline speech model. Voice input is unavailable.', false);
-            return false;
-        }
-    }
-
-    openSpeechModelModal() {
-        const modal = document.getElementById('speech-model-modal');
-        const status = document.getElementById('speech-model-status');
-        const progress = document.getElementById('speech-model-progress');
-        const retryBtn = document.getElementById('speech-model-retry');
-
-        if (!modal) return;
-
-        if (status) {
-            status.textContent = 'Loading offline speech model... This may take a moment.';
-        }
-
-        if (progress) {
-            progress.style.width = '50%'; // Indeterminate progress
-        }
-
-        if (retryBtn) {
-            retryBtn.disabled = true;
-        }
-
-        modal.style.display = 'flex';
-    }
-
-    updateSpeechModelModal(message, enableRetry) {
-        const status = document.getElementById('speech-model-status');
-        const progress = document.getElementById('speech-model-progress');
-        const retryBtn = document.getElementById('speech-model-retry');
-
-        if (status) {
-            status.textContent = message;
-        }
-
-        if (progress) {
-            progress.style.width = enableRetry ? '100%' : '0%';
-        }
-
-        if (retryBtn) {
-            retryBtn.disabled = !enableRetry;
-        }
-    }
-
-    closeSpeechModelModal() {
-        const modal = document.getElementById('speech-model-modal');
-        if (!modal) return;
-        modal.style.display = 'none';
-    }
-
-    cancelSpeechModelLoading() {
-        this.closeSpeechModelModal();
-        // Return to ready state - user can click Start Session when ready
-        this.resetVoiceUI();
-    }
-
-    async retrySpeechInput() {
-        this.closeSpeechModelModal();
-
-        // Start a NEW interaction using Vosk
-        await this.startSpeechRecognition();
-    }
-
-    openVoiceInputErrorModal(errorCode = '') {
-        const modal = document.getElementById('voice-input-error-modal');
-        const input = document.getElementById('voice-fallback-input');
-        const submitBtn = document.getElementById('voice-input-error-submit');
-        const description = modal ? modal.querySelector('.voice-fallback-description') : null;
-
-        if (!modal || !input) {
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
-            return;
-        }
-
-        if (description) {
-            const details = errorCode ? ` (${errorCode})` : '';
-            description.textContent = `A speech recognition error${details} prevented voice input for this turn. You can type your message below and continue the conversation.`;
-        }
-
-        input.value = '';
-        if (submitBtn) {
-            submitBtn.disabled = true;
-        }
-
-        modal.style.display = 'flex';
-
-        setTimeout(() => {
-            input.focus();
-        }, 50);
-    }
-
-    closeVoiceInputErrorModal() {
-        const modal = document.getElementById('voice-input-error-modal');
-        if (!modal) return;
-
-        modal.style.display = 'none';
-    }
-
-    submitTypedVoiceFallback() {
-        const input = document.getElementById('voice-fallback-input');
-        if (!input) return;
-
-        const typedPrompt = input.value.trim();
-        if (!typedPrompt) {
-            return;
-        }
-
-        this.closeVoiceInputErrorModal();
-        this.handleSpokenInput(typedPrompt);
-    }
-
-    async startVoiceInput() {
-        // If already listening, stop
-        if (this.isListening || this.isRecording) {
-            this.stopSpeechRecognition(true);
-            return;
-        }
-
-        // Clear conversation history when starting a new session
-        await this.clearChat();
-
-        // Reset cancelled flag
-        this.voiceInteractionCancelled = false;
-
-        // Start speech recognition using the appropriate engine
-        await this.startSpeechRecognition();
-    }
-
-    async startSpeechRecognition() {
-        // Setup common listening UI
-        this.setupListeningUI();
-
-        // Use the appropriate speech recognition engine
-        if (this.usingWebSpeech) {
-            await this.startWebSpeechRecognition();
-        } else {
-            await this.startVoskRecognition();
-        }
-    }
-
-    setupListeningUI() {
-        const startBtn = document.getElementById('voice-start-btn');
-        const cancelBtn = document.getElementById('voice-cancel-btn');
-        const ccBtn = document.getElementById('voice-cc-btn');
-        const chatIcon = document.querySelector('.voice-chat-icon');
-        const voiceWelcome = document.getElementById('voice-welcome');
-
-        if (startBtn) {
-            startBtn.style.display = 'none';
-        }
-        if (cancelBtn) {
-            cancelBtn.style.display = 'inline-block';
-        }
-        if (ccBtn) {
-            ccBtn.style.display = 'inline-block'; // Show CC button throughout the session
-        }
-        if (chatIcon) {
-            chatIcon.style.animation = 'pulse 1s infinite'; // Pulse while listening
-        }
-
-        // Keep captions hidden unless user explicitly enables them
-        this.updateMessageVisibility();
-
-        // Update welcome message
-        if (voiceWelcome) {
-            voiceWelcome.querySelector('h3').textContent = 'Listening...';
-            voiceWelcome.querySelector('p').textContent = 'Speak now...';
-        }
-    }
-
-    async startWebSpeechRecognition() {
-        if (!this.recognition) {
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_NOT_AVAILABLE);
-            this.resetVoiceUI();
-            return;
-        }
-
-        try {
-            // Set flag to ignore abort errors during startup
-            this.isStartingRecognition = true;
-            console.log('Starting Web Speech Recognition...');
 
             try {
-                this.recognition.abort();
-            } catch (e) {
-                console.warn('Error calling recognition.abort():', e);
+                console.log('Loading Vosk speech model from', this.speechModelUrl);
+
+                if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+                    console.warn('Vosk library not loaded');
+                    this.voskLoadingFailed = true;
+                    return false;
+                }
+
+                // Show modal
+                this.openSpeechModelModal();
+
+                this.voskModel = await Vosk.createModel(this.speechModelUrl);
+                this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
+
+                // Set up recognizer event handlers
+                this.voskRecognizer.on("result", (message) => {
+                    const result = message.result;
+                    if (result && result.text) {
+                        // Clear no-speech timer since we got speech
+                        if (this.noSpeechTimer) {
+                            clearTimeout(this.noSpeechTimer);
+                            this.noSpeechTimer = null;
+                        }
+
+                        // Append the recognized text to a temporary buffer
+                        if (!this.voskTranscript) {
+                            this.voskTranscript = '';
+                        }
+                        this.voskTranscript += (this.voskTranscript ? " " : "") + result.text;
+                        this.hasSpeech = true;
+                        this.lastSpeechTime = Date.now();
+                        this.resetSilenceTimer();
+                    }
+                });
+
+                this.voskRecognizer.on("partialresult", (message) => {
+                    // Reset silence timer on partial results too
+                    const result = message.result;
+                    if (result && result.partial && result.partial.trim()) {
+                        // Clear no-speech timer on partial results
+                        if (this.noSpeechTimer) {
+                            clearTimeout(this.noSpeechTimer);
+                            this.noSpeechTimer = null;
+                        }
+
+                        // Mark that we have speech so auto-stop can work
+                        this.hasSpeech = true;
+                        // Store the partial transcript as fallback
+                        this.voskPartialTranscript = result.partial;
+                        this.lastSpeechTime = Date.now();
+                        this.resetSilenceTimer();
+                    }
+                });
+
+                this.voskLoaded = true;
+                console.log('Vosk speech model loaded successfully');
+
+                // Update modal to show ready state
+                this.updateSpeechModelModal('Offline speech model ready!', true);
+
+                return true;
+            } catch (error) {
+                console.error('Failed to load Vosk model:', error);
+                this.voskLoadingFailed = true;
+                this.updateSpeechModelModal('Failed to load offline speech model. Voice input is unavailable.', false);
+                return false;
+            }
+        }
+
+        openSpeechModelModal() {
+            const modal = document.getElementById('speech-model-modal');
+            const status = document.getElementById('speech-model-status');
+            const progress = document.getElementById('speech-model-progress');
+            const retryBtn = document.getElementById('speech-model-retry');
+
+            if (!modal) return;
+
+            if (status) {
+                status.textContent = 'Loading offline speech model... This may take a moment.';
             }
 
-            setTimeout(() => {
-                try {
-                    console.log('Calling recognition.start()');
-                    this.recognition.start();
-                    // Set a timeout to clear the flag if onstart doesn't fire
-                    setTimeout(() => {
-                        if (this.isStartingRecognition) {
-                            console.warn('Recognition start timeout - clearing flag');
-                            this.isStartingRecognition = false;
-                            // If we're still not listening after timeout, something went wrong
-                            if (!this.isListening) {
-                                console.error('Recognition failed to start');
-                                this.resetVoiceUI();
-                                this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
-                            }
-                        }
-                    }, 2000);
-                } catch (error) {
-                    this.isStartingRecognition = false;
-                    console.error('Error calling recognition.start():', error);
-                    this.isListening = false;
-                    this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
-                    this.resetVoiceUI();
-                }
-            }, 100);
-        } catch (error) {
-            this.isStartingRecognition = false;
-            console.error('Error starting speech recognition:', error);
-            this.isListening = false;
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+            if (progress) {
+                progress.style.width = '50%'; // Indeterminate progress
+            }
+
+            if (retryBtn) {
+                retryBtn.disabled = true;
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        updateSpeechModelModal(message, enableRetry) {
+            const status = document.getElementById('speech-model-status');
+            const progress = document.getElementById('speech-model-progress');
+            const retryBtn = document.getElementById('speech-model-retry');
+
+            if (status) {
+                status.textContent = message;
+            }
+
+            if (progress) {
+                progress.style.width = enableRetry ? '100%' : '0%';
+            }
+
+            if (retryBtn) {
+                retryBtn.disabled = !enableRetry;
+            }
+        }
+
+        closeSpeechModelModal() {
+            const modal = document.getElementById('speech-model-modal');
+            if (!modal) return;
+            modal.style.display = 'none';
+        }
+
+        cancelSpeechModelLoading() {
+            this.closeSpeechModelModal();
+            // Return to ready state - user can click Start Session when ready
             this.resetVoiceUI();
         }
-    }
+
+    async retrySpeechInput() {
+            this.closeSpeechModelModal();
+
+
+
+            openVoiceInputErrorModal(errorCode = '') {
+                const modal = document.getElementById('voice-input-error-modal');
+                const input = document.getElementById('voice-fallback-input');
+                const submitBtn = document.getElementById('voice-input-error-submit');
+                const description = modal ? modal.querySelector('.voice-fallback-description') : null;
+
+                if (!modal || !input) {
+                    this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+                    return;
+                }
+
+                if (description) {
+                    const details = errorCode ? ` (${errorCode})` : '';
+                    description.textContent = `A speech recognition error${details} prevented voice input for this turn. You can type your message below and continue the conversation.`;
+                }
+
+                input.value = '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                }
+
+                modal.style.display = 'flex';
+
+                setTimeout(() => {
+                    input.focus();
+                }, 50);
+            }
+
+            closeVoiceInputErrorModal() {
+                const modal = document.getElementById('voice-input-error-modal');
+                if (!modal) return;
+
+                modal.style.display = 'none';
+            }
+
+            submitTypedVoiceFallback() {
+                const input = document.getElementById('voice-fallback-input');
+                if (!input) return;
+
+                const typedPrompt = input.value.trim();
+                if (!typedPrompt) {
+                    return;
+                }
+
+                this.closeVoiceInputErrorModal();
+                this.handleSpokenInput(typedPrompt);
+            }
+
+    async startVoiceInput() {
+                // If already listening, stop
+                if (this.isListening || this.isRecording) {
+                    this.stopSpeechRecognition(true);
+                    return;
+                }
+
+                // Clear conversation history when starting a new session
+                await this.clearChat();
+
+                // Reset cancelled flag
+                this.voiceInteractionCancelled = false;
+
+            } else {
+                await this.startVoskRecognition();
+            }
+        }
+
+        setupListeningUI() {
+            const startBtn = document.getElementById('voice-start-btn');
+            const cancelBtn = document.getElementById('voice-cancel-btn');
+            const ccBtn = document.getElementById('voice-cc-btn');
+            const chatIcon = document.querySelector('.voice-chat-icon');
+            const voiceWelcome = document.getElementById('voice-welcome');
+
+            if (startBtn) {
+                startBtn.style.display = 'none';
+            }
+            if (cancelBtn) {
+                cancelBtn.style.display = 'inline-block';
+            }
+            if (ccBtn) {
+                ccBtn.style.display = 'inline-block'; // Show CC button throughout the session
+            }
+            if (chatIcon) {
+                chatIcon.style.animation = 'pulse 1s infinite'; // Pulse while listening
+            }
+
+            // Keep captions hidden unless user explicitly enables them
+            this.updateMessageVisibility();
+
+            // Update welcome message
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = 'Listening...';
+                voiceWelcome.querySelector('p').textContent = 'Speak now...';
+            }
+        }
+
+    async startWebSpeechRecognition() {
+            if (!this.recognition) {
+                this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_NOT_AVAILABLE);
+                this.resetVoiceUI();
+                return;
+            }
+
+            try {
+                // Set flag to ignore abort errors during startup
+                this.isStartingRecognition = true;
+                console.log('Starting Web Speech Recognition...');
+
+                try {
+                    this.recognition.abort();
+                } catch (e) {
+                    console.warn('Error calling recognition.abort():', e);
+                }
+
+                setTimeout(() => {
+                    try {
+                        console.log('Calling recognition.start()');
+                        this.recognition.start();
+                        // Set a timeout to clear the flag if onstart doesn't fire
+                        setTimeout(() => {
+                            if (this.isStartingRecognition) {
+                                console.warn('Recognition start timeout - clearing flag');
+                                this.isStartingRecognition = false;
+                                // If we're still not listening after timeout, something went wrong
+                                if (!this.isListening) {
+                                    console.error('Recognition failed to start');
+                                    this.resetVoiceUI();
+                                    this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                                }
+                            }
+                        }, 2000);
+                    } catch (error) {
+                        this.isStartingRecognition = false;
+                        console.error('Error calling recognition.start():', error);
+                        this.isListening = false;
+                        this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                        this.resetVoiceUI();
+                    }
+                }, 100);
+            } catch (error) {
+                this.isStartingRecognition = false;
+                console.error('Error starting speech recognition:', error);
+                this.isListening = false;
+                this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                this.resetVoiceUI();
+            }
+        }
 
     async startVoskRecognition() {
-        // Ensure Vosk is loaded
-        if (!this.voskLoaded) {
-            if (!this.voskLoadingFailed) {
-                const loaded = await this.loadVoskModel();
-                if (!loaded) {
+            // Ensure Vosk is loaded
+            if (!this.voskLoaded) {
+                if (!this.voskLoadingFailed) {
+                    const loaded = await this.loadVoskModel();
+                    if (!loaded) {
+                        this.resetVoiceUI();
+                        this.showToast('Voice input is unavailable.');
+                        return;
+                    }
+                } else {
                     this.resetVoiceUI();
                     this.showToast('Voice input is unavailable.');
                     return;
                 }
-            } else {
+            }
+
+            if (!this.voskRecognizer) {
+                this.showToast('Speech input is not available.');
                 this.resetVoiceUI();
-                this.showToast('Voice input is unavailable.');
                 return;
             }
-        }
 
-        if (!this.voskRecognizer) {
-            this.showToast('Speech input is not available.');
-            this.resetVoiceUI();
-            return;
-        }
-
-        try {
-            // Request microphone access
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    channelCount: 1,
-                    sampleRate: 16000
-                }
-            });
-
-            // Create audio context
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-            // Process audio data
-            this.processorNode.onaudioprocess = (event) => {
-                try {
-                    if (this.isRecording && this.voskRecognizer) {
-                        this.voskRecognizer.acceptWaveform(event.inputBuffer);
-                    }
-                } catch (e) {
-                    console.error('Audio processing error:', e);
-                }
-            };
-
-            this.sourceNode.connect(this.processorNode);
-            this.processorNode.connect(this.audioContext.destination);
-
-            this.isRecording = true;
-            this.hasSpeech = false;
-            this.voskTranscript = '';
-            this.voskPartialTranscript = '';
-
-            // Start no-speech timeout
-            this.noSpeechTimer = setTimeout(() => {
-                if (this.isRecording && !this.hasSpeech) {
-                    console.log('No speech detected in 5 seconds, cancelling...');
-                    this.stopSpeechRecognition(true);
-                    this.showToast('No speech detected. Please try again.');
-                }
-            }, this.noSpeechTimeoutDuration);
-
-            // Start silence timer
-            this.resetSilenceTimer();
-
-        } catch (error) {
-            console.error('Error starting Vosk recording:', error);
-            this.isRecording = false;
-            this.resetVoiceUI();
-
-            if (error.name === 'NotAllowedError') {
-                this.showToast('Microphone access was denied.');
-            } else {
-                this.showToast('Error accessing microphone.');
-            }
-        }
-    }
-
-    stopSpeechRecognition(cancelled = false) {
-        // Stop Web Speech API if active
-        if (this.isListening && this.recognition) {
             try {
-                this.recognition.stop();
-            } catch (error) {
-                console.error('Error stopping Web Speech recognition:', error);
-            }
-            this.isListening = false;
-        }
-
-        // Stop Vosk if active
-        if (this.isRecording) {
-            this.stopVoskRecording(cancelled);
-        }
-
-        // If cancelled and no transcript processing will happen, reset UI
-        if (cancelled && !this.isRecording) {
-            this.resetVoiceUI();
-        }
-    }
-
-    stopVoskRecording(cancelled = false) {
-        this.isRecording = false;
-
-        console.log('stopVoskRecording called:', { cancelled, hasSpeech: this.hasSpeech, transcript: this.voskTranscript, partial: this.voskPartialTranscript });
-
-        // Clear timers
-        if (this.silenceTimer) {
-            clearTimeout(this.silenceTimer);
-            this.silenceTimer = null;
-        }
-        if (this.noSpeechTimer) {
-            clearTimeout(this.noSpeechTimer);
-            this.noSpeechTimer = null;
-        }
-
-        // Disconnect audio nodes first
-        if (this.processorNode) {
-            this.processorNode.disconnect();
-            this.processorNode = null;
-        }
-        if (this.sourceNode) {
-            this.sourceNode.disconnect();
-            this.sourceNode = null;
-        }
-
-        // Stop media stream
-        if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
-        }
-
-        // Process transcript if we have speech and not cancelled
-        if (!cancelled && this.hasSpeech) {
-            // Use final transcript if available, otherwise use partial as fallback
-            let transcript = this.voskTranscript.trim();
-            if (!transcript && this.voskPartialTranscript) {
-                transcript = this.voskPartialTranscript.trim();
-            }
-
-            this.voskTranscript = '';
-            this.voskPartialTranscript = '';
-
-            if (transcript) {
-                console.log('Processing transcript:', transcript);
-
-                // Close audio context AFTER we have the transcript, 
-                // with a small delay to ensure audio cleanup doesn't interfere
-                setTimeout(() => {
-                    if (this.audioContext) {
-                        this.audioContext.close();
-                        this.audioContext = null;
+                // Request microphone access
+                this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        channelCount: 1,
+                        sampleRate: 16000
                     }
-                }, 100);
+                });
 
-                this.handleSpokenInput(transcript);
-                return; // Don't reset UI yet, handleSpokenInput will handle it
+                // Create audio context
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+                this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+                // Process audio data
+                this.processorNode.onaudioprocess = (event) => {
+                    try {
+                        if (this.isRecording && this.voskRecognizer) {
+                            this.voskRecognizer.acceptWaveform(event.inputBuffer);
+                        }
+                    } catch (e) {
+                        console.error('Audio processing error:', e);
+                    }
+                };
+
+                this.sourceNode.connect(this.processorNode);
+                this.processorNode.connect(this.audioContext.destination);
+
+                this.isRecording = true;
+                this.hasSpeech = false;
+                this.voskTranscript = '';
+                this.voskPartialTranscript = '';
+
+                // Start no-speech timeout
+                this.noSpeechTimer = setTimeout(() => {
+                    if (this.isRecording && !this.hasSpeech) {
+                        console.log('No speech detected in 5 seconds, cancelling...');
+                        this.stopSpeechRecognition(true);
+                        this.showToast('No speech detected. Please try again.');
+                    }
+                }, this.noSpeechTimeoutDuration);
+
+                // Start silence timer
+                this.resetSilenceTimer();
+
+            } catch (error) {
+                console.error('Error starting Vosk recording:', error);
+                this.isRecording = false;
+                this.resetVoiceUI();
+
+                if (error.name === 'NotAllowedError') {
+                    this.showToast('Microphone access was denied.');
+                } else {
+                    this.showToast('Error accessing microphone.');
+                }
             }
         }
 
-        // Close audio context if we're not processing transcript
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
-
-        // Reset UI if cancelled or no speech
-        this.resetVoiceUI();
-    }
-
-    resetSilenceTimer() {
-        // Clear existing timer
-        if (this.silenceTimer) {
-            clearTimeout(this.silenceTimer);
-        }
-
-        // Set new timer to auto-stop after silence
-        if (this.isRecording) {
-            this.silenceTimer = setTimeout(() => {
-                if (this.isRecording && this.hasSpeech) {
-                    console.log('Silence detected, auto-stopping...');
-                    this.stopSpeechRecognition(false);
+        stopSpeechRecognition(cancelled = false) {
+            // Stop Web Speech API if active
+            if (this.isListening && this.recognition) {
+                try {
+                    this.recognition.stop();
+                } catch (error) {
+                    console.error('Error stopping Web Speech recognition:', error);
                 }
-            }, this.silenceTimeout);
+                this.isListening = false;
+            }
+
+            // Stop Vosk if active
+            if (this.isRecording) {
+                this.stopVoskRecording(cancelled);
+            }
+
+            // If cancelled and no transcript processing will happen, reset UI
+            if (cancelled && !this.isRecording) {
+                this.resetVoiceUI();
+            }
         }
-    }
 
-    handleSpokenInput(transcript) {
-        console.log('handleSpokenInput called:', transcript);
+        stopVoskRecording(cancelled = false) {
+            this.isRecording = false;
 
-        // Validate and sanitize transcript
-        if (!transcript || typeof transcript !== 'string') {
-            console.error('Invalid transcript received');
+            console.log('stopVoskRecording called:', { cancelled, hasSpeech: this.hasSpeech, transcript: this.voskTranscript, partial: this.voskPartialTranscript });
+
+            // Clear timers
+            if (this.silenceTimer) {
+                clearTimeout(this.silenceTimer);
+                this.silenceTimer = null;
+            }
+            if (this.noSpeechTimer) {
+                clearTimeout(this.noSpeechTimer);
+                this.noSpeechTimer = null;
+            }
+
+            // Disconnect audio nodes first
+            if (this.processorNode) {
+                this.processorNode.disconnect();
+                this.processorNode = null;
+            }
+            if (this.sourceNode) {
+                this.sourceNode.disconnect();
+                this.sourceNode = null;
+            }
+
+            // Stop media stream
+            if (this.mediaStream) {
+                this.mediaStream.getTracks().forEach(track => track.stop());
+                this.mediaStream = null;
+            }
+
+            // Process transcript if we have speech and not cancelled
+            if (!cancelled && this.hasSpeech) {
+                // Use final transcript if available, otherwise use partial as fallback
+                let transcript = this.voskTranscript.trim();
+                if (!transcript && this.voskPartialTranscript) {
+                    transcript = this.voskPartialTranscript.trim();
+                }
+
+                this.voskTranscript = '';
+                this.voskPartialTranscript = '';
+
+                if (transcript) {
+                    console.log('Processing transcript:', transcript);
+
+                    // Close audio context AFTER we have the transcript, 
+                    // with a small delay to ensure audio cleanup doesn't interfere
+                    setTimeout(() => {
+                        if (this.audioContext) {
+                            this.audioContext.close();
+                            this.audioContext = null;
+                        }
+                    }, 100);
+
+                    this.handleSpokenInput(transcript);
+                    return; // Don't reset UI yet, handleSpokenInput will handle it
+                }
+            }
+
+            // Close audio context if we're not processing transcript
+            if (this.audioContext) {
+                this.audioContext.close();
+                this.audioContext = null;
+            }
+
+            // Reset UI if cancelled or no speech
             this.resetVoiceUI();
-            return;
         }
 
-        let sanitizedTranscript = transcript.trim();
-        if (sanitizedTranscript.length > 1000) {
-            sanitizedTranscript = sanitizedTranscript.substring(0, 1000);
+        resetSilenceTimer() {
+            // Clear existing timer
+            if (this.silenceTimer) {
+                clearTimeout(this.silenceTimer);
+            }
+
+            // Set new timer to auto-stop after silence
+            if (this.isRecording) {
+                this.silenceTimer = setTimeout(() => {
+                    if (this.isRecording && this.hasSpeech) {
+                        console.log('Silence detected, auto-stopping...');
+                        this.stopSpeechRecognition(false);
+                    }
+                }, this.silenceTimeout);
+            }
         }
 
-        if (sanitizedTranscript.length === 0) {
-            console.error('Transcript empty after sanitization');
-            this.resetVoiceUI();
-            return;
-        }
+        handleSpokenInput(transcript) {
+            console.log('handleSpokenInput called:', transcript);
 
-        // Check for prohibited content
-        if (this.containsProhibitedContent(sanitizedTranscript)) {
+            // Validate and sanitize transcript
+            if (!transcript || typeof transcript !== 'string') {
+                console.error('Invalid transcript received');
+                this.resetVoiceUI();
+                return;
+            }
+
+            let sanitizedTranscript = transcript.trim();
+            if (sanitizedTranscript.length > 1000) {
+                sanitizedTranscript = sanitizedTranscript.substring(0, 1000);
+            }
+
+            if (sanitizedTranscript.length === 0) {
+                console.error('Transcript empty after sanitization');
+                this.resetVoiceUI();
+                return;
+            }
+
+            // Check for prohibited content
+            if (this.containsProhibitedContent(sanitizedTranscript)) {
+                // Add user message to chat (respecting current CC visibility)
+                const userMessage = this.addMessage('user', sanitizedTranscript);
+                if (userMessage && !this.showCaptions) {
+                    userMessage.classList.add('hidden');
+                }
+
+                // Add canned response
+                const assistantMessage = this.addMessage('assistant', ChatPlayground.MESSAGES.MODERATION.BLOCKED);
+                if (assistantMessage && !this.showCaptions) {
+                    assistantMessage.classList.add('hidden');
+                }
+
+                // Update UI for speaking
+                const voiceWelcome = document.getElementById('voice-welcome');
+                const chatIcon = document.querySelector('.voice-chat-icon');
+                const cancelBtn = document.getElementById('voice-cancel-btn');
+                const ccBtn = document.getElementById('voice-cc-btn');
+
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'inline-block';
+                }
+                if (ccBtn) {
+                    ccBtn.style.display = 'inline-block';
+                }
+                if (voiceWelcome) {
+                    voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                    voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+                }
+                if (chatIcon) {
+                    chatIcon.style.animation = 'pulse 1s infinite';
+                }
+
+                // Speak the canned response
+                this.speakResponse(ChatPlayground.MESSAGES.MODERATION.BLOCKED);
+
+                return;
+            }
+
+            // Update UI - show processing state
+            const startBtn = document.getElementById('voice-start-btn');
+            const cancelBtn = document.getElementById('voice-cancel-btn');
+            const ccBtn = document.getElementById('voice-cc-btn');
+            const voiceWelcome = document.getElementById('voice-welcome');
+
+            if (startBtn) {
+                startBtn.style.display = 'none';
+            }
+            if (cancelBtn) {
+                cancelBtn.style.display = 'inline-block';
+            }
+            if (ccBtn) {
+                ccBtn.style.display = 'inline-block'; // Show CC button now
+            }
+            // Keep pulse animation running during processing - don't stop it
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = 'Processing...';
+                voiceWelcome.querySelector('p').textContent = 'This can take some time...';
+            }
+
             // Add user message to chat (respecting current CC visibility)
             const userMessage = this.addMessage('user', sanitizedTranscript);
             if (userMessage && !this.showCaptions) {
                 userMessage.classList.add('hidden');
             }
 
-            // Add canned response
-            const assistantMessage = this.addMessage('assistant', ChatPlayground.MESSAGES.MODERATION.BLOCKED);
-            if (assistantMessage && !this.showCaptions) {
-                assistantMessage.classList.add('hidden');
-            }
-
-            // Update UI for speaking
-            const voiceWelcome = document.getElementById('voice-welcome');
-            const chatIcon = document.querySelector('.voice-chat-icon');
-            const cancelBtn = document.getElementById('voice-cancel-btn');
-            const ccBtn = document.getElementById('voice-cc-btn');
-
-            if (cancelBtn) {
-                cancelBtn.style.display = 'inline-block';
-            }
-            if (ccBtn) {
-                ccBtn.style.display = 'inline-block';
-            }
-            if (voiceWelcome) {
-                voiceWelcome.querySelector('h3').textContent = 'Speaking';
-                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
-            }
-            if (chatIcon) {
-                chatIcon.style.animation = 'pulse 1s infinite';
-            }
-
-            // Speak the canned response
-            this.speakResponse(ChatPlayground.MESSAGES.MODERATION.BLOCKED);
-
-            return;
-        }
-
-        // Update UI - show processing state
-        const startBtn = document.getElementById('voice-start-btn');
-        const cancelBtn = document.getElementById('voice-cancel-btn');
-        const ccBtn = document.getElementById('voice-cc-btn');
-        const voiceWelcome = document.getElementById('voice-welcome');
-
-        if (startBtn) {
-            startBtn.style.display = 'none';
-        }
-        if (cancelBtn) {
-            cancelBtn.style.display = 'inline-block';
-        }
-        if (ccBtn) {
-            ccBtn.style.display = 'inline-block'; // Show CC button now
-        }
-        // Keep pulse animation running during processing - don't stop it
-        if (voiceWelcome) {
-            voiceWelcome.querySelector('h3').textContent = 'Processing...';
-            voiceWelcome.querySelector('p').textContent = 'This can take some time...';
-        }
-
-        // Add user message to chat (respecting current CC visibility)
-        const userMessage = this.addMessage('user', sanitizedTranscript);
-        if (userMessage && !this.showCaptions) {
-            userMessage.classList.add('hidden');
-        }
-
-        // Web search intercept (voice mode)
-        if (this.isWebSearchActive() && /^(find|search)\b/i.test(sanitizedTranscript)) {
-            const keywords = this.extractWebSearchKeywords(sanitizedTranscript);
-            const plainText = keywords
-                ? "OK, I searched the web for you. Here's what I found."
-                : 'Please enter a more specific search query.';
-            const assistantMsgEl = this.addMessage('assistant', '');
-            if (keywords) {
-                const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
-                assistantMsgEl.querySelector('.message-content').innerHTML =
-                    `OK, I searched the web for you. <a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
-            } else {
-                assistantMsgEl.querySelector('.message-content').textContent = plainText;
-            }
-            if (assistantMsgEl && !this.showCaptions) assistantMsgEl.classList.add('hidden');
-            const voiceWelcome = document.getElementById('voice-welcome');
-            const chatIcon = document.querySelector('.voice-chat-icon');
-            if (voiceWelcome) {
-                voiceWelcome.querySelector('h3').textContent = 'Speaking';
-                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
-            }
-            if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
-            this.conversationHistory.push(
-                { role: 'user', content: this.getFirstSentence(sanitizedTranscript) },
-                { role: 'assistant', content: this.getFirstSentence(plainText) }
-            );
-            this.speakResponse(plainText);
-            return;
-        }
-
-        // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
-        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
-            !this.usingWikipedia && this.currentMode !== 'none') {
-            const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
-
-            // Use the selected voice if available
-            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-                const voices = speechSynthesis.getVoices();
-                const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-                if (selectedVoice) {
-                    acknowledgment.voice = selectedVoice;
+            // Web search intercept (voice mode)
+            if (this.isWebSearchActive() && /^(find|search)\b/i.test(sanitizedTranscript)) {
+                const keywords = this.extractWebSearchKeywords(sanitizedTranscript);
+                const plainText = keywords
+                    ? "OK, I searched the web for you. Here's what I found."
+                    : 'Please enter a more specific search query.';
+                const assistantMsgEl = this.addMessage('assistant', '');
+                if (keywords) {
+                    const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
+                    assistantMsgEl.querySelector('.message-content').innerHTML =
+                        `OK, I searched the web for you. <a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+                } else {
+                    assistantMsgEl.querySelector('.message-content').textContent = plainText;
                 }
+                if (assistantMsgEl && !this.showCaptions) assistantMsgEl.classList.add('hidden');
+                const voiceWelcome = document.getElementById('voice-welcome');
+                const chatIcon = document.querySelector('.voice-chat-icon');
+                if (voiceWelcome) {
+                    voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                    voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+                }
+                if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
+                this.conversationHistory.push(
+                    { role: 'user', content: this.getFirstSentence(sanitizedTranscript) },
+                    { role: 'assistant', content: this.getFirstSentence(plainText) }
+                );
+                this.speakResponse(plainText);
+                return;
             }
 
-            // Speak the acknowledgment without blocking - it will play while model processes
-            speechSynthesis.speak(acknowledgment);
-        }
+            // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
+            if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
+                !this.usingWikipedia && this.currentMode !== 'none') {
+                const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
 
-        // Generate response
-        this.generateVoiceResponse(sanitizedTranscript);
-    }
-
-    async generateVoiceResponse(userMessage) {
-        console.log('generateVoiceResponse started for:', userMessage);
-        this.isGenerating = true;
-
-        // Append instruction for concise response in voice mode
-        const voiceModeUserMessage = userMessage + '\nRespond with a single, concise paragraph.';
-
-        try {
-            let responseText = '';
-
-            // Route to the appropriate engine based on current mode (same as text mode)
-            if (this.currentMode === 'none' || this.usingWikipedia) {
-                // Use Wikipedia/None mode
-                console.log('Using Wikipedia/None mode for response generation');
-                this.fileContentUsedInPrompt = false;
-                responseText = await this.generateNoneModeResponse(userMessage);
-                responseText = this.maybeShortenNoneModeResponse(responseText);
-                responseText = this.maybeMutateNoneModeResponse(responseText);
-
-                // Append file attribution if file content was used
-                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
-                    responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
-                }
-            } else if (this.usingWllama && this.wllama) {
-                // Use wllama (Phi 3.5-mini)
-                console.log('Using Wllama for voice response generation');
-                const voiceMessages = [
-                    { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
-                    ...this.conversationHistory.slice(-2),
-                    { role: 'user', content: voiceModeUserMessage }
-                ];
-
-                const voiceCompletionParams = {
-                    messages: voiceMessages,
-                    max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
-                    temperature: this.config.modelParameters.temperature,
-                    top_k: 30,
-                    top_p: this.config.modelParameters.top_p,
-                    repeat_penalty: this.config.modelParameters.repetition_penalty,
-                    repeat_last_n: 64,
-                    stream: false
-                };
-
-                this.currentAbortController = new AbortController();
-                const completion = await this.wllama.createChatCompletion({
-                    ...voiceCompletionParams,
-                    abortSignal: this.currentAbortController.signal
-                });
-                this.currentAbortController = null;
-                responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
-                console.log('Wllama voice completion finished, response length:', responseText.length);
-
-                // GPU failure recovery: if GPU was used and the response is empty, tear
-                // down and retry once on CPU.
-                if (!responseText && this.wllamaUsedGPU && !this.stopRequested) {
-                    console.warn('GPU voice inference produced no output; switching to CPU and retrying...');
-                    this.gpuFailed = true;
-                    this.wllamaUsedGPU = false;
-                    this.wllamaLoaded = false;
-                    const deadWllama = this.wllama;
-                    this.wllama = null;
-                    deadWllama?.exit().catch(() => { });
-                    try {
-                        await this.initializeWllama();
-                        if (this.wllama && !this.stopRequested) {
-                            this.currentAbortController = new AbortController();
-                            const retryCompletion = await this.wllama.createChatCompletion({
-                                ...voiceCompletionParams,
-                                abortSignal: this.currentAbortController.signal
-                            });
-                            this.currentAbortController = null;
-                            responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
-                            console.log('CPU voice retry finished, response length:', responseText.length);
-                        }
-                    } catch (reinitErr) {
-                        console.error('CPU re-init failed after GPU voice crash:', reinitErr);
-                        this.currentAbortController = null;
+                // Use the selected voice if available
+                if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                    const voices = speechSynthesis.getVoices();
+                    const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                    if (selectedVoice) {
+                        acknowledgment.voice = selectedVoice;
                     }
                 }
-            } else {
-                responseText = "No AI model is currently available. Please wait for the model to load.";
+
+                // Speak the acknowledgment without blocking - it will play while model processes
+                speechSynthesis.speak(acknowledgment);
             }
 
-            console.log('Response generation complete, length:', responseText.length);
-
-            // Add assistant message to chat (respecting current CC visibility)
-            const assistantMessage = this.addMessage('assistant', responseText);
-            if (assistantMessage && !this.showCaptions) {
-                assistantMessage.classList.add('hidden');
-            }
-
-            console.log('Updating UI to Speaking state...');
-
-            // Update UI to "Speaking" state
-            const voiceWelcome = document.getElementById('voice-welcome');
-            const chatIcon = document.querySelector('.voice-chat-icon');
-
-            if (voiceWelcome) {
-                voiceWelcome.querySelector('h3').textContent = 'Speaking';
-                voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
-                console.log('Updated voiceWelcome to Speaking');
-            }
-
-            // Start pulsing animation while speaking
-            if (chatIcon) {
-                chatIcon.style.animation = 'pulse 1s infinite';
-            }
-
-            console.log('About to call speakResponse...');
-
-            // Speak the response
-            this.speakResponse(responseText);
-
-            // Add to conversation history
-            this.conversationHistory.push(
-                { role: 'user', content: this.getFirstSentence(userMessage) },
-                { role: 'assistant', content: this.getFirstSentence(responseText) }
-            );
-
-            console.log('generateVoiceResponse completed successfully');
-        } catch (error) {
-            console.error('Error generating response:', error);
-            console.error('Error stack:', error.stack);
-            this.showToast('Error generating response. Please try again or switch models.');
-            this.resetVoiceUI();
-        } finally {
-            this.isGenerating = false;
-            console.log('generateVoiceResponse finally block, isGenerating set to false');
-        }
-    }
-
-    speakResponse(text) {
-        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable });
-
-        if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
-            console.log('TTS disabled or voices unavailable, skipping speech');
-            this.onSpeechComplete();
-            return;
+            // Generate response
+            this.generateVoiceResponse(sanitizedTranscript);
         }
 
-        if (!('speechSynthesis' in window)) {
-            console.log('speechSynthesis not available');
-            this.onSpeechComplete();
-            return;
-        }
+    async generateVoiceResponse(userMessage) {
+            console.log('generateVoiceResponse started for:', userMessage);
+            this.isGenerating = true;
 
-        // Cancel any ongoing speech and wait a bit for cleanup
-        speechSynthesis.cancel();
+            // Append instruction for concise response in voice mode
+            const voiceModeUserMessage = userMessage + '\nRespond with a single, concise paragraph.';
 
-        // Small delay to let speechSynthesis cleanup complete
-        setTimeout(() => {
-            const utterance = new SpeechSynthesisUtterance(text);
-            let selectedVoice = null;
+            try {
+                let responseText = '';
 
-            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-                const voices = speechSynthesis.getVoices();
-                selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-                if (selectedVoice) {
-                    utterance.voice = selectedVoice;
+                // Route to the appropriate engine based on current mode (same as text mode)
+                if (this.currentMode === 'none' || this.usingWikipedia) {
+                    // Use Wikipedia/None mode
+                    console.log('Using Wikipedia/None mode for response generation');
+                    this.fileContentUsedInPrompt = false;
+                    responseText = await this.generateNoneModeResponse(userMessage);
+                    responseText = this.maybeShortenNoneModeResponse(responseText);
+                    responseText = this.maybeMutateNoneModeResponse(responseText);
+
+                    // Append file attribution if file content was used
+                    if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+                        responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                    }
+                } else if (this.usingWllama && this.wllama) {
+                    // Use wllama (Phi 3.5-mini)
+                    console.log('Using Wllama for voice response generation');
+                    const voiceMessages = [
+                        { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
+                        ...this.conversationHistory.slice(-2),
+                        { role: 'user', content: voiceModeUserMessage }
+                    ];
+
+                    const voiceCompletionParams = {
+                        messages: voiceMessages,
+                        max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
+                        temperature: this.config.modelParameters.temperature,
+                        top_k: 30,
+                        top_p: this.config.modelParameters.top_p,
+                        repeat_penalty: this.config.modelParameters.repetition_penalty,
+                        repeat_last_n: 64,
+                        stream: false
+                    };
+
+                    this.currentAbortController = new AbortController();
+                    const completion = await this.wllama.createChatCompletion({
+                        ...voiceCompletionParams,
+                        abortSignal: this.currentAbortController.signal
+                    });
+                    this.currentAbortController = null;
+                    responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
+                    console.log('Wllama voice completion finished, response length:', responseText.length);
+
+                    // GPU failure recovery: if GPU was used and the response is empty, tear
+                    // down and retry once on CPU.
+                    if (!responseText && this.wllamaUsedGPU && !this.stopRequested) {
+                        console.warn('GPU voice inference produced no output; switching to CPU and retrying...');
+                        this.gpuFailed = true;
+                        this.wllamaUsedGPU = false;
+                        this.wllamaLoaded = false;
+                        const deadWllama = this.wllama;
+                        this.wllama = null;
+                        deadWllama?.exit().catch(() => { });
+                        try {
+                            await this.initializeWllama();
+                            if (this.wllama && !this.stopRequested) {
+                                this.currentAbortController = new AbortController();
+                                const retryCompletion = await this.wllama.createChatCompletion({
+                                    ...voiceCompletionParams,
+                                    abortSignal: this.currentAbortController.signal
+                                });
+                                this.currentAbortController = null;
+                                responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
+                                console.log('CPU voice retry finished, response length:', responseText.length);
+                            }
+                        } catch (reinitErr) {
+                            console.error('CPU re-init failed after GPU voice crash:', reinitErr);
+                            this.currentAbortController = null;
+                        }
+                    }
+                } else {
+                    responseText = "No AI model is currently available. Please wait for the model to load.";
                 }
+
+                console.log('Response generation complete, length:', responseText.length);
+
+                // Add assistant message to chat (respecting current CC visibility)
+                const assistantMessage = this.addMessage('assistant', responseText);
+                if (assistantMessage && !this.showCaptions) {
+                    assistantMessage.classList.add('hidden');
+                }
+
+                console.log('Updating UI to Speaking state...');
+
+                // Update UI to "Speaking" state
+                const voiceWelcome = document.getElementById('voice-welcome');
+                const chatIcon = document.querySelector('.voice-chat-icon');
+
+                if (voiceWelcome) {
+                    voiceWelcome.querySelector('h3').textContent = 'Speaking';
+                    voiceWelcome.querySelector('p').textContent = 'Adjust volume as necessary.';
+                    console.log('Updated voiceWelcome to Speaking');
+                }
+
+                // Start pulsing animation while speaking
+                if (chatIcon) {
+                    chatIcon.style.animation = 'pulse 1s infinite';
+                }
+
+                console.log('About to call speakResponse...');
+
+                // Speak the response
+                this.speakResponse(responseText);
+
+                // Add to conversation history
+                this.conversationHistory.push(
+                    { role: 'user', content: this.getFirstSentence(userMessage) },
+                    { role: 'assistant', content: this.getFirstSentence(responseText) }
+                );
+
+                console.log('generateVoiceResponse completed successfully');
+            } catch (error) {
+                console.error('Error generating response:', error);
+                console.error('Error stack:', error.stack);
+                this.showToast('Error generating response. Please try again or switch models.');
+                this.resetVoiceUI();
+            } finally {
+                this.isGenerating = false;
+                console.log('generateVoiceResponse finally block, isGenerating set to false');
+            }
+        }
+
+        speakResponse(text) {
+            console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable });
+
+            if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
+                console.log('TTS disabled or voices unavailable, skipping speech');
+                this.onSpeechComplete();
+                return;
             }
 
-            utterance.rate = 1;
-            utterance.pitch = 1;
-            utterance.volume = 1;
+            if (!('speechSynthesis' in window)) {
+                console.log('speechSynthesis not available');
+                this.onSpeechComplete();
+                return;
+            }
 
-            this.isSpeaking = true;
+            // Cancel any ongoing speech and wait a bit for cleanup
+            speechSynthesis.cancel();
 
-            // Safety timeout in case onend never fires (estimate based on text length)
-            const estimatedDuration = (text.length / 15) * 1000 + 5000; // ~15 chars per second + 5 sec buffer
-            const safetyTimeout = setTimeout(() => {
-                console.warn('Speech synthesis timeout - forcing completion');
-                if (this.isSpeaking) {
-                    speechSynthesis.cancel();
+            // Small delay to let speechSynthesis cleanup complete
+            setTimeout(() => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                let selectedVoice = null;
+
+                if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                    const voices = speechSynthesis.getVoices();
+                    selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                    if (selectedVoice) {
+                        utterance.voice = selectedVoice;
+                    }
+                }
+
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+
+                this.isSpeaking = true;
+
+                // Safety timeout in case onend never fires (estimate based on text length)
+                const estimatedDuration = (text.length / 15) * 1000 + 5000; // ~15 chars per second + 5 sec buffer
+                const safetyTimeout = setTimeout(() => {
+                    console.warn('Speech synthesis timeout - forcing completion');
+                    if (this.isSpeaking) {
+                        speechSynthesis.cancel();
+                        this.isSpeaking = false;
+                        this.onSpeechComplete();
+                    }
+                }, estimatedDuration);
+
+                utterance.onstart = () => {
+                    console.log('TTS utterance started');
+                };
+
+                utterance.onend = () => {
+                    console.log('TTS utterance ended normally');
+                    clearTimeout(safetyTimeout);
                     this.isSpeaking = false;
                     this.onSpeechComplete();
-                }
-            }, estimatedDuration);
+                };
 
-            utterance.onstart = () => {
-                console.log('TTS utterance started');
-            };
+                utterance.onerror = (event) => {
+                    console.error('TTS utterance error:', event);
+                    clearTimeout(safetyTimeout);
+                    if (selectedVoice && this.shouldMarkVoiceAsFailed(event?.error)) {
+                        this.updateVoiceHealthStatus(selectedVoice, false);
+                        this.populateVoices();
+                    }
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                };
 
-            utterance.onend = () => {
-                console.log('TTS utterance ended normally');
-                clearTimeout(safetyTimeout);
-                this.isSpeaking = false;
-                this.onSpeechComplete();
-            };
-
-            utterance.onerror = (event) => {
-                console.error('TTS utterance error:', event);
-                clearTimeout(safetyTimeout);
-                if (selectedVoice && this.shouldMarkVoiceAsFailed(event?.error)) {
-                    this.updateVoiceHealthStatus(selectedVoice, false);
-                    this.populateVoices();
-                }
-                this.isSpeaking = false;
-                this.onSpeechComplete();
-            };
-
-            console.log('Speaking utterance...');
-            speechSynthesis.speak(utterance);
-        }, 50);
-    }
-
-    onSpeechComplete() {
-        // If user cancelled, reset to default state
-        if (this.voiceInteractionCancelled) {
-            this.resetVoiceUI();
-            return;
+                console.log('Speaking utterance...');
+                speechSynthesis.speak(utterance);
+            }, 50);
         }
 
-        // Otherwise, automatically start listening again for follow-up
-        console.log('Speech complete, automatically starting listening for follow-up...');
-        this.startSpeechRecognition();
-    }
-
-    resetVoiceUI() {
-        const chatIcon = document.querySelector('.voice-chat-icon');
-        const startBtn = document.getElementById('voice-start-btn');
-        const cancelBtn = document.getElementById('voice-cancel-btn');
-        const ccBtn = document.getElementById('voice-cc-btn');
-        const voiceWelcome = document.getElementById('voice-welcome');
-
-        if (chatIcon) {
-            chatIcon.style.animation = 'none';
-        }
-        if (startBtn) {
-            startBtn.style.display = 'inline-block';
-            startBtn.disabled = false;
-        }
-        if (cancelBtn) {
-            cancelBtn.style.display = 'none';
-        }
-        if (ccBtn) {
-            ccBtn.style.display = 'none';
-        }
-
-        // Reset captions state to off for next conversation
-        this.showCaptions = false;
-        this.updateCCButton();
-
-        if (voiceWelcome) {
-            voiceWelcome.querySelector('h3').textContent = "Let's talk";
-            voiceWelcome.querySelector('p').textContent = 'Talk like you would to a person. The agent listens and responds.';
-        }
-    }
-
-    toggleCaptions() {
-        this.showCaptions = !this.showCaptions;
-        this.updateCCButton();
-        this.updateMessageVisibility();
-    }
-
-    updateCCButton() {
-        const ccBtn = document.getElementById('voice-cc-btn');
-        if (!ccBtn) return;
-
-        if (this.showCaptions) {
-            ccBtn.innerHTML = '[<s>cc</s>]';
-        } else {
-            ccBtn.innerHTML = '[cc]';
-        }
-    }
-
-    updateMessageVisibility() {
-        const chatMessages = document.getElementById('chat-messages');
-        if (!chatMessages) return;
-
-        const messages = chatMessages.querySelectorAll('.message');
-        messages.forEach(msg => {
-            if (this.showCaptions) {
-                msg.classList.remove('hidden');
-            } else {
-                msg.classList.add('hidden');
+        onSpeechComplete() {
+            // If user cancelled, reset to default state
+            if (this.voiceInteractionCancelled) {
+                this.resetVoiceUI();
+                return;
             }
-        });
-    }
 
-    cancelVoiceInteraction() {
-        // Mark interaction as cancelled
-        this.voiceInteractionCancelled = true;
 
-        // Stop speech recognition (unified method handles both engines)
-        this.stopSpeechRecognition(true);
+            const startBtn = document.getElementById('voice-start-btn');
+            const cancelBtn = document.getElementById('voice-cancel-btn');
+            const ccBtn = document.getElementById('voice-cc-btn');
+            const voiceWelcome = document.getElementById('voice-welcome');
 
-        // Close speech model modal if open
-        this.closeSpeechModelModal();
+            if (chatIcon) {
+                chatIcon.style.animation = 'none';
+            }
+            if (startBtn) {
+                startBtn.style.display = 'inline-block';
+                startBtn.disabled = false;
+            }
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+            if (ccBtn) {
+                ccBtn.style.display = 'none';
+            }
 
-        // Stop speech synthesis
-        if (speechSynthesis) {
-            speechSynthesis.cancel();
+            // Reset captions state to off for next conversation
+            this.showCaptions = false;
+            this.updateCCButton();
+
+            if (voiceWelcome) {
+                voiceWelcome.querySelector('h3').textContent = "Let's talk";
+                voiceWelcome.querySelector('p').textContent = 'Talk like you would to a person. The agent listens and responds.';
+            }
         }
 
-        // Stop generation if in progress
-        if (this.isGenerating) {
-            this.stopGeneration().catch((error) => {
-                console.warn('Failed to stop generation during voice cancel:', error);
-            });
+        toggleCaptions() {
+            this.showCaptions = !this.showCaptions;
+            this.updateCCButton();
+            this.updateMessageVisibility();
         }
 
-        // Show all messages when user cancels
-        this.showCaptions = true;
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
+        updateCCButton() {
+            const ccBtn = document.getElementById('voice-cc-btn');
+            if (!ccBtn) return;
+
+            if (this.showCaptions) {
+                ccBtn.innerHTML = '[<s>cc</s>]';
+            } else {
+                ccBtn.innerHTML = '[cc]';
+            }
+        }
+
+        updateMessageVisibility() {
+            const chatMessages = document.getElementById('chat-messages');
+            if (!chatMessages) return;
+
             const messages = chatMessages.querySelectorAll('.message');
             messages.forEach(msg => {
-                msg.classList.remove('hidden');
+                if (this.showCaptions) {
+                    msg.classList.remove('hidden');
+                } else {
+                    msg.classList.add('hidden');
+                }
             });
         }
 
-        // Reset UI
-        this.isListening = false;
-        this.isSpeaking = false;
-        this.isGenerating = false;
-        this.resetVoiceUI();
-    }
+        cancelVoiceInteraction() {
+            // Mark interaction as cancelled
+            this.voiceInteractionCancelled = true;
+
+            // Stop speech recognition (unified method handles both engines)
+            this.stopSpeechRecognition(true);
+
+            // Close speech model modal if open
+            this.closeSpeechModelModal();
+
+            // Stop speech synthesis
+            if (speechSynthesis) {
+                speechSynthesis.cancel();
+            }
+
+            // Stop generation if in progress
+            if (this.isGenerating) {
+                this.stopGeneration().catch((error) => {
+                    console.warn('Failed to stop generation during voice cancel:', error);
+                });
+            }
+
+            // Show all messages when user cancels
+            this.showCaptions = true;
+            const chatMessages = document.getElementById('chat-messages');
+            if (chatMessages) {
+                const messages = chatMessages.querySelectorAll('.message');
+                messages.forEach(msg => {
+                    msg.classList.remove('hidden');
+                });
+            }
+
+            // Reset UI
+            this.isListening = false;
+            this.isSpeaking = false;
+            this.isGenerating = false;
+            this.resetVoiceUI();
+        }
 
     async previewVoice() {
-        const voices = speechSynthesis.getVoices();
-        const voiceSelect = document.getElementById('config-voice-select');
-        const previewBtn = document.getElementById('preview-voice-btn');
-        const selectedVoiceName = voiceSelect ? voiceSelect.value : null;
+            const voices = speechSynthesis.getVoices();
+            const voiceSelect = document.getElementById('config-voice-select');
+            const previewBtn = document.getElementById('preview-voice-btn');
+            const selectedVoiceName = voiceSelect ? voiceSelect.value : null;
 
-        if (!selectedVoiceName) {
-            this.showToast('Please select a voice first');
-            return;
-        }
-
-        const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
-        if (!selectedVoice) {
-            this.showToast('Voice not found');
-            return;
-        }
-
-        // Cancel any ongoing speech
-        speechSynthesis.cancel();
-
-        // Show testing state on button
-        if (previewBtn) {
-            previewBtn.disabled = true;
-            previewBtn.textContent = '...';
-        }
-
-        const resetButton = () => {
-            if (previewBtn) {
-                previewBtn.disabled = false;
-                previewBtn.textContent = '▶';
-            }
-        };
-
-        try {
-            // If a selection-triggered probe is in-flight, let it settle first
-            if (this.voiceSelectionProbePromise) {
-                await Promise.race([
-                    this.voiceSelectionProbePromise,
-                    new Promise(resolve => setTimeout(resolve, 2200))
-                ]);
+            if (!selectedVoiceName) {
+                this.showToast('Please select a voice first');
+                return;
             }
 
-            await this.waitForSpeechIdle(1200);
+            const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+            if (!selectedVoice) {
+                this.showToast('Voice not found');
+                return;
+            }
+
+            // Cancel any ongoing speech
             speechSynthesis.cancel();
 
-            let result = await this.playPreviewAttempt(selectedVoice);
+            // Show testing state on button
+            if (previewBtn) {
+                previewBtn.disabled = true;
+                previewBtn.textContent = '...';
+            }
 
-            // Retry once on transient startup issues
-            if (!result.ok && !this.shouldMarkVoiceAsFailed(result.errorCode)) {
-                await new Promise(resolve => setTimeout(resolve, 250));
+            const resetButton = () => {
+                if (previewBtn) {
+                    previewBtn.disabled = false;
+                    previewBtn.textContent = '▶';
+                }
+            };
+
+            try {
+                // If a selection-triggered probe is in-flight, let it settle first
+                if (this.voiceSelectionProbePromise) {
+                    await Promise.race([
+                        this.voiceSelectionProbePromise,
+                        new Promise(resolve => setTimeout(resolve, 2200))
+                    ]);
+                }
+
                 await this.waitForSpeechIdle(1200);
                 speechSynthesis.cancel();
-                result = await this.playPreviewAttempt(selectedVoice);
-            }
 
-            if (!result.ok) {
-                console.error('Voice preview error:', result.errorCode);
-                if (this.shouldMarkVoiceAsFailed(result.errorCode)) {
-                    this.updateVoiceHealthStatus(selectedVoice, false);
-                    this.populateVoices();
+                let result = await this.playPreviewAttempt(selectedVoice);
+
+                // Retry once on transient startup issues
+                if (!result.ok && !this.shouldMarkVoiceAsFailed(result.errorCode)) {
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                    await this.waitForSpeechIdle(1200);
+                    speechSynthesis.cancel();
+                    result = await this.playPreviewAttempt(selectedVoice);
                 }
-                this.showToast('Voice preview failed. Please try another voice.');
+
+                if (!result.ok) {
+                    console.error('Voice preview error:', result.errorCode);
+                    if (this.shouldMarkVoiceAsFailed(result.errorCode)) {
+                        this.updateVoiceHealthStatus(selectedVoice, false);
+                        this.populateVoices();
+                    }
+                    this.showToast('Voice preview failed. Please try another voice.');
+                }
+            } catch (error) {
+                console.error('Error speaking:', error);
+                this.showToast('Error playing voice preview');
+            } finally {
+                resetButton();
             }
-        } catch (error) {
-            console.error('Error speaking:', error);
-            this.showToast('Error playing voice preview');
-        } finally {
-            resetButton();
-        }
-    }
-
-    // ========== End Speech and Voice Functions ==========
-
-    // ========== Avatar Functions ==========
-
-    initializeAvatars() {
-        const avatarGrid = document.getElementById('avatar-grid');
-        if (!avatarGrid) return;
-
-        // Clear existing avatars
-        avatarGrid.innerHTML = '';
-
-        // Load saved preferences
-        const savedAvatarEnabled = localStorage.getItem('avatarEnabled') === 'true';
-        const savedAvatar = localStorage.getItem('selectedAvatar') || this.availableAvatars[0];
-
-        this.avatarEnabled = savedAvatarEnabled;
-        this.selectedAvatar = savedAvatar;
-
-        // Set toggle state
-        const avatarToggle = document.getElementById('avatar-toggle');
-        if (avatarToggle) {
-            avatarToggle.checked = savedAvatarEnabled;
         }
 
-        // Show/hide avatar selection
-        const avatarSelection = document.getElementById('avatar-selection');
-        if (avatarSelection) {
-            avatarSelection.style.display = savedAvatarEnabled ? 'block' : 'none';
-        }
+        // ========== End Speech and Voice Functions ==========
 
-        // Create avatar items
-        this.availableAvatars.forEach((avatar) => {
-            const avatarItem = document.createElement('div');
-            avatarItem.className = 'avatar-item';
-            if (avatar === this.selectedAvatar) {
-                avatarItem.classList.add('selected');
+        // ========== Avatar Functions ==========
+
+        initializeAvatars() {
+            const avatarGrid = document.getElementById('avatar-grid');
+            if (!avatarGrid) return;
+
+            // Clear existing avatars
+            avatarGrid.innerHTML = '';
+
+            // Load saved preferences
+            const savedAvatarEnabled = localStorage.getItem('avatarEnabled') === 'true';
+            const savedAvatar = localStorage.getItem('selectedAvatar') || this.availableAvatars[0];
+
+            this.avatarEnabled = savedAvatarEnabled;
+            this.selectedAvatar = savedAvatar;
+
+            // Set toggle state
+            const avatarToggle = document.getElementById('avatar-toggle');
+            if (avatarToggle) {
+                avatarToggle.checked = savedAvatarEnabled;
             }
 
-            const img = document.createElement('img');
-            img.src = `avatars/${avatar}`;
-            img.alt = avatar.replace('.svg', '');
+            // Show/hide avatar selection
+            const avatarSelection = document.getElementById('avatar-selection');
+            if (avatarSelection) {
+                avatarSelection.style.display = savedAvatarEnabled ? 'block' : 'none';
+            }
 
-            const name = document.createElement('div');
-            name.className = 'avatar-name';
-            name.textContent = avatar.replace('.svg', '');
+            // Create avatar items
+            this.availableAvatars.forEach((avatar) => {
+                const avatarItem = document.createElement('div');
+                avatarItem.className = 'avatar-item';
+                if (avatar === this.selectedAvatar) {
+                    avatarItem.classList.add('selected');
+                }
 
-            avatarItem.appendChild(img);
-            avatarItem.appendChild(name);
+                const img = document.createElement('img');
+                img.src = `avatars/${avatar}`;
+                img.alt = avatar.replace('.svg', '');
 
-            avatarItem.addEventListener('click', () => {
-                this.selectAvatar(avatar);
+                const name = document.createElement('div');
+                name.className = 'avatar-name';
+                name.textContent = avatar.replace('.svg', '');
+
+                avatarItem.appendChild(img);
+                avatarItem.appendChild(name);
+
+                avatarItem.addEventListener('click', () => {
+                    this.selectAvatar(avatar);
+                });
+
+                avatarGrid.appendChild(avatarItem);
             });
 
-            avatarGrid.appendChild(avatarItem);
-        });
-
-        // Update display if avatar is enabled
-        if (this.avatarEnabled) {
-            setTimeout(() => this.updateAvatarDisplay(), 0);
+            // Update display if avatar is enabled
+            if (this.avatarEnabled) {
+                setTimeout(() => this.updateAvatarDisplay(), 0);
+            }
         }
-    }
 
-    toggleAvatar(enabled) {
-        this.avatarEnabled = enabled;
-        localStorage.setItem('avatarEnabled', enabled);
+        toggleAvatar(enabled) {
+            this.avatarEnabled = enabled;
+            localStorage.setItem('avatarEnabled', enabled);
 
-        const avatarSelection = document.getElementById('avatar-selection');
+            const avatarSelection = document.getElementById('avatar-selection');
 
-        if (enabled) {
-            if (avatarSelection) {
-                avatarSelection.style.display = 'block';
+            if (enabled) {
+                if (avatarSelection) {
+                    avatarSelection.style.display = 'block';
+                }
+                this.updateAvatarDisplay();
+            } else {
+                if (avatarSelection) {
+                    avatarSelection.style.display = 'none';
+                }
+                // Hide avatar image, show purple circle
+                const avatarImage = document.getElementById('voice-avatar-image');
+                if (avatarImage) {
+                    avatarImage.style.display = 'none';
+                }
             }
-            this.updateAvatarDisplay();
-        } else {
-            if (avatarSelection) {
-                avatarSelection.style.display = 'none';
+        }
+
+        selectAvatar(avatarName) {
+            this.selectedAvatar = avatarName;
+            localStorage.setItem('selectedAvatar', avatarName);
+
+            // Update selection UI
+            const avatarItems = document.querySelectorAll('.avatar-item');
+            avatarItems.forEach(item => {
+                const img = item.querySelector('img');
+                if (img && img.src.endsWith(avatarName)) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+
+            // Update avatar display if enabled
+            if (this.avatarEnabled) {
+                this.updateAvatarDisplay();
             }
-            // Hide avatar image, show purple circle
+        }
+
+        updateAvatarDisplay() {
             const avatarImage = document.getElementById('voice-avatar-image');
-            if (avatarImage) {
+            if (!avatarImage || !this.selectedAvatar) return;
+
+            if (this.avatarEnabled) {
+                avatarImage.src = `avatars/${this.selectedAvatar}`;
+                avatarImage.style.display = 'block';
+            } else {
                 avatarImage.style.display = 'none';
             }
         }
-    }
 
-    selectAvatar(avatarName) {
-        this.selectedAvatar = avatarName;
-        localStorage.setItem('selectedAvatar', avatarName);
+        // ========== End Avatar Functions ==========
 
-        // Update selection UI
-        const avatarItems = document.querySelectorAll('.avatar-item');
-        avatarItems.forEach(item => {
-            const img = item.querySelector('img');
-            if (img && img.src.endsWith(avatarName)) {
-                item.classList.add('selected');
-            } else {
-                item.classList.remove('selected');
-            }
-        });
+        showToast(message) {
+            // Announce to screen readers
+            this.announceToScreenReader(message);
 
-        // Update avatar display if enabled
-        if (this.avatarEnabled) {
-            this.updateAvatarDisplay();
-        }
-    }
-
-    updateAvatarDisplay() {
-        const avatarImage = document.getElementById('voice-avatar-image');
-        if (!avatarImage || !this.selectedAvatar) return;
-
-        if (this.avatarEnabled) {
-            avatarImage.src = `avatars/${this.selectedAvatar}`;
-            avatarImage.style.display = 'block';
-        } else {
-            avatarImage.style.display = 'none';
-        }
-    }
-
-    // ========== End Avatar Functions ==========
-
-    showToast(message) {
-        // Announce to screen readers
-        this.announceToScreenReader(message);
-
-        // Simple toast notification
-        const toast = document.createElement('div');
-        toast.style.cssText = `
+            // Simple toast notification
+            const toast = document.createElement('div');
+            toast.style.cssText = `
             position: fixed;
             top: 20px;
             right: 20px;
@@ -4403,161 +4361,161 @@ class ChatPlayground {
             z-index: 1000;
             animation: slideInRight 0.3s ease-out;
         `;
-        toast.textContent = message;
+            toast.textContent = message;
 
-        document.body.appendChild(toast);
+            document.body.appendChild(toast);
 
-        setTimeout(() => {
-            toast.style.animation = 'slideOutRight 0.3s ease-in';
-            setTimeout(() => toast.remove(), 300);
-        }, 2000);
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+        }
     }
-}
 
 // Global functions for UI interactions
 window.toggleSection = function (sectionId) {
-    const content = document.getElementById(sectionId);
-    const button = content.previousElementSibling;
+        const content = document.getElementById(sectionId);
+        const button = content.previousElementSibling;
 
-    const isExpanded = content.style.display === 'block';
+        const isExpanded = content.style.display === 'block';
 
-    if (isExpanded) {
-        content.style.display = 'none';
-        button.textContent = button.textContent.replace('▼', '▶');
-        button.setAttribute('aria-expanded', 'false');
-    } else {
-        content.style.display = 'block';
-        button.textContent = button.textContent.replace('▶', '▼');
-        button.setAttribute('aria-expanded', 'true');
-    }
-};
+        if (isExpanded) {
+            content.style.display = 'none';
+            button.textContent = button.textContent.replace('▼', '▶');
+            button.setAttribute('aria-expanded', 'false');
+        } else {
+            content.style.display = 'block';
+            button.textContent = button.textContent.replace('▶', '▼');
+            button.setAttribute('aria-expanded', 'true');
+        }
+    };
 
 window.resetParameters = function () {
-    // Get the app instance (we'll need to store it globally)
-    if (window.chatPlaygroundApp) {
-        // Get model-specific defaults
-        const defaults = window.chatPlaygroundApp.getModelDefaults();
+        // Get the app instance (we'll need to store it globally)
+        if (window.chatPlaygroundApp) {
+            // Get model-specific defaults
+            const defaults = window.chatPlaygroundApp.getModelDefaults();
 
-        // Update app parameters
-        window.chatPlaygroundApp.modelParameters = { ...defaults };
+            // Update app parameters
+            window.chatPlaygroundApp.modelParameters = { ...defaults };
 
-        // Update sliders and displays
-        const updates = [
-            { slider: 'temperature-slider', value: 'temperature-value', param: 'temperature' },
-            { slider: 'top-p-slider', value: 'top-p-value', param: 'top_p' },
-            { slider: 'max-tokens-slider', value: 'max-tokens-value', param: 'max_tokens' },
-            { slider: 'repetition-penalty-slider', value: 'repetition-penalty-value', param: 'repetition_penalty' }
-        ];
+            // Update sliders and displays
+            const updates = [
+                { slider: 'temperature-slider', value: 'temperature-value', param: 'temperature' },
+                { slider: 'top-p-slider', value: 'top-p-value', param: 'top_p' },
+                { slider: 'max-tokens-slider', value: 'max-tokens-value', param: 'max_tokens' },
+                { slider: 'repetition-penalty-slider', value: 'repetition-penalty-value', param: 'repetition_penalty' }
+            ];
 
-        updates.forEach(({ slider, value, param }) => {
-            const sliderEl = document.getElementById(slider);
-            const valueEl = document.getElementById(value);
-            if (sliderEl && valueEl) {
-                sliderEl.value = defaults[param];
-                valueEl.textContent = defaults[param];
-                // Update aria-valuetext for screen readers
-                sliderEl.setAttribute('aria-valuetext', defaults[param].toString());
-            }
-        });
+            updates.forEach(({ slider, value, param }) => {
+                const sliderEl = document.getElementById(slider);
+                const valueEl = document.getElementById(value);
+                if (sliderEl && valueEl) {
+                    sliderEl.value = defaults[param];
+                    valueEl.textContent = defaults[param];
+                    // Update aria-valuetext for screen readers
+                    sliderEl.setAttribute('aria-valuetext', defaults[param].toString());
+                }
+            });
 
-        window.chatPlaygroundApp.showToast('Parameters reset to defaults');
-    }
-};
+            window.chatPlaygroundApp.showToast('Parameters reset to defaults');
+        }
+    };
 
 window.triggerFileUpload = function () {
-    const fileInput = document.getElementById('file-input');
-    if (fileInput) {
-        fileInput.click();
-    }
-};
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) {
+            fileInput.click();
+        }
+    };
 
 window.toggleAddDropdown = function (event) {
-    event.stopPropagation();
-    const btn = document.getElementById('add-tool-btn');
-    const menu = document.getElementById('add-dropdown-menu');
-    const isOpen = menu.style.display !== 'none';
-    menu.style.display = isOpen ? 'none' : 'block';
-    btn.setAttribute('aria-expanded', String(!isOpen));
-};
+        event.stopPropagation();
+        const btn = document.getElementById('add-tool-btn');
+        const menu = document.getElementById('add-dropdown-menu');
+        const isOpen = menu.style.display !== 'none';
+        menu.style.display = isOpen ? 'none' : 'block';
+        btn.setAttribute('aria-expanded', String(!isOpen));
+    };
 
 window.selectTool = function (tool) {
-    const menu = document.getElementById('add-dropdown-menu');
-    const btn = document.getElementById('add-tool-btn');
-    menu.style.display = 'none';
-    btn.setAttribute('aria-expanded', 'false');
-    if (tool === 'file-search') {
-        window.triggerFileUpload();
-    } else if (tool === 'web-search') {
-        const info = document.getElementById('web-search-info');
-        const option = document.getElementById('web-search-option');
-        if (info) info.style.display = 'flex';
-        if (option) option.style.display = 'none';
-    }
-};
+        const menu = document.getElementById('add-dropdown-menu');
+        const btn = document.getElementById('add-tool-btn');
+        menu.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+        if (tool === 'file-search') {
+            window.triggerFileUpload();
+        } else if (tool === 'web-search') {
+            const info = document.getElementById('web-search-info');
+            const option = document.getElementById('web-search-option');
+            if (info) info.style.display = 'flex';
+            if (option) option.style.display = 'none';
+        }
+    };
 
 window.removeWebSearch = function () {
-    const info = document.getElementById('web-search-info');
-    const option = document.getElementById('web-search-option');
-    if (info) info.style.display = 'none';
-    if (option) option.style.display = '';
-};
+        const info = document.getElementById('web-search-info');
+        const option = document.getElementById('web-search-option');
+        if (info) info.style.display = 'none';
+        if (option) option.style.display = '';
+    };
 
-document.addEventListener('click', function (e) {
-    const menu = document.getElementById('add-dropdown-menu');
-    const btn = document.getElementById('add-tool-btn');
-    if (menu && !menu.contains(e.target) && e.target !== btn) {
-        menu.style.display = 'none';
-        if (btn) btn.setAttribute('aria-expanded', 'false');
-    }
-});
+document.addEventListener('click', function(e) {
+        const menu = document.getElementById('add-dropdown-menu');
+        const btn = document.getElementById('add-tool-btn');
+        if (menu && !menu.contains(e.target) && e.target !== btn) {
+            menu.style.display = 'none';
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        }
+    });
 
 window.removeFile = function () {
-    if (window.chatPlaygroundApp) {
-        window.chatPlaygroundApp.removeFile();
-    }
-};
+        if (window.chatPlaygroundApp) {
+            window.chatPlaygroundApp.removeFile();
+        }
+    };
 
 window.openAboutModal = function () {
-    const modal = document.getElementById('about-modal');
-    if (modal) {
-        // Store the currently focused element to restore later
-        window.lastFocusedElement = document.activeElement;
+        const modal = document.getElementById('about-modal');
+        if (modal) {
+            // Store the currently focused element to restore later
+            window.lastFocusedElement = document.activeElement;
 
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
 
-        // Focus the modal for screen readers
-        setTimeout(() => {
-            const modalTitle = document.getElementById('about-modal-title');
-            if (modalTitle) {
-                modalTitle.focus();
-            }
-        }, 100);
+            // Focus the modal for screen readers
+            setTimeout(() => {
+                const modalTitle = document.getElementById('about-modal-title');
+                if (modalTitle) {
+                    modalTitle.focus();
+                }
+            }, 100);
 
-        // Add keyboard trap for accessibility
-        window.trapFocus(modal);
-    }
-};
+            // Add keyboard trap for accessibility
+            window.trapFocus(modal);
+        }
+    };
 
 window.closeAboutModal = function () {
-    const modal = document.getElementById('about-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto'; // Restore scrolling
+        const modal = document.getElementById('about-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore scrolling
 
-        // Restore focus to the element that opened the modal
-        if (window.lastFocusedElement) {
-            window.lastFocusedElement.focus();
-            window.lastFocusedElement = null;
+            // Restore focus to the element that opened the modal
+            if (window.lastFocusedElement) {
+                window.lastFocusedElement.focus();
+                window.lastFocusedElement = null;
+            }
+
+            // Remove keyboard trap
+            window.removeFocusTrap();
         }
+    };
 
-        // Remove keyboard trap
-        window.removeFocusTrap();
-    }
-};
-
-// Add CSS animations
-const style = document.createElement('style');
+    // Add CSS animations
+    const style = document.createElement('style');
 style.textContent = `
     @keyframes slideInRight {
         from {
@@ -4585,23 +4543,23 @@ document.head.appendChild(style);
 
 // Parameters Modal Functions
 window.openParametersModal = function () {
-    const modal = document.getElementById('parameters-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        // Sync modal sliders with current values from left pane
-        syncParametersToModal();
-        // Add click-outside-to-close
-        modal.addEventListener('click', handleParametersModalClick);
-    }
-};
+        const modal = document.getElementById('parameters-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Sync modal sliders with current values from left pane
+            syncParametersToModal();
+            // Add click-outside-to-close
+            modal.addEventListener('click', handleParametersModalClick);
+        }
+    };
 
 window.closeParametersModal = function () {
-    const modal = document.getElementById('parameters-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        modal.removeEventListener('click', handleParametersModalClick);
-    }
-};
+        const modal = document.getElementById('parameters-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            modal.removeEventListener('click', handleParametersModalClick);
+        }
+    };
 
 function handleParametersModalClick(e) {
     const modal = document.getElementById('parameters-modal');
