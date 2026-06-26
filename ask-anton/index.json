@@ -673,7 +673,10 @@
                 "video_id": "66992e19-2df4-4287-b707-76e7c91b95a0",
                 "keywords": [
                     "voice live",
-                    "azure speech"
+                    "live voice",
+                    "voicelive",
+                    "azure speech",
+                    "azure voice"
                 ],
                 "content": "Azure Speech in Microsoft Foundry Tools includes Text-to-Speech (speech synthesis), Speech-to-Text (speech synthesis), Voice Live (realtime spoken conversation), and Speech Translation."
             },
@@ -682,7 +685,9 @@
                 "title": "Azure Language",
                 "video_id": "785ec168-9609-473f-a5f0-a7cc9aaa5029",
                 "keywords": [
-                    "azure language"
+                    "azure language",
+                    "conversational language understanding",
+                    "luis"
                 ],
                 "content": "Azure Language in Microsoft Foundry Tools provides NLP capabilities like language detection, entity recognition, and personally identifiable information (PII) detection."
             },
@@ -691,7 +696,8 @@
                 "title": "Azure Content Understanding",
                 "video_id": "614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
-                    "content understanding"
+                    "content understanding",
+                    "content udnerstanding"
                 ],
                 "content": "Azure Content Understanding in Microsoft Foundry Tools provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
