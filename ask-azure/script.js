@@ -5,6 +5,8 @@ class AskAnton {
         this.conversationHistory = [];
         this.isGenerating = false;
         this.indexData = null; // Contains the category structure from index.json
+        this.vocabulary = null;  // Set of unique words from keyphrases, used for fuzzy correction
+        this.vocabList = null;    // Array version for iteration
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
@@ -514,14 +516,20 @@ IMPORTANT: Follow these guidelines when responding:
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
 
-            // Build a flat lookup map: keyword -> {document, category, link}
+            // Build a flat lookup map: keyword -> [{document, category, link}, ...]
+            // A keyword can map to multiple documents
             this.keywordMap = new Map();
             this.indexData.forEach(category => {
                 category.documents.forEach(doc => {
                     doc.keywords.forEach(keyword => {
                         const normalizedKeyword = keyword.toLowerCase().trim();
                         if (normalizedKeyword) {
-                            this.keywordMap.set(normalizedKeyword, {
+                            let entries = this.keywordMap.get(normalizedKeyword);
+                            if (!entries) {
+                                entries = [];
+                                this.keywordMap.set(normalizedKeyword, entries);
+                            }
+                            entries.push({
                                 document: doc,
                                 category: category.category,
                                 link: category.link
@@ -531,6 +539,19 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             });
             console.log('Built keyword map with', this.keywordMap.size, 'keywords');
+
+            // Build vocabulary from all keywords for fuzzy correction
+            this.vocabulary = new Set();
+            this.keywordMap.forEach((entries, keyword) => {
+                // Split multi-word keywords into individual words
+                keyword.split(/\s+/).forEach(word => {
+                    if (word.length >= 2) {  // Filter out single-letter words
+                        this.vocabulary.add(word);
+                    }
+                });
+            });
+            this.vocabList = Array.from(this.vocabulary);
+            console.log('Built vocabulary with', this.vocabulary.size, 'unique words for fuzzy matching');
         } catch (error) {
             console.error('Error loading index:', error);
             throw error;
@@ -1069,12 +1090,117 @@ IMPORTANT: Follow these guidelines when responding:
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
 
+    /**
+     * Calculate Jaro-Winkler similarity between two strings.
+     * Returns a value between 0 (no similarity) and 1 (identical).
+     * Used for fuzzy keyword matching to correct typos.
+     */
+    jaroWinkler(s1, s2) {
+        if (s1 === s2) return 1.0;
+        if (!s1 || !s2) return 0.0;
+
+        const len1 = s1.length;
+        const len2 = s2.length;
+        const matchWindow = Math.max(Math.floor(Math.max(len1, len2) / 2) - 1, 0);
+
+        const s1Matches = new Array(len1).fill(false);
+        const s2Matches = new Array(len2).fill(false);
+
+        let matches = 0;
+        let transpositions = 0;
+
+        // Find matches
+        for (let i = 0; i < len1; i++) {
+            const start = Math.max(0, i - matchWindow);
+            const end = Math.min(i + matchWindow + 1, len2);
+
+            for (let j = start; j < end; j++) {
+                if (s2Matches[j] || s1[i] !== s2[j]) continue;
+                s1Matches[i] = true;
+                s2Matches[j] = true;
+                matches++;
+                break;
+            }
+        }
+
+        if (matches === 0) return 0.0;
+
+        // Count transpositions
+        let k = 0;
+        for (let i = 0; i < len1; i++) {
+            if (!s1Matches[i]) continue;
+            while (!s2Matches[k]) k++;
+            if (s1[i] !== s2[k]) transpositions++;
+            k++;
+        }
+
+        // Calculate Jaro similarity
+        const jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3;
+
+        // Apply Winkler modification (boost for common prefix)
+        const prefixLength = Math.min(4, Math.min(len1, len2));
+        let commonPrefix = 0;
+        for (let i = 0; i < prefixLength; i++) {
+            if (s1[i] === s2[i]) commonPrefix++;
+            else break;
+        }
+
+        return jaro + commonPrefix * 0.1 * (1 - jaro);
+    }
+
+    /**
+     * Correct a single token by fuzzy-matching against the known vocabulary.
+     * Returns the original token if no good match is found (similarity < threshold).
+     * @param {string} token - Word to correct
+     * @returns {string} Corrected word or original token
+     */
+    correctToken(token) {
+        if (!this.vocabList || token.length < 2) return token;
+
+        // Exact match - no correction needed
+        if (this.vocabulary.has(token)) return token;
+
+        let bestMatch = token;
+        let bestScore = 0;
+
+        // Dynamic threshold: stricter for short words, more lenient for longer ones
+        // Short words need higher similarity to avoid false corrections
+        const threshold = token.length <= 3 ? 0.90 : (token.length <= 5 ? 0.88 : 0.85);
+
+        for (const vocabWord of this.vocabList) {
+            // Skip if length difference is too large (optimization)
+            if (Math.abs(vocabWord.length - token.length) > 3) continue;
+
+            const score = this.jaroWinkler(token, vocabWord);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = vocabWord;
+            }
+        }
+
+        // Only return correction if similarity exceeds threshold
+        if (bestScore >= threshold) {
+            if (bestMatch !== token) {
+                console.log(`🔧 Corrected "${token}" → "${bestMatch}" (similarity: ${bestScore.toFixed(3)})`);
+            }
+            return bestMatch;
+        }
+
+        return token;
+    }
+
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
 
         // Normalize the question: remove punctuation, extra spaces
         const normalizedQuestion = lowerQuestion.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-        const words = normalizedQuestion.split(' ');
+        let words = normalizedQuestion.split(' ');
+
+        // Apply fuzzy correction to each word before n-gram matching
+        if (this.vocabList) {
+            words = words.map(word => this.correctToken(word));
+            console.log('After fuzzy correction:', words.join(' '));
+        }
 
         // Extract all n-grams (trigrams, bigrams, unigrams)
         const nGrams = [];
@@ -1108,15 +1234,17 @@ IMPORTANT: Follow these guidelines when responding:
 
         console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
 
-        // Match n-grams to keywords in the index
+        // Match n-grams to keywords in the index. Each keyword may map to
+        // multiple documents; record a per-document match for each one.
         const matchedKeywords = new Set();
         const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
 
         nGrams.forEach(ngram => {
-            const match = this.keywordMap.get(ngram.text);
-            if (match) {
-                matchedKeywords.add(ngram.text);
+            const matches = this.keywordMap.get(ngram.text);
+            if (!matches) return;
+            matchedKeywords.add(ngram.text);
 
+            matches.forEach(match => {
                 const docId = match.document.id;
                 if (!documentMatches.has(docId)) {
                     documentMatches.set(docId, {
@@ -1126,8 +1254,11 @@ IMPORTANT: Follow these guidelines when responding:
                         matchedKeywords: []
                     });
                 }
-                documentMatches.get(docId).matchedKeywords.push(ngram.text);
-            }
+                const matchRecord = documentMatches.get(docId);
+                if (!matchRecord.matchedKeywords.includes(ngram.text)) {
+                    matchRecord.matchedKeywords.push(ngram.text);
+                }
+            });
         });
 
         // Filter out keywords that are subsets of longer matched keywords
