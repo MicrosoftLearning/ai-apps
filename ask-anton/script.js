@@ -588,7 +588,7 @@ class AskAnton {
             this.availableModes.wllama = false;
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
-                'This device does not meet the minimum requirements for AI mode.'
+                'Using basic mode (This device doesn\'t meet the minimum requirements for AI mode.)'
             );
             return;
         }
