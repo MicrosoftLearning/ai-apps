@@ -1643,7 +1643,7 @@ class AskAnton {
             this.disableInput();
             this.setCurrentMode('basic');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to None');
+            this.addSystemMessage('Switched to Basic mode (no model)');
             this.enableInput();
             return;
         }
