@@ -3152,6 +3152,9 @@ class AskAnton {
             // Clear conversation history
             this.conversationHistory = [];
 
+            // Clear previous keywords for Bing search
+            this.previousKeywords = null;
+
             // Clear chat messages (keep welcome message)
             const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
             messages.forEach(msg => msg.remove());
