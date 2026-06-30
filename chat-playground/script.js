@@ -37,6 +37,13 @@ class ChatPlayground {
         this.isStartingRecognition = false; // Track if we're intentionally starting recognition
         this.modelLoadingCancelled = false; // Track if user cancelled initial model loading
         this.modelLoadingAbortController = null; // Track abort controller for model loading
+        this.wllamaShouldFailoverToWikipedia = false; // Track if wllama failed and should failover to Wikipedia mode
+
+        // Debug configuration (URL parameters: ?debug=true&forceWllamaFail=true)
+        this.debugConfig = {
+            enabled: false,
+            forceWllamaGenerationFail: false
+        };
 
         // Configuration objects
         this.config = {
@@ -76,6 +83,7 @@ class ChatPlayground {
         this.recognition = null;
         this.voicesAvailable = false;
         this.voicesLoaded = false;
+        this.usingPrerecordedVoice = false; // Track if using pre-recorded voice fallback
         this.showCaptions = false; // Track whether to show conversation text
         this.prohibitedTerms = []; // Content moderation terms loaded from file
 
@@ -181,6 +189,7 @@ class ChatPlayground {
 
     // Centralized initialization
     async initialize() {
+        this.parseDebugConfig();
         await this.loadProhibitedTerms();
         this.initializeElements();
         this.attachEventListeners();
@@ -191,6 +200,21 @@ class ChatPlayground {
         this.initializeSpeechRecognition();
         this.initializeAvatars();
         this.initializeModel();
+    }
+
+    /**
+     * Parse URL parameters for debug mode.
+     * Example: ?debug=true&forceWllamaFail=true
+     */
+    parseDebugConfig() {
+        const params = new URLSearchParams(window.location.search);
+        this.debugConfig.enabled = params.get('debug') === 'true';
+        this.debugConfig.forceWllamaGenerationFail = params.get('forceWllamaFail') === 'true';
+
+        if (this.debugConfig.enabled) {
+            console.log('🧪 DEBUG MODE ENABLED');
+            console.log('Debug config:', this.debugConfig);
+        }
     }
 
     reverseWord(text) {
@@ -2016,6 +2040,34 @@ class ChatPlayground {
                 await this.handleWikipediaMode(thinkingIndicator, userMessage, imageAnalysis);
             } else if (this.usingWllama) {
                 await this.handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis);
+
+                // If wllama failed, failover to Wikipedia mode and retry
+                if (this.wllamaShouldFailoverToWikipedia && !this.stopRequested) {
+                    console.log('Wllama failed, switching to Wikipedia mode and retrying...');
+                    this.wllamaShouldFailoverToWikipedia = false;
+                    this.wllamaFailed = true;
+                    this.wllamaLoaded = false;
+                    this.usingWllama = false;
+                    this.usingWikipedia = true;
+                    this.currentMode = 'none';
+                    this.currentModelId = 'None (Wikipedia)';
+                    this.populateModelDropdown();  // Update UI dropdown to reflect mode change
+
+                    // Find the last assistant message and update it with the switch notification
+                    const assistantMessages = this.chatMessages.querySelectorAll('.assistant-message');
+                    if (assistantMessages.length > 0) {
+                        const lastMessage = assistantMessages[assistantMessages.length - 1];
+                        const contentEl = lastMessage.querySelector('.message-content');
+                        if (contentEl) {
+                            contentEl.innerHTML = this.formatResponse('*I experienced an error using the model on this device; so I\'m switching to Wikipedia mode...*');
+                            await new Promise(resolve => setTimeout(resolve, 800));
+
+                            // Retry with Wikipedia mode (creates a new message bubble)
+                            const retryThinkingIndicator = this.addThinkingIndicator();
+                            await this.handleWikipediaMode(retryThinkingIndicator, userMessage, imageAnalysis);
+                        }
+                    }
+                }
             } else {
                 throw new Error('No AI model available. Please wait for Phi 3.5-mini to load or switch to Wikipedia mode.');
             }
@@ -2429,6 +2481,21 @@ class ChatPlayground {
         let completion = null;
 
         try {
+            // 🧪 DEBUG: Force generation failure for testing failover to Wikipedia mode
+            if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
+                console.log('🧪 DEBUG: Forcing Wllama generation to fail (testing failover to Wikipedia mode)');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                // Set failover flag and clean up wllama instance (same as real error handling)
+                this.wllamaShouldFailoverToWikipedia = true;
+                if (this.wllama) {
+                    const _deadWllama = this.wllama;
+                    this.wllama = null;
+                    _deadWllama.exit().catch(() => { });
+                }
+                contentEl.textContent = ''; // Clear the content so it can be replaced by retry
+                return;  // Return early to trigger failover
+            }
+
             completion = await this.wllama.createChatCompletion({
                 messages,
                 max_tokens: this.config.modelParameters.max_tokens,
@@ -2492,7 +2559,16 @@ class ChatPlayground {
                 await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
                 return;
             } else {
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
+                // Wllama failed to generate a response - flag for failover to Wikipedia mode
+                console.warn('Wllama inference failed; flagging for silent failover to Wikipedia mode...');
+                this.wllamaShouldFailoverToWikipedia = true;
+                // Clean up the failed wllama instance
+                if (this.wllama) {
+                    const _deadWllama = this.wllama;
+                    this.wllama = null;
+                    _deadWllama.exit().catch(() => { });
+                }
+                contentEl.textContent = ''; // Clear the content so it can be replaced by retry
             }
 
         } catch (error) {
@@ -2509,8 +2585,17 @@ class ChatPlayground {
                 console.warn('GPU inference error, falling back to CPU');
                 await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
             } else {
+                // Wllama error - flag for failover to Wikipedia mode
                 console.error('Error in wllama generation:', error);
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
+                console.warn('Wllama inference failed; flagging for silent failover to Wikipedia mode...');
+                this.wllamaShouldFailoverToWikipedia = true;
+                // Clean up the failed wllama instance
+                if (this.wllama) {
+                    const _deadWllama = this.wllama;
+                    this.wllama = null;
+                    _deadWllama.exit().catch(() => { });
+                }
+                contentEl.textContent = ''; // Clear the content so it can be replaced by retry
             }
             this.currentAbortController = null;
         } finally {
@@ -2875,10 +2960,14 @@ class ChatPlayground {
         if (!voiceSelect) return;
 
         const loadVoices = () => {
+            // Check for debug parameter to simulate no voices
+            const urlParams = new URLSearchParams(window.location.search);
+            const debugNoVoices = urlParams.get('debug_no_voices') === 'true';
+
             const voices = speechSynthesis.getVoices();
             // Get all English voices
             const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
-            const displayVoices = this.getDisplayableVoices(englishVoices);
+            const displayVoices = debugNoVoices ? [] : this.getDisplayableVoices(englishVoices);
 
             // Preserve currently selected voice
             const currentlySelectedVoice = this.speechSettings.voice || voiceSelect.value;
@@ -2909,14 +2998,20 @@ class ChatPlayground {
                 if (this.voiceMode) {
                     voiceSelect.disabled = false;
                 }
+
+                // Clear pre-recorded voice flag when real voices are available
+                this.usingPrerecordedVoice = false;
             } else {
-                this.voicesAvailable = false;
+                // No voices available - add pre-recorded voice fallback
+                this.voicesAvailable = true; // Still mark as available so voice mode can work
+                this.usingPrerecordedVoice = true;
                 const option = document.createElement('option');
-                option.value = 'none';
-                option.textContent = 'No voices available on this device';
+                option.value = 'Guy (pre-recorded)';
+                option.textContent = 'Guy (pre-recorded)';
                 voiceSelect.appendChild(option);
-                voiceSelect.disabled = true;
-                this.speechSettings.voice = null;
+                voiceSelect.value = 'Guy (pre-recorded)';
+                this.speechSettings.voice = 'Guy (pre-recorded)';
+                voiceSelect.disabled = false;
             }
 
             this.voicesLoaded = true;
@@ -3658,21 +3753,30 @@ class ChatPlayground {
         }
 
         // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
-        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
-            !this.usingWikipedia && this.currentMode !== 'none') {
-            const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
-
-            // Use the selected voice if available
-            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-                const voices = speechSynthesis.getVoices();
-                const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-                if (selectedVoice) {
-                    acknowledgment.voice = selectedVoice;
+        if (this.speechSettings.textToSpeech && this.voicesAvailable && !this.usingWikipedia && this.currentMode !== 'none') {
+            if (this.usingPrerecordedVoice) {
+                // Play pre-recorded thinking audio
+                try {
+                    const audio = new Audio('audio/think.wav');
+                    audio.play().catch(error => console.warn('Error playing think audio:', error));
+                } catch (error) {
+                    console.warn('Error creating think audio:', error);
                 }
-            }
+            } else if ('speechSynthesis' in window) {
+                const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
 
-            // Speak the acknowledgment without blocking - it will play while model processes
-            speechSynthesis.speak(acknowledgment);
+                // Use the selected voice if available
+                if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                    const voices = speechSynthesis.getVoices();
+                    const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                    if (selectedVoice) {
+                        acknowledgment.voice = selectedVoice;
+                    }
+                }
+
+                // Speak the acknowledgment without blocking - it will play while model processes
+                speechSynthesis.speak(acknowledgment);
+            }
         }
 
         // Generate response
@@ -3722,40 +3826,82 @@ class ChatPlayground {
                     stream: false
                 };
 
-                this.currentAbortController = new AbortController();
-                const completion = await this.wllama.createChatCompletion({
-                    ...voiceCompletionParams,
-                    abortSignal: this.currentAbortController.signal
-                });
-                this.currentAbortController = null;
-                responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
-                console.log('Wllama voice completion finished, response length:', responseText.length);
+                try {
+                    // Debug mode: force failure if requested
+                    if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
+                        console.log('🧪 DEBUG: Forcing wllama voice generation failure');
+                        throw new Error('Debug mode: forced wllama failure in voice mode');
+                    }
 
-                // GPU failure recovery: if GPU was used and the response is empty, tear
-                // down and retry once on CPU.
-                if (!responseText && this.wllamaUsedGPU && !this.stopRequested) {
-                    console.warn('GPU voice inference produced no output; switching to CPU and retrying...');
-                    this.gpuFailed = true;
-                    this.wllamaUsedGPU = false;
-                    this.wllamaLoaded = false;
-                    const deadWllama = this.wllama;
-                    this.wllama = null;
-                    deadWllama?.exit().catch(() => { });
-                    try {
-                        await this.initializeWllama();
-                        if (this.wllama && !this.stopRequested) {
-                            this.currentAbortController = new AbortController();
-                            const retryCompletion = await this.wllama.createChatCompletion({
-                                ...voiceCompletionParams,
-                                abortSignal: this.currentAbortController.signal
-                            });
+                    this.currentAbortController = new AbortController();
+                    const completion = await this.wllama.createChatCompletion({
+                        ...voiceCompletionParams,
+                        abortSignal: this.currentAbortController.signal
+                    });
+                    this.currentAbortController = null;
+                    responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
+                    console.log('Wllama voice completion finished, response length:', responseText.length);
+
+                    // GPU failure recovery: if GPU was used and the response is empty, tear
+                    // down and retry once on CPU.
+                    if (!responseText && this.wllamaUsedGPU && !this.stopRequested) {
+                        console.warn('GPU voice inference produced no output; switching to CPU and retrying...');
+                        this.gpuFailed = true;
+                        this.wllamaUsedGPU = false;
+                        this.wllamaLoaded = false;
+                        const deadWllama = this.wllama;
+                        this.wllama = null;
+                        deadWllama?.exit().catch(() => { });
+                        try {
+                            await this.initializeWllama();
+                            if (this.wllama && !this.stopRequested) {
+                                this.currentAbortController = new AbortController();
+                                const retryCompletion = await this.wllama.createChatCompletion({
+                                    ...voiceCompletionParams,
+                                    abortSignal: this.currentAbortController.signal
+                                });
+                                this.currentAbortController = null;
+                                responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
+                                console.log('CPU voice retry finished, response length:', responseText.length);
+                            }
+                        } catch (reinitErr) {
+                            console.error('CPU re-init failed after GPU voice crash:', reinitErr);
                             this.currentAbortController = null;
-                            responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
-                            console.log('CPU voice retry finished, response length:', responseText.length);
+                            // Flag for Wikipedia failover
+                            throw reinitErr;
                         }
-                    } catch (reinitErr) {
-                        console.error('CPU re-init failed after GPU voice crash:', reinitErr);
-                        this.currentAbortController = null;
+                    }
+                } catch (wllamaError) {
+                    console.error('Wllama voice generation failed:', wllamaError);
+                    console.log('Failing over to Wikipedia mode for voice response...');
+
+                    // Clean up failed wllama instance
+                    this.currentAbortController = null;
+                    if (this.wllama) {
+                        const _deadWllama = this.wllama;
+                        this.wllama = null;
+                        _deadWllama.exit().catch(() => { });
+                    }
+
+                    // Switch to Wikipedia mode
+                    this.wllamaFailed = true;
+                    this.wllamaLoaded = false;
+                    this.usingWllama = false;
+                    this.usingWikipedia = true;
+                    this.currentMode = 'none';
+                    this.currentModelId = 'None (Wikipedia)';
+                    this.populateModelDropdown();
+
+                    // Generate response using Wikipedia mode (announce switch in voice)
+                    console.log('Using Wikipedia/None mode for voice response after wllama failure');
+                    this.fileContentUsedInPrompt = false;
+                    responseText = "I experienced an error using the model on this device. I've switched to Wikipedia mode. " +
+                        await this.generateNoneModeResponse(userMessage);
+                    responseText = this.maybeShortenNoneModeResponse(responseText);
+                    responseText = this.maybeMutateNoneModeResponse(responseText);
+
+                    if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+                        responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
                     }
                 }
             } else {
@@ -3811,11 +3957,43 @@ class ChatPlayground {
     }
 
     speakResponse(text) {
-        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable });
+        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable, usingPrerecordedVoice: this.usingPrerecordedVoice });
 
         if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
             console.log('TTS disabled or voices unavailable, skipping speech');
             this.onSpeechComplete();
+            return;
+        }
+
+        // Handle pre-recorded voice
+        if (this.usingPrerecordedVoice) {
+            console.log('Using pre-recorded voice, playing response.wav');
+            try {
+                const audio = new Audio('audio/response.wav');
+                this.isSpeaking = true;
+
+                audio.onended = () => {
+                    console.log('Pre-recorded audio ended');
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                };
+
+                audio.onerror = (error) => {
+                    console.error('Pre-recorded audio error:', error);
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                };
+
+                audio.play().catch(error => {
+                    console.error('Error playing pre-recorded audio:', error);
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                });
+            } catch (error) {
+                console.error('Error creating pre-recorded audio:', error);
+                this.isSpeaking = false;
+                this.onSpeechComplete();
+            }
             return;
         }
 
@@ -4002,6 +4180,39 @@ class ChatPlayground {
 
         if (!selectedVoiceName) {
             this.showToast('Please select a voice first');
+            return;
+        }
+
+        // Handle pre-recorded voice preview
+        if (selectedVoiceName === 'Guy (pre-recorded)') {
+            if (previewBtn) {
+                previewBtn.disabled = true;
+                previewBtn.textContent = '...';
+            }
+            try {
+                const audio = new Audio('audio/preview.wav');
+                audio.onended = () => {
+                    if (previewBtn) {
+                        previewBtn.disabled = false;
+                        previewBtn.textContent = '▶';
+                    }
+                };
+                audio.onerror = () => {
+                    this.showToast('Error playing preview audio');
+                    if (previewBtn) {
+                        previewBtn.disabled = false;
+                        previewBtn.textContent = '▶';
+                    }
+                };
+                await audio.play();
+            } catch (error) {
+                console.error('Error playing preview audio:', error);
+                this.showToast('Error playing preview audio');
+                if (previewBtn) {
+                    previewBtn.disabled = false;
+                    previewBtn.textContent = '▶';
+                }
+            }
             return;
         }
 

@@ -259,6 +259,18 @@ class ModelCoderLLM {
         this.initSessionId = 0;  // Track which init session we're in
         this.gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
         this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
+        this.wllamaShouldFailoverToBasic = false; // Set to true when wllama fails, triggers failover to Basic mode
+        this.debugConfig = this.parseDebugConfig(); // Debug flags for testing
+    }
+
+    parseDebugConfig() {
+        const params = new URLSearchParams(window.location.search);
+        const enabled = params.get('debug') === 'true';
+        const forceWllamaGenerationFail = params.get('forceWllamaFail') === 'true';
+        if (enabled) {
+            console.log('[DEBUG MODE] Debug config:', { enabled, forceWllamaGenerationFail });
+        }
+        return { enabled, forceWllamaGenerationFail };
     }
 
     checkHardwareRequirements() {
@@ -585,6 +597,12 @@ class ModelCoderLLM {
         };
     }
 
+    checkAndClearFailoverFlag() {
+        const hadFailover = this.wllamaShouldFailoverToBasic;
+        this.wllamaShouldFailoverToBasic = false;
+        return hadFailover;
+    }
+
     _activateBasicMode(reason = "Local model unavailable") {
         this.usingBasic = true;
         this.usingWllama = false;
@@ -884,12 +902,49 @@ class ModelCoderLLM {
         }
 
         const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
-        return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+
+        try {
+            return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+        } catch (error) {
+            console.error('Wllama completion failed:', error);
+
+            // Set failover flag and clean up wllama instance
+            this.wllamaShouldFailoverToBasic = true;
+            if (this.wllama) {
+                try {
+                    await this.wllama.exit();
+                } catch (exitErr) {
+                    console.error('Error cleaning up wllama:', exitErr);
+                }
+                this.wllama = null;
+            }
+            this.usingWllama = false;
+            this.availableModes.cpu = false;
+
+            // Switch to Basic mode and retry
+            console.log('Failing over to Basic mode');
+            this._activateBasicMode("AI model experienced an error");
+
+            // Retry with Wikipedia
+            const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+            const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+            const summary = await this._generateWithWikipedia(latestUserText);
+            if (summary && typeof onDelta === "function") {
+                onDelta(summary);
+            }
+            return String(summary || "").trim();
+        }
     }
 
     async _completeWithWllama(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
         const useStreaming = typeof onDelta === "function";
         console.log(`[wllama] Phi 3.5-mini (${useStreaming ? "stream" : "sync"}):`, messages);
+
+        // Debug mode: Force failure for testing failover
+        if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
+            console.log('[DEBUG MODE] Forcing wllama generation failure');
+            throw new Error('Forced failure for testing');
+        }
 
         if (useStreaming) {
             let fullText = "";
@@ -913,9 +968,8 @@ class ModelCoderLLM {
                 }
             }
             const trimmed = fullText.trim();
-            if (!trimmed && this.wllamaUsedGPU && !this.gpuFailed) {
-                await this._reloadOnCpu();
-                return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+            if (!trimmed) {
+                throw new Error('Empty response from AI model');
             }
             return trimmed;
         }
@@ -933,9 +987,8 @@ class ModelCoderLLM {
             stream: false
         });
         const text = String(result?.choices?.[0]?.message?.content ?? '').trim();
-        if (!text && this.wllamaUsedGPU && !this.gpuFailed) {
-            await this._reloadOnCpu();
-            return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+        if (!text) {
+            throw new Error('Empty response from AI model');
         }
         return text;
     }
@@ -1538,6 +1591,10 @@ const modelCoderCancelLoading = () => {
     llmRuntime.cancelModelLoading();
 };
 
+const modelCoderCheckAndClearFailoverFlag = () => {
+    return llmRuntime.checkAndClearFailoverFlag();
+};
+
 const modelCoderBridge = {
     modelCoderSetStatusListener,
     modelCoderInit,
@@ -1551,6 +1608,7 @@ const modelCoderBridge = {
     modelCoderGetCurrentMode,
     modelCoderGetAvailableModes,
     modelCoderCancelLoading,
+    modelCoderCheckAndClearFailoverFlag,
 };
 
 function attachBridge(target) {
@@ -1569,6 +1627,7 @@ function attachBridge(target) {
     target.modelCoderGetCurrentMode = modelCoderGetCurrentMode;
     target.modelCoderGetAvailableModes = modelCoderGetAvailableModes;
     target.modelCoderCancelLoading = modelCoderCancelLoading;
+    target.modelCoderCheckAndClearFailoverFlag = modelCoderCheckAndClearFailoverFlag;
     target.modelCoderBridge = modelCoderBridge;
 }
 

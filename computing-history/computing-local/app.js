@@ -31,8 +31,13 @@ let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 let modelLoadingCancelled = false; // Track if user cancelled model loading
 let modelLoadingAbortController = null; // Track abort controller for model loading
+let usingPrerecordedVoice = false; // Track if using pre-recorded voice fallback
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in AI mode.\nIf this keeps happening, please try switching to Basic (Wikipedia) mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
+let wllamaShouldFailoverToBasic = false; // Flag to trigger failover from wllama to basic mode
+
+// Debug flags for testing failover (can be set via URL params or console)
+let debugConfig = { enabled: false, forceWllamaGenerationFail: false };
 
 // Shared prompt constants for Wllama and Wikipedia modes
 const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond with a single paragraph, using short sentences.';
@@ -63,6 +68,27 @@ const basePath = window.location.pathname.substring(0, window.location.pathname.
 const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
 const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+
+// ============================================================================
+// DEBUG CONFIGURATION
+// ============================================================================
+
+/**
+ * Parse URL parameters for debug mode.
+ * Example: ?debug=true&forceWllamaFail=true
+ */
+function parseDebugConfig() {
+    const params = new URLSearchParams(window.location.search);
+    const config = {
+        enabled: params.get('debug') === 'true',
+        forceWllamaGenerationFail: params.get('forceWllamaFail') === 'true'
+    };
+    if (config.enabled) {
+        console.log('🧪 DEBUG MODE ENABLED');
+        console.log('Debug config:', config);
+    }
+    return config;
+}
 
 // ============================================================================
 // GLOBAL ERROR HANDLER
@@ -207,6 +233,9 @@ function checkHardwareRequirements() {
 async function init() {
     // Setup cancel link event listener first
     setupCancelLinkListener();
+
+    // Parse debug configuration from URL params
+    debugConfig = parseDebugConfig();
 
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
@@ -1355,6 +1384,57 @@ async function handleSend() {
 
             if (checkStopResponse()) return;
 
+            // Check for wllama failover
+            if (wllamaShouldFailoverToBasic && !shouldStopResponse) {
+                console.log('Wllama failed, switching to Basic mode and retrying...');
+                wllamaShouldFailoverToBasic = false;
+                wllamaReady = false;
+                currentMode = 'basic';
+                availableModes.cpu = false;
+                updateModelName('Wikipedia API (Basic)');
+                updateModeSelect();
+
+                // Update the bubble with the switch notification
+                setBubbleContent(bubble, '<i>I experienced an error using the model on this device; so I\'m switching to Basic mode...</i>');
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                // Create a NEW bubble for the Wikipedia response (keep error message visible)
+                const retryMsgResult = addMessage('', "bot", null, { deferCompletion: true });
+                const retryBubble = retryMsgResult.bubble;
+
+                // Show typing indicator in the new bubble
+                setBubbleContent(retryBubble, '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>');
+                scrollToBottom();
+
+                const retryText = await generateComputingInfo(text, null, retryBubble, '');
+
+                if (checkStopResponse()) return;
+
+                if (retryText) {
+                    // Display the Wikipedia response in the new bubble
+                    await typeTextInBubble(retryBubble, escapeHtml(retryText), 20);
+
+                    if (checkStopResponse()) return;
+
+                    // Handle voice output if needed
+                    if (isVoiceInput) {
+                        speakText(retryBubble);
+                        isVoiceInput = false;
+                    }
+                    endResponse();
+
+                    // Store in conversation history
+                    conversationHistory = [
+                        { user: truncateToFirstSentence(text), assistant: truncateToFirstSentence(retryText) }
+                    ];
+                    return;
+                } else {
+                    setBubbleContent(retryBubble, `I'm sorry. I don't know about that topic.`);
+                    endResponse();
+                    return;
+                }
+            }
+
             if (summary) {
                 // Summary already streamed to bubble, just finalize
                 // Handle voice output if needed
@@ -1841,6 +1921,57 @@ async function performClassification(imgEl, userText = "") {
                         return;
                     }
 
+                    // Check for wllama failover (same as text-only flow)
+                    if (wllamaShouldFailoverToBasic && !shouldStopResponse) {
+                        console.log('Wllama failed during image classification, switching to Basic mode and retrying...');
+                        wllamaShouldFailoverToBasic = false;
+                        wllamaReady = false;
+                        currentMode = 'basic';
+                        availableModes.cpu = false;
+                        updateModelName('Wikipedia API (Basic)');
+                        updateModeSelect();
+
+                        // Update the bubble with the switch notification
+                        setBubbleContent(bubble, reply + '<br><br><i>I experienced an error using the model on this device; so I\'m switching to Basic mode...</i>');
+                        await new Promise(resolve => setTimeout(resolve, 800));
+
+                        // Show typing indicator in the same bubble
+                        setBubbleContent(bubble, reply + '<br><br><div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>');
+                        scrollToBottom();
+
+                        // Retry with Basic mode
+                        const retryQuery = topMatch.className; // Basic mode uses simple query
+                        const retrySummary = await generateComputingInfo(retryQuery, null, null, '');
+
+                        if (checkStopResponse()) {
+                            return;
+                        }
+
+                        if (retrySummary) {
+                            // Update bubble with final Wikipedia response
+                            const finalMessage = reply + `<br><br>${escapeHtml(retrySummary)}`;
+                            setBubbleContent(bubble, finalMessage);
+                            scrollToBottom();
+
+                            conversationHistory = [
+                                { user: historyUserPrompt, assistant: truncateToFirstSentence(retrySummary) }
+                            ];
+
+                            // Handle voice output if needed
+                            if (isVoiceInput) {
+                                speakText(bubble);
+                                isVoiceInput = false;
+                            } else {
+                                endResponse();
+                            }
+                            return;
+                        } else {
+                            setBubbleContent(bubble, reply + `<br><br>I'm sorry. I don't know about that topic.`);
+                            endResponse();
+                            return;
+                        }
+                    }
+
                     if (summary) {
                         // For Basic mode, update bubble with final result
                         // For CPU mode, already streamed to bubble
@@ -1853,8 +1984,6 @@ async function performClassification(imgEl, userText = "") {
                         conversationHistory = [
                             { user: historyUserPrompt, assistant: truncateToFirstSentence(summary) }
                         ];
-                    } else if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
-                        setBubbleContent(bubble, reply + `<br><br>${CPU_MODE_FAILURE_MESSAGE}`);
                     }
 
                     // Handle voice output if needed
@@ -1937,7 +2066,7 @@ async function generateComputingInfo(query, _onChunk = null, bubbleElement = nul
  * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
  * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '', isGpuRetry = false) {
+async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
     let slowResponseTimeout;
     let stallDetectionTimer = null;  // Fires if no new token arrives mid-stream
     let stalledMidStream = false;    // Set when the stall timer fires
@@ -1962,6 +2091,12 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         messages.push({ role: 'user', content: query });
 
         console.log('Generating info with Wllama for:', query);
+
+        // Debug mode: force failure if requested
+        if (debugConfig.enabled && debugConfig.forceWllamaGenerationFail) {
+            console.log('🧪 DEBUG: Forcing wllama generation failure');
+            throw new Error('Debug mode: forced wllama failure');
+        }
 
         // Create AbortController for cancellation
         currentAbortController = new AbortController();
@@ -2074,15 +2209,6 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
         console.log('Wllama final response:', responseText);
 
-        // GPU failure recovery: if GPU was used and the response is empty or errored,
-        // the GPU session likely crashed. Tear down, switch to CPU, and retry once.
-        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse &&
-            (lastWllamaCompletionErrored || !responseText.trim())) {
-            console.warn('GPU inference produced no output; switching to CPU and retrying...');
-            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
-            return null; // caller will use whatever handleGpuFailureAndRetry wrote to the bubble
-        }
-
         return responseText;
 
     } catch (error) {
@@ -2115,10 +2241,15 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         currentAbortController = null;
         lastWllamaCompletionErrored = true;
 
-        // GPU failure recovery for unexpected exceptions during inference.
-        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse) {
-            console.warn('GPU inference threw an exception; switching to CPU and retrying...');
-            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
+        // Set failover flag to switch to basic mode
+        console.log('Setting failover flag: wllama → basic mode');
+        wllamaShouldFailoverToBasic = true;
+
+        // Clean up failed wllama instance
+        if (wllama) {
+            const _deadWllama = wllama;
+            wllama = null;
+            _deadWllama.exit().catch(() => { });
         }
 
         return null;
@@ -2859,10 +2990,18 @@ function speakTextContent(text) {
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
+    // Check for debug parameter to simulate no voices
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugNoVoices = urlParams.get('debug_no_voices') === 'true';
+
     // Use default voice
     const voices = speechSynthesis.getVoices();
-    if (voices.length > 0) {
+    if (voices.length > 0 && !debugNoVoices) {
         utterance.voice = voices[0];
+        usingPrerecordedVoice = false;
+    } else {
+        // No voices available - use pre-recorded voice
+        usingPrerecordedVoice = true;
     }
 
     // Keep stop button enabled (already set by startResponse)
@@ -2878,7 +3017,22 @@ function speakTextContent(text) {
         endResponse();
     };
 
-    speechSynthesis.speak(utterance);
+    // Use pre-recorded audio if no voices available, otherwise use speech synthesis
+    if (usingPrerecordedVoice) {
+        const audio = new Audio('./audio/response.wav');
+        audio.onended = () => {
+            endResponse();
+        };
+        audio.onerror = () => {
+            endResponse();
+        };
+        audio.play().catch(error => {
+            console.error('Error playing pre-recorded audio:', error);
+            endResponse();
+        });
+    } else {
+        speechSynthesis.speak(utterance);
+    }
 }
 
 /**

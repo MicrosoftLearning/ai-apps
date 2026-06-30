@@ -30,6 +30,8 @@ class InfoExtractorApp {
         this.cancelModelLoad = false; // Flag to cancel model loading
         this.gpuFailed = false; // True after a GPU inference failure; forces CPU-only on next load
         this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
+        this.wllamaShouldFailoverToBasic = false; // Set to true when wllama fails, triggers failover to pattern-based mode
+        this.debugConfig = { enabled: false, forceWllamaGenerationFail: false }; // Debug flags for testing
 
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -40,8 +42,19 @@ class InfoExtractorApp {
         this.initializeElements();
         this.bindEvents();
         this.applyTheme();
+        this.debugConfig = this.parseDebugConfig();
         this.showModelLoading();
         this.initializeModel();
+    }
+
+    parseDebugConfig() {
+        const params = new URLSearchParams(window.location.search);
+        const enabled = params.get('debug') === 'true';
+        const forceWllamaGenerationFail = params.get('forceWllamaFail') === 'true';
+        if (enabled) {
+            console.log('[DEBUG MODE] Debug config:', { enabled, forceWllamaGenerationFail });
+        }
+        return { enabled, forceWllamaGenerationFail };
     }
 
     checkHardwareRequirements() {
@@ -715,25 +728,72 @@ class InfoExtractorApp {
                 this.updateProgress(60, 'Extracting field values with AI (may be slow on some devices)...');
                 try {
                     await this.extractFields();
-                } catch (aiError) {
-                    // If AI extraction fails, show specific error and suggest disabling AI
-                    console.error('AI extraction failed:', aiError);
-                    this.hideProgress();
-                    this.enableUploadAndSelection();
 
-                    let aiErrorMessage = 'An error occurred during AI field extraction.\n\n';
+                    // Check if failover was triggered during extraction
+                    if (this.wllamaShouldFailoverToBasic) {
+                        console.log('Failover to pattern-based mode triggered');
 
-                    // Check for specific error types
-                    if (aiError.message.includes('memory') || aiError.message.includes('OOM') || aiError.message.includes('allocation')) {
-                        aiErrorMessage += 'This may be due to insufficient memory.\n\n';
-                    } else {
-                        aiErrorMessage += `Error: ${aiError.message}\n\n`;
+                        // Switch to pattern-based mode
+                        this.useAI = false;
+                        if (this.aiToggle) {
+                            this.aiToggle.checked = false;
+                        }
+
+                        // Show error notification in results
+                        this.updateProgress(60, 'Switching to pattern-based extraction...');
+
+                        // Add error message to results
+                        const errorMsg = '<i>I experienced an error using the AI model on this device; so I\'m switching to pattern-based extraction...</i>';
+
+                        // Retry with heuristic extraction
+                        console.log('Retrying with pattern-based extraction');
+                        this.extractFieldsHeuristic();
+
+                        // Store error message to display with results
+                        this.failoverErrorMessage = errorMsg;
                     }
+                } catch (aiError) {
+                    // If AI extraction fails and failover flag is set, use pattern-based extraction
+                    if (this.wllamaShouldFailoverToBasic) {
+                        console.log('AI extraction failed, failover flag set, switching to pattern-based mode');
 
-                    aiErrorMessage += 'Try disabling the "Use Generative AI" toggle to use pattern-based extraction instead.';
+                        // Switch to pattern-based mode
+                        this.useAI = false;
+                        if (this.aiToggle) {
+                            this.aiToggle.checked = false;
+                        }
 
-                    this.showError(aiErrorMessage, 'AI Extraction Failed');
-                    return;
+                        this.updateProgress(60, 'Switching to pattern-based extraction...');
+
+                        // Add error message
+                        const errorMsg = '<i>I experienced an error using the AI model on this device; so I\'m switching to pattern-based extraction...</i>';
+
+                        // Retry with heuristic extraction
+                        console.log('Retrying with pattern-based extraction');
+                        this.extractFieldsHeuristic();
+
+                        // Store error message to display with results
+                        this.failoverErrorMessage = errorMsg;
+                    } else {
+                        // Original error handling for non-failover cases
+                        console.error('AI extraction failed:', aiError);
+                        this.hideProgress();
+                        this.enableUploadAndSelection();
+
+                        let aiErrorMessage = 'An error occurred during AI field extraction.\n\n';
+
+                        // Check for specific error types
+                        if (aiError.message.includes('memory') || aiError.message.includes('OOM') || aiError.message.includes('allocation')) {
+                            aiErrorMessage += 'This may be due to insufficient memory.\n\n';
+                        } else {
+                            aiErrorMessage += `Error: ${aiError.message}\n\n`;
+                        }
+
+                        aiErrorMessage += 'Try disabling the "Use Generative AI" toggle to use pattern-based extraction instead.';
+
+                        this.showError(aiErrorMessage, 'AI Extraction Failed');
+                        return;
+                    }
                 }
             } else {
                 if (!this.useAI) {
@@ -844,6 +904,12 @@ Respond as a list of fields with their values.`;
 
             console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
+            // Debug mode: Force failure for testing failover
+            if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
+                console.log('[DEBUG MODE] Forcing wllama generation failure');
+                throw new Error('Forced failure for testing');
+            }
+
             const abortController = new AbortController();
             const timeoutId = setTimeout(() => {
                 console.warn('AI extraction timed out after 120 seconds, aborting');
@@ -897,16 +963,6 @@ Respond as a list of fields with their values.`;
             console.log('Phi 3.5-mini response:', accumulatedText);
 
             if (!accumulatedText || accumulatedText.trim().length === 0) {
-                if (this.wllamaUsedGPU && !this.gpuFailed) {
-                    console.warn('GPU produced empty extraction response. Switching to CPU and retrying...');
-                    this.updateProgress(60, 'GPU issue detected — retrying with CPU...');
-                    try {
-                        await this._reloadModelOnCpu();
-                        return await this.extractFields();
-                    } catch (cpuErr) {
-                        console.error('CPU reload failed:', cpuErr);
-                    }
-                }
                 throw new Error('Empty response from AI model');
             }
 
@@ -915,6 +971,19 @@ Respond as a list of fields with their values.`;
 
         } catch (error) {
             console.error('Phi 3.5-mini extraction failed:', error);
+
+            // Set failover flag and clean up wllama instance
+            this.wllamaShouldFailoverToBasic = true;
+            if (this.wllama) {
+                try {
+                    await this.wllama.exit();
+                } catch (exitErr) {
+                    console.error('Error cleaning up wllama:', exitErr);
+                }
+                this.wllama = null;
+            }
+            this.isModelLoaded = false;
+
             throw new Error('Failed to extract field information: ' + error.message);
         }
     }
@@ -1091,6 +1160,31 @@ Respond as a list of fields with their values.`;
             fields['Total-spent'] = largestValueText;
         }
 
+        // Address: Find first line starting with a number < 10000 followed by text
+        // that hasn't been used by another field
+        const usedValues = Object.values(fields).filter(v => v.length > 0);
+        for (const line of lines) {
+            // Skip lines already allocated to other fields
+            if (usedValues.some(value => line.includes(value) || value.includes(line))) {
+                continue;
+            }
+
+            // Check if line starts with a number < 10000 followed by text
+            const addressPattern = /^(\d+)\s+(.+)$/;
+            const match = line.match(addressPattern);
+
+            if (match) {
+                const streetNumber = parseInt(match[1]);
+                const streetName = match[2];
+
+                // Street number should be < 10000 and there should be text after it
+                if (streetNumber < 10000 && streetName.trim().length > 0) {
+                    fields['Vendor-Address'] = line;
+                    break;
+                }
+            }
+        }
+
         this.extractedFields = fields;
         console.log('Heuristic extraction results:', fields);
     }
@@ -1257,18 +1351,18 @@ Respond as a list of fields with their values.`;
             return;
         }
 
-        // Show heuristic extraction notice if AI wasn't used (either model not loaded or user disabled it)
-        if (!this.isModelLoaded || !this.useAI) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'field-message';
-            messageDiv.style.backgroundColor = '#d1ecf1';
-            messageDiv.style.borderColor = '#bee5eb';
-            messageDiv.style.color = '#0c5460';
-            messageDiv.innerHTML = `
-                <p><strong>Pattern-Based Extraction</strong></p>
-                <p>Fields extracted using pattern matching. Results may be less accurate than AI extraction.</p>
-            `;
-            fieldsContainer.appendChild(messageDiv);
+        // Show failover error message if it exists
+        if (this.failoverErrorMessage) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'field-message';
+            errorDiv.style.backgroundColor = '#fff3cd';
+            errorDiv.style.borderColor = '#ffc107';
+            errorDiv.style.color = '#856404';
+            errorDiv.style.marginBottom = '1rem';
+            errorDiv.innerHTML = this.failoverErrorMessage;
+            fieldsContainer.appendChild(errorDiv);
+            // Clear the message after displaying
+            this.failoverErrorMessage = null;
         }
 
         console.log('Displaying extracted fields:', Object.keys(this.extractedFields).length, 'fields');

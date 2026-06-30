@@ -91,11 +91,10 @@ class AskAnton {
         this.videoPopupWidth = 800;
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
-        this.wllamaModeFailureMessage = "I'm sorry, something went wrong. If this keeps happening, please try switching the model to None.";
         this.lastWllamaCompletionErrored = false;
         this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
         this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
-        this._retryMessageDiv = null;   // set by generateWithWllama when GPU recovery creates a new bubble
+        this.wllamaShouldFailoverToBasic = false;  // true when wllama fails and should switch to basic mode
         this.previousKeywords = null;   // track keywords from previous prompt for enhanced Bing search
 
         // Vosk speech recognition (lazy-loaded fallback)
@@ -172,12 +171,15 @@ class AskAnton {
         const config = {
             enabled: params.has('debug'),
             forceWllamaFail: params.has('forceWllamaFail') || params.get('forceWllamaFail') === 'true',
+            forceWllamaGenerationFail: params.has('forceWllamaGenerationFail') || params.get('forceWllamaGenerationFail') === 'true',
             forceBasicMode: params.has('forceBasicMode') || params.get('forceBasicMode') === 'true'
         };
 
         if (config.enabled) {
             console.log('🧪 Debug mode enabled:', config);
-            console.log('💡 To force failures, add URL params: ?debug=true&forceWllamaFail=true');
+            console.log('💡 To force failures, add URL params:');
+            console.log('   - ?debug=true&forceWllamaFail=true (fail during initialization)');
+            console.log('   - ?debug=true&forceWllamaGenerationFail=true (fail during generation)');
         }
 
         return config;
@@ -679,6 +681,9 @@ class AskAnton {
             const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
             console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
+            // Track when download completes so we can show "Initializing..." message
+            let downloadComplete = false;
+
             const progressCb = ({ loaded, total }) => {
                 if (this.modelLoadingCancelled) return;
                 const percentage = Math.min(100, Math.max(15, Math.round((loaded / total) * 85) + 15));
@@ -693,11 +698,22 @@ class AskAnton {
                     }
                 }
 
-                if (!isLazyLoad) {
-                    this.updateProgress(percentage, `Loading model: ${Math.round((loaded / total) * 100)}%`);
-                } else {
-                    console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
-                    if (progressCallback) progressCallback(progress);
+                // Show download progress while downloading
+                if (loaded < total) {
+                    if (!isLazyLoad) {
+                        this.updateProgress(percentage, `Loading model: ${Math.round((loaded / total) * 100)}%`);
+                    } else {
+                        console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
+                        if (progressCallback) progressCallback(progress);
+                    }
+                } else if (!downloadComplete) {
+                    // Download just completed - show initializing message
+                    downloadComplete = true;
+                    if (!isLazyLoad) {
+                        this.updateProgress(100, 'Initializing model...');
+                    } else {
+                        console.log('Model downloaded, initializing...');
+                    }
                 }
             };
 
@@ -2215,11 +2231,21 @@ class AskAnton {
 
                 if (this.currentMode === 'wllama') {
                     modelResponse = await this.generateWithWllama(userMessage, null, messageTextDiv, usedVoiceInput);
-                }
 
-                // If GPU recovery created a new bubble, redirect rendering to it.
-                const fallbackActiveDiv = this._retryMessageDiv ?? messageTextDiv;
-                this._retryMessageDiv = null;
+                    // If wllama failed, failover to Basic mode
+                    // In this no-results context, we just skip the model response and show the Bing link
+                    if (this.wllamaShouldFailoverToBasic && !this.stopRequested) {
+                        console.log('Wllama failed in no-results context, switching to Basic mode');
+                        this.wllamaShouldFailoverToBasic = false;
+                        this.availableModes.wllama = false;
+                        this.setCurrentMode('basic');
+                        this.updateModeSelector();  // Update UI dropdown to reflect mode change
+                        // Show brief notification about mode switch (no audio - response audio will play when results ready)
+                        messageTextDiv.innerHTML = this.formatResponse('*I experienced an error using the model on this device; so I\'m switching to Basic mode...*');
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                        modelResponse = '';  // Clear response so we fall through to Bing link
+                    }
+                }
 
                 if (this.stopRequested) {
                     return;
@@ -2227,17 +2253,12 @@ class AskAnton {
 
                 if (modelResponse.trim()) {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
-                    fallbackActiveDiv.innerHTML = this.formatResponse(displayedMessage);
+                    messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
 
                     this.conversationHistory = [
                         { role: 'user', content: userMessage },
                         { role: 'assistant', content: modelResponse.trim() }
                     ];
-                    return;
-                }
-
-                if (this.currentMode === 'wllama' && this.lastWllamaCompletionErrored) {
-                    fallbackActiveDiv.innerHTML = this.formatResponse(this.wllamaModeFailureMessage);
                     return;
                 }
             }
@@ -2306,27 +2327,33 @@ class AskAnton {
 
             if (this.currentMode === 'wllama') {
                 assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
+
+                // If wllama failed, failover to Basic mode and retry
+                if (this.wllamaShouldFailoverToBasic && !this.stopRequested) {
+                    console.log('Wllama failed, switching to Basic mode and retrying...');
+                    this.wllamaShouldFailoverToBasic = false;
+                    this.availableModes.wllama = false;
+                    this.setCurrentMode('basic');
+                    this.updateModeSelector();  // Update UI dropdown to reflect mode change
+
+                    // Notify user about mode switch
+                    messageTextDiv.innerHTML = this.formatResponse('*I experienced an error using the model on this device; so I\'m switching to Basic mode...*');
+                    await new Promise(resolve => setTimeout(resolve, 800));
+
+                    // Clear the message div and retry with basic mode
+                    // Pass usedVoiceInput so it plays the response audio when results are ready
+                    messageTextDiv.innerHTML = this.getTypingIndicatorHtml();
+                    assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
+                }
             } else {
                 assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
             }
 
-            // If GPU recovery created a new bubble for the CPU retry, use that div
-            // for link/video rendering instead of the original failure notice bubble.
-            const activeMessageDiv = this._retryMessageDiv ?? messageTextDiv;
-            this._retryMessageDiv = null;
-
-            if (!assistantMessage.trim()) {
-                if (this.currentMode === 'wllama' && this.lastWllamaCompletionErrored) {
-                    activeMessageDiv.innerHTML = this.formatResponse(this.wllamaModeFailureMessage);
-                    return;
-                }
-            }
-
             // Add learn more links and videos
             if (links && links.length > 0 && categories && categories.length > 0) {
-                this.renderAssistantMessage(activeMessageDiv, assistantMessage, categories, links, videos, {});
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
             } else if (videos && videos.length > 0) {
-                this.renderAssistantMessage(activeMessageDiv, assistantMessage, [], [], videos, {});
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, [], [], videos, {});
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
@@ -2347,12 +2374,7 @@ class AskAnton {
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
-
-            if (this.currentMode === 'wllama') {
-                this.addMessage('assistant', this.wllamaModeFailureMessage);
-            } else {
-                this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-            }
+            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -2488,8 +2510,23 @@ class AskAnton {
      * requests and records error state in `lastWllamaCompletionErrored`.
      * @returns {Promise<string>} The full assistant text (may be empty on stop/error).
      */
-    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false, isGpuRetry = false) {
+    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         this.lastWllamaCompletionErrored = false;
+
+        // 🧪 DEBUG: Force generation failure for testing failover to Basic mode
+        if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
+            console.log('🧪 DEBUG: Forcing Wllama generation to fail (testing failover to Basic mode)');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            this.lastWllamaCompletionErrored = true;
+            // Set failover flag and clean up wllama instance (same as real error handling)
+            this.wllamaShouldFailoverToBasic = true;
+            if (this.wllama) {
+                const _deadWllama = this.wllama;
+                this.wllama = null;
+                _deadWllama.exit().catch(() => { });
+            }
+            return '';  // Return empty response to trigger failover
+        }
 
         // Ensure wllama is loaded
         if (!this.wllama) {
@@ -2649,53 +2686,16 @@ class AskAnton {
 
         console.log('Wllama response complete, length:', assistantMessage.length);
 
-        // GPU failure recovery: if the GPU session crashed mid-inference, tear down
-        // the dead WASM instance, switch to CPU-only mode, and retry the prompt once.
-        if (!isGpuRetry && this.wllama_usedGPU && !this.stopRequested &&
-            (this.lastWllamaCompletionErrored || !assistantMessage.trim())) {
-            console.warn('GPU inference failed; switching to CPU and retrying prompt...');
-            this.gpuFailed = true;
-            this.wllama_usedGPU = false;
-            const _deadWllama = this.wllama;
-            this.wllama = null;  // Dead WASM instance — must be replaced
-            _deadWllama.exit().catch(() => { });
-
-            // Animate the failure notice into the current bubble as a proper assistant response.
-            await this.animateTyping(
-                messageTextDiv,
-                'I\'m sorry, but I encountered an issue with the GPU. I\'ll switch to CPU mode and try again.\n\n*Please wait...*',
-                (t) => this.formatResponse(t),
-                25
-            );
-
-            try {
-                // gpuFailed=true causes loadWithFallback to skip the GPU attempt
-                await this.initializeWllama(null, {
-                    activateMode: false,
-                    showChatInterface: false,
-                    showFatalError: false
-                });
-            } catch (reinitErr) {
-                console.error('CPU re-initialization failed:', reinitErr);
-                this.lastWllamaCompletionErrored = true;
-                return '';
-            }
-
-            if (this.wllama && !this.stopRequested) {
-                // Create a fresh assistant bubble for the CPU response so it appears
-                // as a separate message after the failure notice above.
-                const retryMessage = this.addMessage('assistant', '', false);
-                const retryMessageDiv = retryMessage.querySelector('.message-text');
-                retryMessageDiv.innerHTML = this.getTypingIndicatorHtml();
-                this.scrollToBottom();
-
-                // Store so callers can redirect link/video rendering to this bubble.
-                this._retryMessageDiv = retryMessageDiv;
-
-                this.lastWllamaCompletionErrored = false;
-                return await this.generateWithWllama(
-                    userMessage, context, retryMessageDiv, usedVoiceInput, true
-                );
+        // If wllama failed (either GPU or CPU), set flag to trigger failover to Basic mode.
+        // The calling code will handle the silent switch and automatic retry.
+        if (!this.stopRequested && (this.lastWllamaCompletionErrored || !assistantMessage.trim())) {
+            console.warn('Wllama inference failed; flagging for silent failover to Basic mode...');
+            this.wllamaShouldFailoverToBasic = true;
+            // Clean up the failed wllama instance
+            if (this.wllama) {
+                const _deadWllama = this.wllama;
+                this.wllama = null;
+                _deadWllama.exit().catch(() => { });
             }
         }
 

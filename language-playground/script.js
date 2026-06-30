@@ -87,6 +87,8 @@ const MODEL_QUANT = "Q4_K_M";
     let modelLoadingAbortController = null;
     let gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
     let wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
+    let wllamaShouldFailoverToBasic = false; // Set to true when wllama fails, triggers failover to rule-based mode
+    let debugConfig = { enabled: false, forceWllamaGenerationFail: false }; // Debug flags for testing
 
     const elements = {
         analyzerSelect: document.getElementById("analyzer-select"),
@@ -211,6 +213,16 @@ const MODEL_QUANT = "Q4_K_M";
     function isUsingAI() {
         return isModelLoaded && Boolean(wllamaInstance) &&
             (!elements.modeSelect || elements.modeSelect.value === "ai");
+    }
+
+    function parseDebugConfig() {
+        const params = new URLSearchParams(window.location.search);
+        const enabled = params.get('debug') === 'true';
+        const forceWllamaGenerationFail = params.get('forceWllamaFail') === 'true';
+        if (enabled) {
+            console.log('[DEBUG MODE] Debug config:', { enabled, forceWllamaGenerationFail });
+        }
+        return { enabled, forceWllamaGenerationFail };
     }
 
     function setupCancelLink() {
@@ -910,6 +922,12 @@ const MODEL_QUANT = "Q4_K_M";
         // Truncate to keep well within the 712-token context
         const inputText = text.length > 500 ? text.substring(0, 500) : text;
 
+        // Debug mode: Force failure for testing failover
+        if (debugConfig.enabled && debugConfig.forceWllamaGenerationFail) {
+            console.log('[DEBUG MODE] Forcing wllama language detection failure');
+            throw new Error('Forced failure for testing');
+        }
+
         const response = await wllamaInstance.createChatCompletion({
             messages: [
                 {
@@ -951,6 +969,12 @@ const MODEL_QUANT = "Q4_K_M";
     async function detectPiiWithAI(text) {
         // Truncate to keep well within the 712-token context
         const inputText = text.length > 600 ? text.substring(0, 600) : text;
+
+        // Debug mode: Force failure for testing failover
+        if (debugConfig.enabled && debugConfig.forceWllamaGenerationFail) {
+            console.log('[DEBUG MODE] Forcing wllama PII detection failure');
+            throw new Error('Forced failure for testing');
+        }
 
         const response = await wllamaInstance.createChatCompletion({
             messages: [
@@ -1028,21 +1052,43 @@ const MODEL_QUANT = "Q4_K_M";
                     try {
                         result = await detectLanguageWithAI(text);
                     } catch (aiErr) {
-                        if (wllamaUsedGPU && !gpuFailed) {
-                            console.warn("GPU language detection failed, switching to CPU and retrying:", aiErr);
-                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                        console.warn("AI language detection failed:", aiErr);
+
+                        // Set failover flag and clean up wllama instance
+                        wllamaShouldFailoverToBasic = true;
+                        if (wllamaInstance) {
                             try {
-                                await reloadModelOnCpu();
-                                updateModelStatus("Phi 3.5-mini ready", false);
-                                result = await detectLanguageWithAI(text);
-                            } catch (cpuErr) {
-                                console.warn("CPU language detection also failed, using rule-based fallback:", cpuErr);
-                                result = detectLanguage(text);
+                                await wllamaInstance.exit();
+                            } catch (exitErr) {
+                                console.error('Error cleaning up wllama:', exitErr);
                             }
-                        } else {
-                            console.warn("AI language detection failed, using rule-based fallback:", aiErr);
-                            result = detectLanguage(text);
+                            wllamaInstance = null;
                         }
+                        isModelLoaded = false;
+
+                        result = detectLanguage(text);
+                    }
+
+                    // Check if failover was triggered
+                    if (wllamaShouldFailoverToBasic) {
+                        console.log('Failover to rule-based mode triggered for language detection');
+
+                        // Switch to rule-based mode
+                        if (elements.modeSelect) {
+                            elements.modeSelect.value = "basic";
+                        }
+
+                        // Update model status
+                        updateModelStatus("Rule-based detection ready", false);
+
+                        // Show error notification card before results
+                        const errorCard = document.createElement("div");
+                        errorCard.className = "result-card";
+                        errorCard.style.backgroundColor = "#fff3cd";
+                        errorCard.style.borderColor = "#ffc107";
+                        errorCard.style.color = "#856404";
+                        errorCard.innerHTML = "<p><i>I experienced an error using the AI model on this device; so I'm switching to rule-based mode...</i></p>";
+                        elements.results.insertBefore(errorCard, elements.results.firstChild);
                     }
                 } else {
                     result = detectLanguage(text);
@@ -1059,21 +1105,43 @@ const MODEL_QUANT = "Q4_K_M";
                     try {
                         result = await detectPiiWithAI(text);
                     } catch (aiErr) {
-                        if (wllamaUsedGPU && !gpuFailed) {
-                            console.warn("GPU PII detection failed, switching to CPU and retrying:", aiErr);
-                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                        console.warn("AI PII detection failed:", aiErr);
+
+                        // Set failover flag and clean up wllama instance
+                        wllamaShouldFailoverToBasic = true;
+                        if (wllamaInstance) {
                             try {
-                                await reloadModelOnCpu();
-                                updateModelStatus("Phi 3.5-mini ready", false);
-                                result = await detectPiiWithAI(text);
-                            } catch (cpuErr) {
-                                console.warn("CPU PII detection also failed, using rule-based fallback:", cpuErr);
-                                result = await detectPii(text);
+                                await wllamaInstance.exit();
+                            } catch (exitErr) {
+                                console.error('Error cleaning up wllama:', exitErr);
                             }
-                        } else {
-                            console.warn("AI PII detection failed, using rule-based fallback:", aiErr);
-                            result = await detectPii(text);
+                            wllamaInstance = null;
                         }
+                        isModelLoaded = false;
+
+                        result = await detectPii(text);
+                    }
+
+                    // Check if failover was triggered
+                    if (wllamaShouldFailoverToBasic) {
+                        console.log('Failover to rule-based mode triggered for PII detection');
+
+                        // Switch to rule-based mode
+                        if (elements.modeSelect) {
+                            elements.modeSelect.value = "basic";
+                        }
+
+                        // Update model status
+                        updateModelStatus("Rule-based extraction ready", false);
+
+                        // Show error notification card before results
+                        const errorCard = document.createElement("div");
+                        errorCard.className = "result-card";
+                        errorCard.style.backgroundColor = "#fff3cd";
+                        errorCard.style.borderColor = "#ffc107";
+                        errorCard.style.color = "#856404";
+                        errorCard.innerHTML = "<p><i>I experienced an error using the AI model on this device; so I'm switching to rule-based mode...</i></p>";
+                        elements.results.insertBefore(errorCard, elements.results.firstChild);
                     }
                 } else {
                     result = await detectPii(text);
@@ -1106,6 +1174,7 @@ const MODEL_QUANT = "Q4_K_M";
     }
 
     function initialize() {
+        debugConfig = parseDebugConfig();
         applyTheme();
         populateSamples();
         elements.results.style.display = "none";

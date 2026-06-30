@@ -767,11 +767,18 @@ function syncModeStateFromRuntime() {
 
     if (typeof window.modelCoderGetCurrentMode === "function") {
         state.currentMode = normalizeMode(window.modelCoderGetCurrentMode());
-        return;
+    } else if (typeof window.modelCoderIsUsingCPUMode === "function") {
+        state.currentMode = window.modelCoderIsUsingCPUMode() ? "cpu" : "basic";
     }
 
-    if (typeof window.modelCoderIsUsingCPUMode === "function") {
-        state.currentMode = window.modelCoderIsUsingCPUMode() ? "cpu" : "basic";
+    // Check for failover and show notification
+    if (typeof window.modelCoderCheckAndClearFailoverFlag === "function") {
+        const hadFailover = window.modelCoderCheckAndClearFailoverFlag();
+        if (hadFailover) {
+            console.log('[Failover] AI model experienced an error, switched to Basic mode');
+            // The mode selector will be updated by updateModeSelectDropdown() 
+            // which is called after syncModeStateFromRuntime in most places
+        }
     }
 }
 
