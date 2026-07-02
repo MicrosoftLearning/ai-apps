@@ -1,4 +1,4 @@
-# Microsoft Learning AI Apps
+# Microsoft Learning Apps
 
 This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
 
