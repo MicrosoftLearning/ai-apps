@@ -89,8 +89,7 @@
                             <button class="example-btn" data-question="What's an agent?" aria-label="Ask about agents">
                                 What's an agent?
                             </button>
-                            <button class="example-btn" data-question="Explain RAG"
-                                aria-label="Ask about RAG">
+                            <button class="example-btn" data-question="Explain RAG" aria-label="Ask about RAG">
                                 Explain RAG
                             </button>
                             <button class="example-btn" data-question="What's computer vision?"
@@ -167,7 +166,8 @@
                     intelligence".</p>
                 <div style="margin: 18px 0 0 0;">
                     <a href="https://forms.office.com/r/fC0ndfBQeK" target="_blank" rel="noopener noreferrer"
-                        class="about-btn" style="text-decoration: none; display: inline-block; padding: 0; font-size: 1rem; font-weight: 500; color: #444; background: none; border: none; box-shadow: none; margin: 0;"
+                        class="about-btn"
+                        style="text-decoration: none; display: inline-block; padding: 0; font-size: 1rem; font-weight: 500; color: #444; background: none; border: none; box-shadow: none; margin: 0;"
                         title="Rate your experience" aria-label="Rate your experience">🤍 Rate your experience</a>
                 </div>
             </div>
@@ -187,9 +187,12 @@
                 <h2 id="config-modal-title">⚙️ Microsoft Foundry Configuration</h2>
             </div>
             <div class="modal-body" id="config-modal-description">
-                <p class="config-note">An Azure subscription is required for this app. If you don't have one, try the <a href="https://aka.ms/ask-anton" target="_blank" rel="noopener noreferrer">browser-based version of Ask Anton</a>.</p>
-                <p class="config-intro">Start by creating a project and deploying a model in the (new) <a href="https://ai.azure.com"
-                        target="_blank" rel="noopener noreferrer">Foundry portal</a> (see the <a
+                <p class="config-note">An Azure subscription is required for this app. If you don't have one, try the <a
+                        href="https://aka.ms/ask-anton" target="_blank" rel="noopener noreferrer">browser-based version
+                        of Ask Anton</a>.</p>
+                <p class="config-intro">Start by creating a project and deploying a model in the (new) <a
+                        href="https://ai.azure.com" target="_blank" rel="noopener noreferrer">Foundry portal</a> (see
+                    the <a
                         href="https://learn.microsoft.com/azure/foundry/tutorials/quickstart-create-foundry-resources?tabs=portal"
                         target="_blank" rel="noopener noreferrer">Foundry Quickstart Guide</a> for details.) Then enter
                     your project details below:</p>
@@ -204,7 +207,7 @@
 
                     <div class="form-group">
                         <label for="foundry-deployment">Model Deployment:</label>
-                        <input type="text" id="foundry-deployment" placeholder="e.g., gpt-4.1" autocomplete="off"
+                        <input type="text" id="foundry-deployment" placeholder="e.g., gpt-5-mini" autocomplete="off"
                             aria-describedby="deployment-help">
                         <small id="deployment-help" class="form-help">Your model deployment name</small>
                     </div>

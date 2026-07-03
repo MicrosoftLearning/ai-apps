@@ -39,7 +39,7 @@ Many of the apps use generative AI models. Reasonable precautions have been take
 
 #### Azure-based models (in Microsoft Foundry)
 
-The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 4.1 Mini](https://ai.azure.com/catalog/models/gpt-4.1-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
+The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 5 Mini](https://ai.azure.com/catalog/models/gpt-5-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
 
 #### Local (in-browser) LLMs
 
