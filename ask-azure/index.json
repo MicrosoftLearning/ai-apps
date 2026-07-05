@@ -696,8 +696,7 @@
                 "title": "Azure Content Understanding",
                 "video_id": "614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
-                    "content understanding",
-                    "content udnerstanding"
+                    "content understanding"
                 ],
                 "content": "Azure Content Understanding in Microsoft Foundry Tools provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
@@ -723,8 +722,6 @@
                 "keywords": [
                     "certification",
                     "certifications",
-                    "exam",
-                    "exams",
                     "microsoft certified professional",
                     "ai102",
                     "ai900",
