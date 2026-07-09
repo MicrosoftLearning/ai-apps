@@ -6,6 +6,7 @@ const WASM_PATHS = {
 
 const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
+const MODEL_N_CTX = 712;
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
 const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
 const WIKIPEDIA_MODEL_NAME = "Wikipedia API (Basic Chat)";
@@ -299,29 +300,29 @@ class ModelCoderLLM {
         }
 
         this.moderationLoadPromise = (async () => {
-            const response = await fetch(MODERATION_LIST_PATH, { cache: "no-store" });
-            if (!response.ok) {
-                throw new Error("Failed to load moderation list.");
+            try {
+                const response = await fetch(MODERATION_LIST_PATH, { cache: "no-store" });
+                if (!response.ok) {
+                    throw new Error("Failed to load moderation list.");
+                }
+
+                const text = await response.text();
+                const lines = text
+                    .split(/\r?\n/)
+                    .map((line) => line.trim().toLowerCase())
+                    .filter((line) => line.length > 0);
+
+                this.moderationTerms = lines
+                    .map((line) => shiftWord(reverseWord(line), 1))
+                    .filter((line) => line.length > 0);
+
+                return this.moderationTerms;
+            } finally {
+                this.moderationLoadPromise = null;
             }
-
-            const text = await response.text();
-            const lines = text
-                .split(/\r?\n/)
-                .map((line) => line.trim().toLowerCase())
-                .filter((line) => line.length > 0);
-
-            this.moderationTerms = lines
-                .map((line) => shiftWord(reverseWord(line), 1))
-                .filter((line) => line.length > 0);
-
-            return this.moderationTerms;
         })();
 
-        try {
-            return await this.moderationLoadPromise;
-        } finally {
-            this.moderationLoadPromise = null;
-        }
+        return this.moderationLoadPromise;
     }
 
     async _hasReversedModerationMatch(candidatePrompts) {
@@ -782,7 +783,7 @@ class ModelCoderLLM {
         const attemptLoad = async (n_gpu_layers, n_threads) => {
             if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             this.wllama = new Wllama(WASM_PATHS);
-            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: MODEL_N_CTX, n_gpu_layers, n_threads, progressCallback });
         };
 
         if (gpuEnabled) {
@@ -832,7 +833,7 @@ class ModelCoderLLM {
         const tryLoad = async (n_threads) => {
             if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             this.wllama = new Wllama(WASM_PATHS);
-            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: MODEL_N_CTX, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
         };
 
         if (preferredThreads > 1) {
@@ -1557,7 +1558,15 @@ const modelCoderSetActiveRunId = (runId) => {
 };
 
 const modelCoderRequest = async (requestJson) => {
-    const payload = JSON.parse(requestJson);
+    let payload;
+    try {
+        payload = JSON.parse(requestJson);
+    } catch (err) {
+        return JSON.stringify({
+            error: "Invalid request JSON.",
+            details: err && err.message ? err.message : "Malformed JSON input."
+        });
+    }
     const response = await llmRuntime.request(payload);
     return JSON.stringify(response);
 };
@@ -1576,7 +1585,7 @@ const modelCoderNextStreamChunk = async (streamId, runId = null) => {
 };
 
 const modelCoderIsUsingCPUMode = () => {
-    return llmRuntime.usingWllama;
+    return llmRuntime.usingWllama && !llmRuntime.wllamaUsedGPU;
 };
 
 const modelCoderGetCurrentMode = () => {
