@@ -724,7 +724,8 @@ class AskAnton {
             };
 
             const modelSource = {
-                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                // Alternative tested model (kept for quick switching): 'unsloth/Phi-4-mini-instruct-GGUF'
+                // Current default is Phi-3.5 for compatibility/performance in this app.
                 repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
                 quant: 'Q4_K_M'
             };
