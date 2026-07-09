@@ -29,6 +29,7 @@ class AskAnton {
         this.recordingTimeout = null;
         this.shouldStop = false;
         this.currentAudio = null;
+        this.currentAudioResolve = null;
         this.isSpeaking = false;
 
         this.elements = {
@@ -1452,6 +1453,7 @@ IMPORTANT: Follow these guidelines when responding:
 
     stopResponse() {
         this.shouldStop = true;
+        this.isGenerating = false;
 
         // Stop any playing audio
         if (this.currentAudio) {
@@ -1460,9 +1462,20 @@ IMPORTANT: Follow these guidelines when responding:
             this.currentAudio = null;
         }
 
+        // Resolve any hanging audio promise so generateResponse can unblock
+        if (this.currentAudioResolve) {
+            this.currentAudioResolve();
+            this.currentAudioResolve = null;
+        }
+
         this.isSpeaking = false;
 
-        // Reset button state immediately
+        // Re-enable input immediately rather than waiting for the async chain to unwind
+        this.elements.userInput.disabled = false;
+        if (this.recognition) this.elements.micBtn.disabled = false;
+        this.elements.userInput.focus();
+
+        // Reset button state
         this.setSendButtonState();
     }
 
@@ -1549,10 +1562,30 @@ IMPORTANT: Follow these guidelines when responding:
                 input = `Context:\n${context}\n\nQuestion: ${userMessage}`;
             }
 
-            // Call Foundry Responses API
-            const response = await this.callFoundryAPI(input);
+            let response;
+            if (usedVoiceInput) {
+                // Voice input: wait for the full response, then animate typing and speak in parallel
+                response = await this.callFoundryAPI(input);
+            } else {
+                // Text input: stream the response and display it as it arrives
+                let firstDelta = true;
+                response = await this.callFoundryAPIStreaming(input, (fullText) => {
+                    if (this.shouldStop) return;
+                    if (firstDelta) {
+                        messageTextDiv.innerHTML = '';
+                        firstDelta = false;
+                    }
+                    messageTextDiv.innerHTML = `<p>${this.escapeHtml(fullText).replace(/\n/g, '<br>')}</p>`;
+                    this.scrollToBottom();
+                });
+                // User stopped before any text arrived — clean up silently
+                if (!response) {
+                    responseMessage.remove();
+                    return;
+                }
+            }
 
-            // Format and display the response
+            // Format the complete response
             let formattedResponse = this.formatAssistantResponse(response);
 
             // Add video links if available (before Learn more links)
@@ -1579,16 +1612,20 @@ IMPORTANT: Follow these guidelines when responding:
                 formattedResponse += `<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;"><p><strong>Learn more:</strong> ${linkHtml}</p>`;
             }
 
-            // Start typing animation and speech synthesis at the same time
-            const typingPromise = this.animateTyping(messageTextDiv, formattedResponse, 10);
-            const speechPromise = (usedVoiceInput && !this.shouldStop)
-                ? this.synthesizeSpeech(response)
-                : Promise.resolve();
+            if (usedVoiceInput) {
+                // Voice: animate typing and speak at the same time
+                const typingPromise = this.animateTyping(messageTextDiv, formattedResponse, 10);
+                const speechPromise = !this.shouldStop
+                    ? this.synthesizeSpeech(response)
+                    : Promise.resolve();
+                await Promise.all([typingPromise, speechPromise]);
+            } else {
+                // Text: replace the streamed raw text with the fully formatted response
+                messageTextDiv.innerHTML = formattedResponse;
+                this.scrollToBottom();
+            }
 
-            // Wait for both to complete
-            await Promise.all([typingPromise, speechPromise]);
-
-            // Add event listeners to video links after typing is complete
+            // Add event listeners to video links
             if (videos && videos.length > 0) {
                 const videoLinks = messageTextDiv.querySelectorAll('.video-link');
                 videoLinks.forEach(link => {
@@ -1723,6 +1760,100 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         return responseText;
+    }
+
+    async callFoundryAPIStreaming(input, onDelta) {
+        const url = `${this.config.endpoint}/openai/v1/responses`;
+
+        const requestBody = {
+            model: this.config.deployment,
+            input: input,
+            instructions: this.systemPrompt,
+            store: true,
+            stream: true,
+            tools: [
+                {
+                    type: 'mcp',
+                    server_label: 'microsoft_learn',
+                    server_description: 'Microsoft Learn MCP server for searching and fetching Microsoft documentation, and provide links to relevant pages that you find.',
+                    server_url: 'https://learn.microsoft.com/api/mcp',
+                    require_approval: 'never'
+                }
+            ],
+            tool_choice: 'auto'
+        };
+
+        if (this.previousResponseId) {
+            requestBody.previous_response_id = this.previousResponseId;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.config.authMode === 'entra') {
+            const accessToken = await this.getAccessToken();
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        } else {
+            headers['api-key'] = this.config.apiKey;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            const contentFilterError = this.parseContentFilterError(errorText);
+            if (contentFilterError) throw contentFilterError;
+            throw new Error(`API request failed: ${response.status} - ${errorText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullText = '';
+
+        try {
+            while (true) {
+                if (this.shouldStop) {
+                    reader.cancel();
+                    break;
+                }
+
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep any incomplete line in the buffer
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const data = line.slice(6).trim();
+                    if (data === '[DONE]') continue;
+                    try {
+                        const event = JSON.parse(data);
+                        if (event.type === 'response.output_text.delta' && event.delta) {
+                            fullText += event.delta;
+                            onDelta(fullText);
+                        } else if (event.type === 'response.completed' && event.response?.id) {
+                            this.previousResponseId = event.response.id;
+                        }
+                    } catch (e) {
+                        // Ignore malformed SSE events
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+
+        if (!fullText) {
+            if (this.shouldStop) return ''; // Stopped before any text arrived
+            throw new Error('No response text received from streaming API');
+        }
+
+        return fullText;
     }
 
     parseContentFilterError(errorText) {
@@ -2091,9 +2222,12 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Play the audio and wait for it to finish
             await new Promise((resolve, reject) => {
+                this.currentAudioResolve = resolve;
+
                 audio.onended = () => {
                     URL.revokeObjectURL(audioUrl);
                     this.currentAudio = null;
+                    this.currentAudioResolve = null;
                     this.isSpeaking = false;
                     this.setSendButtonState();
                     resolve();
@@ -2102,6 +2236,7 @@ IMPORTANT: Follow these guidelines when responding:
                 audio.onerror = (error) => {
                     URL.revokeObjectURL(audioUrl);
                     this.currentAudio = null;
+                    this.currentAudioResolve = null;
                     this.isSpeaking = false;
                     this.setSendButtonState();
                     reject(error);
@@ -2111,6 +2246,7 @@ IMPORTANT: Follow these guidelines when responding:
                     console.error('Error playing synthesized speech:', error);
                     URL.revokeObjectURL(audioUrl);
                     this.currentAudio = null;
+                    this.currentAudioResolve = null;
                     this.isSpeaking = false;
                     this.setSendButtonState();
                     reject(error);
