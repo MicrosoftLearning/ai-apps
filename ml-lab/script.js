@@ -1617,6 +1617,22 @@ function parseCSVData(csvContent, fileName) {
             return;
         }
 
+        // Store file data for Data page
+        const storeUploadedFileData = () => {
+            const fileData = {
+                id: Date.now(),
+                name: fileName,
+                content: csvContent,
+                uploadTime: new Date(),
+                size: csvContent.length
+            };
+
+            // Add to uploaded files if not already exists
+            if (!uploadedDataFiles.find(f => f.name === fileName)) {
+                uploadedDataFiles.push(fileData);
+            }
+        };
+
         // Try PyScript parsing with proper error handling
         try {
             console.log('Attempting PyScript CSV parsing...');
@@ -1631,6 +1647,7 @@ function parseCSVData(csvContent, fileName) {
                 const useHeaders = useFirstRowAsHeaders;
                 console.log('Using first row as headers:', useHeaders);
                 window.parse_csv_with_pyscript(csvContent, fileName, useHeaders);
+                storeUploadedFileData();
                 return;
             } else {
                 console.log('PyScript CSV parser not available, using fallback');
@@ -1643,6 +1660,7 @@ function parseCSVData(csvContent, fileName) {
             const fallbackData = parseCSVFallback(csvContent, fileName, useHeaders);
             if (fallbackData) {
                 console.log('Fallback parsing successful:', fallbackData);
+                storeUploadedFileData();
                 handleParsedData(JSON.stringify(fallbackData));
             } else {
                 console.error('Both PyScript and fallback parsing failed');
@@ -1657,20 +1675,6 @@ function parseCSVData(csvContent, fileName) {
                 handleParsedData(JSON.stringify(errorData));
             }
             return;
-        }
-
-        // Store file data for Data page
-        const fileData = {
-            id: Date.now(),
-            name: fileName,
-            content: csvContent,
-            uploadTime: new Date(),
-            size: csvContent.length
-        };
-        
-        // Add to uploaded files if not already exists
-        if (!uploadedDataFiles.find(f => f.name === fileName)) {
-            uploadedDataFiles.push(fileData);
         }
         
     } catch (error) {
