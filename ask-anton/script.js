@@ -724,14 +724,15 @@ class AskAnton {
             };
 
             const modelSource = {
-                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                // Alternative tested model (kept for quick switching): 'unsloth/Phi-4-mini-instruct-GGUF'
+                // Current default is Phi-3.5 for compatibility/performance in this app.
                 repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
                 quant: 'Q4_K_M'
             };
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
-                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
+                const n_ctx = 1024;
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
