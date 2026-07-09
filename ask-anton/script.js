@@ -731,7 +731,7 @@ class AskAnton {
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
-                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
+                const n_ctx = 1024;
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
