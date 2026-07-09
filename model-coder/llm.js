@@ -1428,7 +1428,7 @@ class ModelCoderLLM {
         if (payload.type === "responses.create") {
             this._ensureClient(payload.model);
 
-            const normalizedInstructions = payload.instructions ?? payload.insructions;
+            const normalizedInstructions = payload.instructions;
 
             const moderatedResponsePrompts = this._extractModeratedPromptsFromInput(payload.input, normalizedInstructions);
             if (await this._hasReversedModerationMatch(moderatedResponsePrompts)) {
