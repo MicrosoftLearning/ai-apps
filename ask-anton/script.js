@@ -1420,7 +1420,7 @@ class AskAnton {
      * Returns `{context:null, ...}` when nothing matched.
      */
     searchContext(userQuestion) {
-        const { matches, matchedKeywords } = this.performSearch(userQuestion);
+        const { matches } = this.performSearch(userQuestion);
 
         // If no matches, return null context
         if (matches.length === 0) {

@@ -388,6 +388,7 @@ async function signInWithEntraID() {
 
     config.clientId = clientId;
     config.tenantId = tenantId;
+    config.endpoint = baseEndpoint;
 
     initializeMSAL();
 

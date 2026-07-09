@@ -307,6 +307,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Update config with new values before initializing MSAL
         this.config.clientId = clientId;
         this.config.tenantId = tenantId;
+        this.config.endpoint = baseEndpoint;
 
         // Initialize MSAL with current credentials
         this.initializeMSAL();
@@ -1318,7 +1319,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     searchContext(userQuestion) {
-        const { matches, matchedKeywords } = this.performSearch(userQuestion);
+        const { matches } = this.performSearch(userQuestion);
 
         // If no matches, return empty context
         if (matches.length === 0) {
@@ -1949,7 +1950,6 @@ IMPORTANT: Follow these guidelines when responding:
         const lines = withLinks.split('\n');
         let inUnorderedList = false;
         let inOrderedList = false;
-        let inCodeBlock = false;
         let result = [];
 
         for (let i = 0; i < lines.length; i++) {

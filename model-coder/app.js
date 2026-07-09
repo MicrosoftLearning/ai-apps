@@ -742,10 +742,6 @@ function getEditor() {
     return document.getElementById("python-editor");
 }
 
-function getTerminal() {
-    return document.getElementById("python-terminal");
-}
-
 function normalizeMode(modeValue) {
     const value = String(modeValue || "").toLowerCase();
     if (value === "cpu" || value === "basic") {
@@ -822,10 +818,6 @@ function fitTerminalUsingAddon(terminal) {
 }
 
 function fitTerminalByMeasurement(terminal, container) {
-    if (!terminal || !container) {
-        return false;
-    }
-
     const viewport = container.querySelector(".xterm-viewport") || container.querySelector(".xterm-screen");
     const rowSample = container.querySelector(".xterm-rows > div");
     const rowHeight = rowSample?.getBoundingClientRect().height || 0;
@@ -1143,10 +1135,6 @@ function clearTerminalOutput(options = {}) {
         void requestModelSessionReset();
     }
     updateRunState();
-}
-
-function hasTerminalRunner() {
-    return document.querySelector('script[type="py"][data-model-coder-runner="true"]') !== null;
 }
 
 function setEditorCode(value) {
@@ -1499,8 +1487,6 @@ async function initializeModel() {
 }
 
 function updateModeSelectDropdown() {
-    const appReady = isAppReady();
-
     if (!modeSelect) {
         return;
     }

@@ -2189,7 +2189,6 @@ function removeUploadedFile() {
 function toggleHeaderMode() {
     const checkbox = document.getElementById('first-row-headers');
     const customHeadersSection = document.getElementById('custom-headers-section');
-    const headerRow = document.getElementById('header-row');
     
     if (!checkbox || !customHeadersSection || !currentData) return;
     
@@ -3610,7 +3609,7 @@ window.onclick = function(event) {
             modal.style.display = 'none';
         }
     });
-}
+};
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
@@ -5046,8 +5045,7 @@ function generateScatterPlot(ctx, canvas) {
     const plotWidth = canvas.width - 2 * padding;
     const plotHeight = canvas.height - 2 * padding;
     
-    // Find min/max for scaling
-    const minVal = 0;
+    // Max value for scaling
     const maxVal = 100;
     
     // Clear and set background
@@ -5556,8 +5554,8 @@ function populateDataQualitySummary() {
         return;
     }
     
-    const data = datasetInfo ? (datasetInfo.preview || datasetInfo.data || []) : [];
-    const columns = datasetInfo ? (datasetInfo.finalColumns || datasetInfo.columns || []) : [];
+    const data = datasetInfo.preview || datasetInfo.data || [];
+    const columns = datasetInfo.finalColumns || datasetInfo.columns || [];
     const totalRows = data.length;
     const totalColumns = columns.length;
     const targetColumn = currentJobDetails.targetColumn;
@@ -6416,7 +6414,7 @@ function testEndpoint() {
     
     try {
         // Validate JSON
-        const inputData = JSON.parse(testData);
+        JSON.parse(testData);
         
         // Get the current endpoint to find the model
         const currentEndpoint = deployedEndpoints.find(ep => 
