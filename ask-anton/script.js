@@ -146,8 +146,8 @@ class AskAnton {
         // Prompt constants for consistent behavior across both models
         this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond using the information below to inform your answer:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph, keeping the focus on factual AI topics.`;
+        this.PROMPT_WITH_CONTEXT = `Respond succinctly, based only on the following information:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, succinct paragraph, keeping the focus on factual AI topics. Provide only general information.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -724,15 +724,14 @@ class AskAnton {
             };
 
             const modelSource = {
-                // Alternative tested model (kept for quick switching): 'unsloth/Phi-4-mini-instruct-GGUF'
-                // Current default is Phi-3.5 for compatibility/performance in this app.
+                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
                 repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
                 quant: 'Q4_K_M'
             };
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
-                const n_ctx = 1024;
+                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,

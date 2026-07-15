@@ -146,11 +146,7 @@
                 "keywords": [
                     "agents",
                     "agent",
-                    "agentic ai",
-                    "agentic",
-                    "ai agent",
-                    "ai agents",
-                    "multi-agent"
+                    "agentic"
                 ],
                 "content": "AI agents perform tasks on behalf of users by combining a large language model, behavioral instructions, and tools that connect to external systems. For example, an agent might answer expense questions and automatically submit expense claims."
             },
@@ -234,6 +230,17 @@
             },
             {
                 "id": 16,
+                "title": "Tools and Skills",
+                "keywords": [
+                    "tools",
+                    "tool",
+                    "skills",
+                    "skill"
+                ],
+                "content": "In the context of an AI agent, tools are external capabilities that the agent can use to perform tasks, while skills are specific instructions that guide the agent on how to use those tools to achieve particular goals."
+            },
+            {
+                "id": 17,
                 "title": "Model Context Protocol (MCP)",
                 "video_id": "6285aa6e-5787-4375-914a-ab4e1f54a400",
                 "keywords": [
@@ -249,7 +256,7 @@
         "link": "https://aka.ms/aisn-nlp-concepts-mod",
         "documents": [
             {
-                "id": 17,
+                "id": 18,
                 "title": "Common Text Analysis Techniques",
                 "video_id": "0ce04283-6436-44f0-9838-1a9b293e5ed1",
                 "keywords": [
@@ -269,7 +276,7 @@
                 "content": "Text analysis extracts meaning from text. Term Frequency counts word occurrences; TF-IDF also weighs word rarity to highlight distinctive terms. Stemming and lemmatization reduce words to their root form, and parts-of-speech tagging labels each word by grammatical type."
             },
             {
-                "id": 18,
+                "id": 19,
                 "title": "Natural Language Processing",
                 "keywords": [
                     "natural language processing",
@@ -278,7 +285,7 @@
                 "content": "Natural Language Processing (NLP) enables machines to understand and generate human language. It includes large language models and is applied in keyword extraction, sentiment analysis, and summarization."
             },
             {
-                "id": 19,
+                "id": 20,
                 "title": "Text Summarization",
                 "keywords": [
                     "text summarization",
@@ -291,7 +298,7 @@
                 "content": "Text summarization generates a concise summary of a longer document. Extractive summarization selects key sentences unchanged, using algorithms like TextRank to rank them. Abstractive summarization, powered by large language models, generates new paraphrased sentences."
             },
             {
-                "id": 20,
+                "id": 21,
                 "title": "Key Term Extraction",
                 "keywords": [
                     "key term extraction",
@@ -303,7 +310,7 @@
                 "content": "Key term extraction identifies the most important words and phrases in a document, surfacing main topics for indexing, search, and categorization. Common approaches combine TF-IDF with noun phrase detection."
             },
             {
-                "id": 21,
+                "id": 22,
                 "title": "Text Classification",
                 "keywords": [
                     "text classification",
@@ -325,7 +332,7 @@
         "link": "https://aka.ms/aisn-speech-concepts-mod",
         "documents": [
             {
-                "id": 22,
+                "id": 23,
                 "title": "Overview of Speech",
                 "video_id": "882f1af7-944c-4be0-97c3-889dd985df68",
                 "keywords": [
@@ -340,7 +347,7 @@
                 "content": "Speech technologies enable computers to understand and generate human speech. The two main tasks are Speech Recognition (speech to text) and Speech Synthesis (text to speech). Use cases include voice assistants like Microsoft Copilot, transcription services, accessibility tools, and language translation."
             },
             {
-                "id": 23,
+                "id": 24,
                 "title": "Speech Recognition (Speech to Text)",
                 "video_id": "cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
                 "keywords": [
@@ -360,7 +367,7 @@
                 "content": "Speech recognition converts spoken language to written text. An acoustic model identifies phonemes from audio; a language model predicts the most likely word sequence. Modern systems use deep learning for high accuracy across speakers, accents, and recording conditions."
             },
             {
-                "id": 24,
+                "id": 25,
                 "title": "Speech Synthesis (Text to Speech)",
                 "video_id": "a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
                 "keywords": [
@@ -385,7 +392,7 @@
         "link": "https://aka.ms/aisn-vision-concepts-mod",
         "documents": [
             {
-                "id": 25,
+                "id": 26,
                 "title": "Computer Vision Overview",
                 "video_id": "4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
                 "keywords": [
@@ -404,7 +411,7 @@
                 "content": "Computer vision enables computers to interpret images and videos. Common tasks include image classification, object detection, and semantic segmentation. Main model types are CNNs and vision transformers, applied in autonomous vehicles, medical imaging, and facial recognition."
             },
             {
-                "id": 26,
+                "id": 27,
                 "title": "Image Processing",
                 "video_id": "a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
                 "keywords": [
@@ -420,7 +427,7 @@
                 "content": "Image processing analyzes and manipulates digital images made of pixels. Filters detect features or reduce noise — edge detection highlights boundaries, blur filters smooth images. Convolution slides a small kernel matrix across the image to produce a transformed output."
             },
             {
-                "id": 27,
+                "id": 28,
                 "title": "Convolutional Neural Networks",
                 "video_id": "2fae02ed-55bc-44df-b37f-f7ce2373fe73",
                 "keywords": [
@@ -436,7 +443,7 @@
                 "content": "Convolutional Neural Networks (CNNs) are deep learning models for image processing. Convolutional layers detect edges and shapes, pooling layers reduce spatial dimensions, and fully connected layers make final predictions such as image classification."
             },
             {
-                "id": 28,
+                "id": 29,
                 "title": "Vision Transformers",
                 "video_id": "9157a9d9-290b-4a2a-99c4-a28eab3369ad",
                 "keywords": [
@@ -458,7 +465,7 @@
                 "content": "Vision Transformers divide images into fixed-size patches, convert each to an embedding vector, and use self-attention to capture relationships across the image. Multimodal models represent images and text in a shared embedding space, enabling image captioning and visual question answering."
             },
             {
-                "id": 29,
+                "id": 30,
                 "title": "Image Generation",
                 "video_id": "5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
                 "keywords": [
@@ -487,7 +494,7 @@
         "link": "https://aka.ms/aisn-info-extract-concepts-mod",
         "documents": [
             {
-                "id": 30,
+                "id": 31,
                 "title": "Overview of Information Extraction",
                 "video_id": "a9cbad65-a964-47fe-8bfc-fcb12257fd29",
                 "keywords": [
@@ -505,7 +512,7 @@
                 "content": "Information extraction pulls structured data from unstructured documents like invoices and contracts. The workflow uses OCR to read text, field extraction to identify data points, and normalization into a consistent format. It automates document-heavy workflows in finance, healthcare, and legal services."
             },
             {
-                "id": 31,
+                "id": 32,
                 "title": "Optical Character Recognition (OCR)",
                 "video_id": "1c411668-84d6-494f-9d17-1090705e549f",
                 "keywords": [
@@ -519,7 +526,7 @@
                 "content": "Optical character recognition (OCR) converts images of text into digital text by detecting text regions and recognizing characters. Modern OCR uses deep learning to handle handwritten text, low-quality scans, skewed pages, and complex layouts. It is foundational for digitizing printed documents."
             },
             {
-                "id": 32,
+                "id": 33,
                 "title": "Field Extraction and Mapping",
                 "video_id": "f09417e1-0a82-4667-a7f5-0081f21d6a77",
                 "keywords": [
@@ -536,7 +543,7 @@
         "link": "https://aka.ms/aisn-intro-ai-azure-lp",
         "documents": [
             {
-                "id": 33,
+                "id": 34,
                 "title": "Microsoft Foundry",
                 "video_id": "ba14d7e5-71c8-4be0-8895-15db1d726756",
                 "keywords": [
@@ -546,7 +553,7 @@
                 "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, build agents with capabilities like speech and vision, and evaluate AI solutions."
             },
             {
-                "id": 34,
+                "id": 35,
                 "title": "Foundry Tools",
                 "video_id": "d4d80d65-8863-4184-a738-c5814802a1e7",
                 "keywords": [
@@ -557,7 +564,7 @@
                 "content": "Microsoft Foundry tools include Azure Language for NLP; Azure Speech with Voice Live, Text-to-Speech, and Speech-to-Text; Azure Translator for translation; and Azure Content Understanding for extracting insights from documents, images, audio, and video."
             },
             {
-                "id": 35,
+                "id": 36,
                 "title": "Foundry Models",
                 "video_id": "916a346d-d084-48ae-8db7-2544f1200a9d",
                 "keywords": [
@@ -567,19 +574,25 @@
                 "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, Anthropic, and other model providers."
             },
             {
-                "id": 36,
+                "id": 37,
                 "title": "Foundry Agent Development",
                 "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
                 "keywords": [
                     "foundry agent",
                     "foundry agents",
                     "agent framework",
-                    "agent service"
+                    "agent service",
+                    "build an agent",
+                    "develop an agent",
+                    "create an agent",
+                    "build agents",
+                    "develop agents",
+                    "create agents"
                 ],
-                "content": "Microsoft Foundry enables developers to create AI agents that can perform tasks autonomously. The Foundry agent service provides tools and APIs for defining agent behavior, integrating with external systems, and managing agent interactions."
+                "content": "Create AI agents that use the provided large language models (LLMs) in Microsoft Foundry. Use the Foundry Agent Service to create agents in Foundry, or use an agent development SDK (such as the Microsoft Agent Framework) and host your agent in Foundry. Connect your agent to tools and knowledge sources to enable it to perform tasks."
             },
             {
-                "id": 37,
+                "id": 38,
                 "title": "Foundry SDKs and APIs",
                 "keywords": [
                     "foundry sdks",
@@ -590,10 +603,10 @@
                     "chatcompletions api",
                     "azureprojects"
                 ],
-                "content": "Developers use the Foundry SDK for programmatic access to projects and agents. The OpenAI API integrates language models, with the ChatCompletions API for managing conversations and the Responses API for generating responses."
+                "content": "Developers use the Foundry SDK for programmatic access to projects and agents. The OpenAI ChatCompletions and Responses APIs enable conversations with large language models and agents."
             },
             {
-                "id": 38,
+                "id": 39,
                 "title": "Foundry Toolkit for Visual Studio Code",
                 "video_id": "e4dd3172-8749-40d1-a009-d4c521424dc7",
                 "keywords": [
@@ -609,7 +622,7 @@
                 "content": "The Foundry Toolkit for Visual Studio Code lets developers build AI apps and agents on Microsoft Foundry. It integrates with the Foundry SDK for programmatic access to projects, agents, and other Foundry resources."
             },
             {
-                "id": 39,
+                "id": 40,
                 "title": "Foundry IQ",
                 "video_id": "7595b77c-7a4e-41ec-9a9c-ccc93a5f4a1c",
                 "keywords": [
@@ -627,7 +640,7 @@
                 "content": "Foundry IQ is a managed knowledge layer that agents can use to access enterprise data. With Foundry IQ, you create a knowledge base that connects to one or more knowledge sources. Foundry IQ is built on Azure AI Search's agentic retrieval capabilities."
             },
             {
-                "id": 40,
+                "id": 41,
                 "title": "Open AI models in Foundry",
                 "keywords": [
                     "openai",
@@ -636,7 +649,7 @@
                 "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
             },
             {
-                "id": 41,
+                "id": 42,
                 "title": "Anthropic models in Foundry",
                 "keywords": [
                     "anthropic",
@@ -645,7 +658,7 @@
                 "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
             },
             {
-                "id": 42,
+                "id": 43,
                 "title": "Authentication in Foundry",
                 "keywords": [
                     "authentication",
@@ -668,7 +681,7 @@
                 "content": "Microsoft Foundry secures access to its resources through robust authentication mechanisms, including key-based authentication and integration with Microsoft Entra ID. Client applications must authenticate using API keys or managed identity credentials to access models and agents."
             },
             {
-                "id": 43,
+                "id": 44,
                 "title": "Azure Speech",
                 "video_id": "66992e19-2df4-4287-b707-76e7c91b95a0",
                 "keywords": [
@@ -681,7 +694,7 @@
                 "content": "Azure Speech in Microsoft Foundry Tools includes Text-to-Speech (speech synthesis), Speech-to-Text (speech synthesis), Voice Live (realtime spoken conversation), and Speech Translation."
             },
             {
-                "id": 44,
+                "id": 45,
                 "title": "Azure Language",
                 "video_id": "785ec168-9609-473f-a5f0-a7cc9aaa5029",
                 "keywords": [
@@ -692,7 +705,7 @@
                 "content": "Azure Language in Microsoft Foundry Tools provides NLP capabilities like language detection, entity recognition, and personally identifiable information (PII) detection."
             },
             {
-                "id": 45,
+                "id": 46,
                 "title": "Azure Content Understanding",
                 "video_id": "614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
@@ -701,7 +714,7 @@
                 "content": "Azure Content Understanding in Microsoft Foundry Tools provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
             {
-                "id": 46,
+                "id": 47,
                 "title": "Azure Translator",
                 "video_id": "2f839b96-b2a4-4fb8-ae20-4bffcfe4e92d",
                 "keywords": [
@@ -717,7 +730,7 @@
         "link": "https://aiskillsnavigator.microsoft.com/credentials",
         "documents": [
             {
-                "id": 47,
+                "id": 48,
                 "title": "Microsoft AI Certifications",
                 "keywords": [
                     "certification",
@@ -739,7 +752,7 @@
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
             {
-                "id": 48,
+                "id": 49,
                 "title": "Microsoft AI Credentials",
                 "keywords": [
                     "microsoft applied skill",
