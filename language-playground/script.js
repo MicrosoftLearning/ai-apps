@@ -890,34 +890,6 @@ const MODEL_QUANT = "Q4_K_M";
         }
     }
 
-    /**
-     * Tears down wllama and reloads the model CPU-only.
-     * Called when GPU inference produces empty or invalid output at runtime.
-     */
-    async function reloadModelOnCpu() {
-        gpuFailed = true;
-        wllamaUsedGPU = false;
-        isModelLoaded = false;
-        if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
-
-        const useMultiThread = window.crossOriginIsolated === true;
-        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
-        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
-
-        const tryLoad = async function (n_threads) {
-            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
-            wllamaInstance = new Wllama(WASM_PATHS);
-            await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: function () { } });
-        };
-
-        if (preferredThreads > 1) {
-            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
-        } else {
-            await tryLoad(1);
-        }
-        isModelLoaded = true;
-    }
-
     async function detectLanguageWithAI(text) {
         // Truncate to keep well within the 712-token context
         const inputText = text.length > 500 ? text.substring(0, 500) : text;

@@ -1617,6 +1617,22 @@ function parseCSVData(csvContent, fileName) {
             return;
         }
 
+        // Store file data for Data page
+        const storeUploadedFileData = () => {
+            const fileData = {
+                id: Date.now(),
+                name: fileName,
+                content: csvContent,
+                uploadTime: new Date(),
+                size: csvContent.length
+            };
+
+            // Add to uploaded files if not already exists
+            if (!uploadedDataFiles.find(f => f.name === fileName)) {
+                uploadedDataFiles.push(fileData);
+            }
+        };
+
         // Try PyScript parsing with proper error handling
         try {
             console.log('Attempting PyScript CSV parsing...');
@@ -1631,6 +1647,7 @@ function parseCSVData(csvContent, fileName) {
                 const useHeaders = useFirstRowAsHeaders;
                 console.log('Using first row as headers:', useHeaders);
                 window.parse_csv_with_pyscript(csvContent, fileName, useHeaders);
+                storeUploadedFileData();
                 return;
             } else {
                 console.log('PyScript CSV parser not available, using fallback');
@@ -1643,6 +1660,7 @@ function parseCSVData(csvContent, fileName) {
             const fallbackData = parseCSVFallback(csvContent, fileName, useHeaders);
             if (fallbackData) {
                 console.log('Fallback parsing successful:', fallbackData);
+                storeUploadedFileData();
                 handleParsedData(JSON.stringify(fallbackData));
             } else {
                 console.error('Both PyScript and fallback parsing failed');
@@ -1657,20 +1675,6 @@ function parseCSVData(csvContent, fileName) {
                 handleParsedData(JSON.stringify(errorData));
             }
             return;
-        }
-
-        // Store file data for Data page
-        const fileData = {
-            id: Date.now(),
-            name: fileName,
-            content: csvContent,
-            uploadTime: new Date(),
-            size: csvContent.length
-        };
-        
-        // Add to uploaded files if not already exists
-        if (!uploadedDataFiles.find(f => f.name === fileName)) {
-            uploadedDataFiles.push(fileData);
         }
         
     } catch (error) {
@@ -2185,7 +2189,6 @@ function removeUploadedFile() {
 function toggleHeaderMode() {
     const checkbox = document.getElementById('first-row-headers');
     const customHeadersSection = document.getElementById('custom-headers-section');
-    const headerRow = document.getElementById('header-row');
     
     if (!checkbox || !customHeadersSection || !currentData) return;
     
@@ -3606,7 +3609,7 @@ window.onclick = function(event) {
             modal.style.display = 'none';
         }
     });
-}
+};
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
@@ -5042,8 +5045,7 @@ function generateScatterPlot(ctx, canvas) {
     const plotWidth = canvas.width - 2 * padding;
     const plotHeight = canvas.height - 2 * padding;
     
-    // Find min/max for scaling
-    const minVal = 0;
+    // Max value for scaling
     const maxVal = 100;
     
     // Clear and set background
@@ -5552,8 +5554,8 @@ function populateDataQualitySummary() {
         return;
     }
     
-    const data = datasetInfo ? (datasetInfo.preview || datasetInfo.data || []) : [];
-    const columns = datasetInfo ? (datasetInfo.finalColumns || datasetInfo.columns || []) : [];
+    const data = datasetInfo.preview || datasetInfo.data || [];
+    const columns = datasetInfo.finalColumns || datasetInfo.columns || [];
     const totalRows = data.length;
     const totalColumns = columns.length;
     const targetColumn = currentJobDetails.targetColumn;
@@ -6412,7 +6414,7 @@ function testEndpoint() {
     
     try {
         // Validate JSON
-        const inputData = JSON.parse(testData);
+        JSON.parse(testData);
         
         // Get the current endpoint to find the model
         const currentEndpoint = deployedEndpoints.find(ep => 

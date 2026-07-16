@@ -1856,7 +1856,7 @@ class ChatPlayground {
             try {
                 // Get image analysis (requires MobileNet to be pre-loaded)
                 const predictions = await this.classifyImage(this.pendingImage.img);
-                imageAnalysis = predictions[0].className.replace(/_/g, ' ')
+                imageAnalysis = predictions[0].className.replace(/_/g, ' ');
 
                 // Create image element for message bubble
                 imageElement = document.createElement('img');
@@ -1939,7 +1939,6 @@ class ChatPlayground {
                 const assistantMessageEl = this.addMessage('assistant', '');
                 const contentEl = assistantMessageEl.querySelector('.message-content');
 
-                const summaryText = `<b>Summary:</b><br><br>${this.renderMarkdown(summary)}`;
                 await this.typeResponse(contentEl, summary);
 
                 // Add to conversation history

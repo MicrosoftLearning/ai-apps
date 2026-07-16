@@ -1,6 +1,6 @@
-# Microsoft Learning AI Apps
+# Microsoft Learning Apps
 
-This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
+This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or lower-spec computers.
 
 > **Important**: These apps are <u>not</u> supported Microsoft services or products. They are educational resources to support practical exercises in training courses; and are provided as-is without warranty of any kind. Performance issues and occasional failures are to be expected.
 
@@ -39,7 +39,7 @@ Many of the apps use generative AI models. Reasonable precautions have been take
 
 #### Azure-based models (in Microsoft Foundry)
 
-The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 4.1 Mini](https://ai.azure.com/catalog/models/gpt-4.1-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
+The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 5 Mini](https://ai.azure.com/catalog/models/gpt-5-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
 
 #### Local (in-browser) LLMs
 
@@ -51,7 +51,7 @@ All in-browser LLM-based apps include a *minimal* content moderation solution in
 
 ### Other AI models and technologies
 
-In addition to WebLLM/Wllama and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
+In addition to Wllama and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.
@@ -60,6 +60,6 @@ In addition to WebLLM/Wllama and the Microsoft Phi model described above for gen
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by Model Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
-- [Wikipedia API](https://www.mediawiki.org/wiki/Wikimedia_APIs) used in the computing history, chat playground, and model coder app as a failsafe model alternative when neither WebLLM or Wllama are available.
+- [Wikipedia API](https://www.mediawiki.org/wiki/Wikimedia_APIs) used in the computing history, chat playground, and model coder app as a failsafe model alternative when Wllama isn't available.
 
 The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to a model in the local browser environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.

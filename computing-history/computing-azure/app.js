@@ -19,6 +19,8 @@ let recognition = null;
 let isListening = false;
 let usedSpeechInput = false;
 let isSpeaking = false;
+let isGenerating = false;
+let shouldStopStreaming = false;
 let previousResponseId = null;
 let recordingTimeout = null;
 let mediaRecorder = null;
@@ -386,6 +388,7 @@ async function signInWithEntraID() {
 
     config.clientId = clientId;
     config.tenantId = tenantId;
+    config.endpoint = baseEndpoint;
 
     initializeMSAL();
 
@@ -890,10 +893,10 @@ function escapeXml(unsafe) {
     });
 }
 
-async function synthesizeSpeech(text) {
+async function synthesizeSpeech(text, onReady = null) {
     isSpeaking = true;
     const sendBtn = document.getElementById('sendBtn');
-    sendBtn.textContent = '⬜';
+    sendBtn.textContent = '■';
     sendBtn.classList.add('speaking');
     sendBtn.title = 'Stop speech';
 
@@ -995,6 +998,9 @@ async function synthesizeSpeech(text) {
         // Store reference to current audio
         currentAudio = audio;
 
+        // Signal that audio is ready; caller can use this to sync UI animations
+        if (onReady) onReady();
+
         // Play the audio and wait for it to finish
         await new Promise((resolve, reject) => {
             audio.onended = () => {
@@ -1035,6 +1041,23 @@ function resetSendButton() {
     sendBtn.textContent = '▶';
     sendBtn.classList.remove('speaking');
     sendBtn.title = 'Send message';
+    sendBtn.disabled = false;
+}
+
+function setGeneratingButtonState() {
+    isGenerating = true;
+    shouldStopStreaming = false;
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.textContent = '■';
+    sendBtn.classList.add('speaking');
+    sendBtn.title = 'Stop response';
+    sendBtn.disabled = false;
+}
+
+function stopGeneration() {
+    shouldStopStreaming = true;
+    isGenerating = false;
+    resetSendButton();
 }
 
 // Chat functions
@@ -1042,7 +1065,9 @@ function resetSendButton() {
  * Handles the send button click
  */
 function handleSendButtonClick() {
-    if (isSpeaking) {
+    if (isGenerating) {
+        stopGeneration();
+    } else if (isSpeaking) {
         stopSpeech();
     } else {
         sendMessage();
@@ -1303,32 +1328,65 @@ async function sendMessage() {
     const typingId = showTypingIndicator();
 
     try {
-        // Call Azure OpenAI API
-        const response = await callAzureOpenAI(addConciseInstruction);
-
-        // Start speech synthesis immediately if user used speech input (before displaying text)
+        setGeneratingButtonState();
+        let response;
         if (shouldUseSpeechOutput) {
-            synthesizeSpeech(response);
+            // Voice input: wait for the full response, then speak and display
+            response = await callAzureOpenAI(addConciseInstruction);
+            isGenerating = false;
+            if (!shouldStopStreaming) {
+                conversationHistory.push({ role: 'assistant', content: response });
+                // Pass a callback so the typing animation starts at the same moment audio begins playing
+                synthesizeSpeech(response, () => {
+                    removeTypingIndicator(typingId);
+                    displayMessage('assistant', response);
+                });
+            } else {
+                // User stopped before the response was displayed
+                removeTypingIndicator(typingId);
+            }
+        } else {
+            // Text input: stream the response and display as it arrives
+            let streamContentDiv = null;
+            response = await callAzureOpenAIStreaming(addConciseInstruction, (fullText) => {
+                if (!streamContentDiv) {
+                    removeTypingIndicator(typingId);
+                    streamContentDiv = createAssistantMessageDiv();
+                }
+                streamContentDiv.textContent = fullText;
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+            isGenerating = false;
+            resetSendButton();
+
+            // Finalize: replace raw streamed text with formatted markdown
+            if (streamContentDiv) {
+                if (typeof marked !== 'undefined') {
+                    const rawHtml = marked.parse(response);
+                    const cleanHtml = DOMPurify.sanitize(rawHtml, {
+                        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                            'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'table', 'thead',
+                            'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins'],
+                        ALLOWED_ATTR: ['href', 'target', 'rel'],
+                        ALLOW_DATA_ATTR: false
+                    });
+                    streamContentDiv.innerHTML = addTargetBlankToLinks(cleanHtml);
+                } else {
+                    streamContentDiv.textContent = response;
+                }
+            } else {
+                removeTypingIndicator(typingId);
+                displayMessage('assistant', response);
+            }
+            conversationHistory.push({ role: 'assistant', content: response });
         }
-
-        // Remove typing indicator
-        removeTypingIndicator(typingId);
-
-        // Add assistant response to history
-        conversationHistory.push({
-            role: 'assistant',
-            content: response
-        });
-
-        // Display assistant message
-        displayMessage('assistant', response);
 
     } catch (error) {
         const errorMsg = error.isContentFilter
             ? error.message
             : 'Sorry, there was an error processing your request: ' + error.message;
 
-        // Start speech synthesis immediately if needed (before displaying text)
         if (shouldUseSpeechOutput) {
             synthesizeSpeech(errorMsg);
         }
@@ -1346,6 +1404,30 @@ async function sendMessage() {
         document.getElementById('micBtn').disabled = false;
     }
     userInput.focus();
+}
+
+function createAssistantMessageDiv() {
+    const chatMessages = document.getElementById('chatMessages');
+    const welcomeMsg = chatMessages.querySelector('.welcome-message');
+    if (welcomeMsg) welcomeMsg.remove();
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant';
+    messageDiv.setAttribute('role', 'article');
+    messageDiv.setAttribute('aria-label', 'Assistant message');
+
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'message-bubble';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+
+    bubbleDiv.appendChild(contentDiv);
+    messageDiv.appendChild(bubbleDiv);
+    chatMessages.appendChild(messageDiv);
+
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return contentDiv;
 }
 
 async function callAzureOpenAI(useConciseInstruction = false) {
@@ -1463,6 +1545,105 @@ async function callAzureOpenAI(useConciseInstruction = false) {
     }
 
     return responseText;
+}
+
+async function callAzureOpenAIStreaming(useConciseInstruction, onDelta) {
+    const url = `${config.endpoint}/openai/v1/responses`;
+
+    const latestMessage = conversationHistory[conversationHistory.length - 1];
+
+    let input;
+    if (Array.isArray(latestMessage.content)) {
+        input = [{ type: 'message', role: 'user', content: latestMessage.content }];
+    } else {
+        input = latestMessage.content;
+    }
+
+    let instructions = DEFAULT_MODEL_INSTRUCTIONS;
+    if (useConciseInstruction) {
+        instructions = DEFAULT_MODEL_INSTRUCTIONS + ' Respond with a single sentence.';
+    }
+
+    const requestBody = {
+        model: config.deployment,
+        input: input,
+        instructions: instructions,
+        store: true,
+        stream: true,
+        tools: [{ type: 'web_search' }],
+        tool_choice: 'auto'
+    };
+
+    if (previousResponseId) {
+        requestBody.previous_response_id = previousResponseId;
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (config.authMode === 'entra') {
+        const accessToken = await getAccessToken();
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    } else {
+        headers['api-key'] = config.apiKey;
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        const contentFilterError = parseContentFilterError(errorText);
+        if (contentFilterError) throw contentFilterError;
+        throw new Error(`API request failed: ${response.status} - ${errorText}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                if (data === '[DONE]') continue;
+                try {
+                    const event = JSON.parse(data);
+                    if (event.type === 'response.output_text.delta' && event.delta) {
+                        fullText += event.delta;
+                        onDelta(fullText);
+                    } else if (event.type === 'response.completed' && event.response?.id) {
+                        previousResponseId = event.response.id;
+                    }
+                } catch (e) {
+                    // Ignore malformed SSE events
+                }
+            }
+
+            if (shouldStopStreaming) {
+                reader.cancel();
+                break;
+            }
+        }
+    } finally {
+        reader.releaseLock();
+    }
+
+    if (!fullText) {
+        throw new Error('No response text received from streaming API');
+    }
+
+    return fullText;
 }
 
 function parseContentFilterError(errorText) {

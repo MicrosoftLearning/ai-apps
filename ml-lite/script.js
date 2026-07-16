@@ -433,7 +433,6 @@ function switchToTab(tabIndex) {
 // Update navigation button states
 function updateNavigationButtons() {
     const prevButton = document.getElementById('prevButton');
-    const nextButton = document.getElementById('nextButton');
     
     prevButton.disabled = appState.currentTab === 0;
     

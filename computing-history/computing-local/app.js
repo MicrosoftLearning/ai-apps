@@ -2257,58 +2257,6 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 }
 
 /**
- * Tears down the failed GPU wllama instance, re-initialises on CPU, and
- * retries the query once. Updates bubbleElement in-place throughout.
- * @param {string} query
- * @param {HTMLElement|null} bubbleElement
- * @param {string} bubblePrefix
- */
-async function handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix) {
-    gpuFailed = true;
-    wllamaUsedGPU = false;
-    wllamaReady = false;
-
-    const deadWllama = wllama;
-    wllama = null;
-    deadWllama?.exit().catch(() => { });
-
-    if (bubbleElement) {
-        setBubbleContent(bubbleElement,
-            bubblePrefix +
-            "I'm sorry, but I encountered an issue with the GPU. " +
-            "Switching to CPU mode and trying again — please wait..."
-        );
-        scrollToBottom();
-    }
-
-    try {
-        await initWllama();
-    } catch (reinitErr) {
-        console.error('CPU re-initialisation failed after GPU crash:', reinitErr);
-        if (bubbleElement) {
-            setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
-            scrollToBottom();
-        }
-        return;
-    }
-
-    if (!wllama || shouldStopResponse) return;
-
-    // Clear the failure notice so the retry streams cleanly into the bubble.
-    if (bubbleElement) {
-        setBubbleContent(bubbleElement, bubblePrefix);
-        scrollToBottom();
-    }
-
-    lastWllamaCompletionErrored = false;
-    const retryResult = await generateWithWllama(query, bubbleElement, bubblePrefix, true);
-    if (!retryResult && bubbleElement) {
-        setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
-        scrollToBottom();
-    }
-}
-
-/**
  * Safely stop and drain a wllama stream to leave WASM state clean
  * @param {AsyncIterator} stream - The wllama completion stream to stop
  */

@@ -146,8 +146,8 @@ class AskAnton {
         // Prompt constants for consistent behavior across both models
         this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond using the information below to inform your answer:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph, keeping the focus on factual AI topics.`;
+        this.PROMPT_WITH_CONTEXT = `Respond concisely, using ONLY the following information:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, concise paragraph, keeping the focus on factual AI topics. Provide only general information.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -785,7 +785,8 @@ class AskAnton {
 
             // Qualcomm Adreno WebGPU has precision bugs that cause hallucinations.
             // Detect the adapter vendor and disable GPU for known-broken implementations.
-            let GPU_ENABLED = true;
+            // GPU_ENABLED starts false; set to true only when a usable WebGPU adapter is confirmed.
+            let GPU_ENABLED = false;
             if (navigator.gpu) {
                 try {
                     const adapter = await navigator.gpu.requestAdapter();
@@ -797,17 +798,21 @@ class AskAnton {
                         if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
                             // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                             console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info.vendor}") — known precision issues cause hallucinations`);
-                            GPU_ENABLED = false;
                         } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
                             // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
                             // which predates the fix. Fall back to CPU until wllama is upgraded.
                             console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
-                            GPU_ENABLED = false;
+                        } else {
+                            GPU_ENABLED = true;
                         }
+                    } else {
+                        console.log('WebGPU adapter unavailable; using CPU');
                     }
                 } catch (e) {
                     console.warn('Could not query WebGPU adapter info:', e);
                 }
+            } else {
+                console.log('WebGPU not supported; using CPU');
             }
 
             const loadWithFallback = async () => {
@@ -1419,7 +1424,7 @@ class AskAnton {
      * Returns `{context:null, ...}` when nothing matched.
      */
     searchContext(userQuestion) {
-        const { matches, matchedKeywords } = this.performSearch(userQuestion);
+        const { matches } = this.performSearch(userQuestion);
 
         // If no matches, return null context
         if (matches.length === 0) {
@@ -2596,7 +2601,7 @@ class AskAnton {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
                 max_tokens: this.wllama_usedGPU ? 400 : 250,
-                temperature: 0.2,
+                temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
                 repeat_penalty: 1.1,

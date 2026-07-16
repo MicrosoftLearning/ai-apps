@@ -243,8 +243,6 @@ function updateHoverZones() {
 // Handle keyboard events in cell textareas
 function handleCellKeydown(e, cellId) {
     const textarea = e.target;
-    const cell = document.getElementById(cellId);
-    const cellType = cell.querySelector('.cell-type-selector').value;
     const isEditMode = textarea.getAttribute('data-edit-mode') === 'true';
     
     if (e.key === 'Tab') {
@@ -298,7 +296,6 @@ function handleFirstFocus(event) {
 function handleCellClick(event, cellId) {
     const cell = document.getElementById(cellId);
     const textarea = cell.querySelector('.cell-input');
-    const cellType = cell.querySelector('.cell-type-selector').value;
     const target = event.target;
     
     // Don't interfere if clicking on buttons or other controls

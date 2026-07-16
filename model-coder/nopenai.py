@@ -79,6 +79,8 @@ def _run_sync(coro):
         try:
             coro.close()
         except Exception:
+            # Intentionally ignore close() failures: this is only cleanup and
+            # must not mask the RuntimeError handling below.
             pass
 
         running_in_worker = bool(getattr(_pyscript, "RUNNING_IN_WORKER", False)) if _pyscript is not None else False
@@ -137,6 +139,7 @@ def _debug_bridge(message: str):
     try:
         print(f"[bridge-debug] {message}")
     except Exception:
+        # Debug logging is best-effort; failures here must not affect runtime behavior.
         pass
 
 
@@ -147,6 +150,8 @@ def _candidate_name(obj: Any, fallback: str) -> str:
         if ctor_name:
             return f"{fallback}:{ctor_name}"
     except Exception:
+        # Best-effort JS object introspection: if constructor/name access fails
+        # in a runtime-specific way, keep the plain fallback label.
         pass
     return fallback
 
