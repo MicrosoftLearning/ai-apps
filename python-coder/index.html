@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Coder</title>
+    <meta name="description" content="Run Python code in the browser.">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <script src="coi-serviceworker.js"></script>
+    <link rel="stylesheet" href="styles.css">
+
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+</head>
+
+<body>
+    <a class="sr-only" href="#main-workspace">Skip to editor and terminal</a>
+    <div class="app-shell">
+        <header class="topbar">
+            <div>
+                <h1>Python Coder</h1>
+                <p>Run Python in your browser.</p>
+            </div>
+            <div class="topbar-controls" role="toolbar" aria-label="Editor controls">
+                <div class="examples-menu" id="examples-menu">
+                    <button id="examples-btn" type="button" class="btn-examples" aria-haspopup="true"
+                        aria-expanded="false" aria-controls="examples-dropdown" aria-label="Open examples menu">
+                        <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
+                            <path d="M71.68,97.22,34.74,128l36.94,30.78a12,12,0,1,1-15.36,18.44l-48-40a12,12,0,0,1,0-18.44l48-40A12,12,0,0,1,71.68,97.22Zm176,21.56-48-40a12,12,0,1,0-15.36,18.44L221.26,128l-36.94,30.78a12,12,0,1,0,15.36,18.44l48-40a12,12,0,0,0,0-18.44ZM164.1,28.72a12,12,0,0,0-15.38,7.18l-64,176a12,12,0,0,0,7.18,15.37A11.79,11.79,0,0,0,96,228a12,12,0,0,0,11.28-7.9l64-176A12,12,0,0,0,164.1,28.72Z"></path>
+                        </svg>
+                        Examples
+                    </button>
+                    <div id="examples-dropdown" class="examples-dropdown" hidden role="menu" aria-label="Quick Start Templates">
+                        <p class="dropdown-heading">Quick Start Templates</p>
+                        <button type="button" class="dropdown-item" role="menuitem" data-template="hello-world">Hello World</button>
+                        <button type="button" class="dropdown-item" role="menuitem" data-template="user-input">User Input</button>
+                        <button type="button" class="dropdown-item" role="menuitem" data-template="math-and-types">Math &amp; Types</button>
+                        <button type="button" class="dropdown-item" role="menuitem" data-template="loops-and-decisions">Loops &amp; Decisions</button>
+                    </div>
+                </div>
+                <button id="run-btn" type="button" class="btn-run" disabled aria-label="Run code">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3.5v9l8-4.5-8-4.5z"/></svg>
+                    Run Code
+                </button>
+            </div>
+        </header>
+
+        <main id="main-workspace" class="workspace" role="main" aria-label="Code workspace">
+            <section class="panel panel-editor" aria-labelledby="editor-heading">
+                <div class="panel-header">
+                    <h2 id="editor-heading">Editor</h2>
+                    <span id="saved-indicator">Not run yet</span>
+                </div>
+                <div id="editor-container" class="panel-body" tabindex="0" role="region" aria-label="Python code editor"
+                    aria-describedby="editor-help"></div>
+                <span id="editor-help" class="sr-only">This is the code editor area. Use Tab to move to the pane
+                    splitter and terminal after editing.</span>
+
+                <script id="python-editor" type="py-editor" target="editor-container" env="model-coder"
+                    config='{"packages": ["numpy", "pandas", "matplotlib", "scikit-learn"]}' data-theme="dark"></script>
+            </section>
+
+            <div id="pane-splitter" class="pane-splitter" role="separator" aria-label="Resize editor and terminal panes"
+                aria-orientation="horizontal" aria-describedby="splitter-help" tabindex="0"></div>
+            <span id="splitter-help" class="sr-only">Use Up and Down arrow keys to resize editor and terminal
+                panes.</span>
+
+            <section class="panel panel-terminal" aria-labelledby="terminal-heading">
+                <div class="panel-header">
+                    <h2 id="terminal-heading">Terminal</h2>
+                    <span>Interactive print() and input()</span>
+                </div>
+                <div id="terminal-container" class="panel-body" tabindex="0" role="region"
+                    aria-label="Python terminal output and input" aria-describedby="terminal-help"></div>
+                <span id="terminal-help" class="sr-only">This terminal shows script output and supports input prompts
+                    when code requests input.</span>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>
