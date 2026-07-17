@@ -16,6 +16,7 @@ Most of the apps (with two Azure-based exceptions) are designed to run locally i
 - [Information Extractor](./info-extractor/)
 - [Python ScriptBook](./scriptbook/)
 - [ML Lite](./ml-lite/)
+- [Python Coder (python coding sandbox)](./python-coder/)
 
 ## Transparency Notes
 
@@ -59,7 +60,7 @@ In addition to Wllama and the Microsoft Phi model described above for generative
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) to support named entity recognition.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
-- [PyScript](https://pyscript.net/) used by Model Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
+- [PyScript](https://pyscript.net/) used by Model Coder, Python Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
 - [Wikipedia API](https://www.mediawiki.org/wiki/Wikimedia_APIs) used in the computing history, chat playground, and model coder app as a failsafe model alternative when Wllama isn't available.
 
 The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to a model in the local browser environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.
