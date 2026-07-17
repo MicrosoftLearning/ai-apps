@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Information Extractor - Extract data from receipt images</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📑</text></svg>">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📑</text></svg>">
     <script src="coi-serviceworker.js"></script>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -69,6 +70,10 @@
                 <!-- Center area - Main content -->
                 <div class="main-content">
                     <div class="analyze-header">
+                        <select id="analysisMode" class="analysis-mode-select" aria-label="Select analysis type">
+                            <option value="ocr-read">OCR/Read</option>
+                            <option value="receipt-fields">Receipt fields</option>
+                        </select>
                         <button id="analyzeBtn" class="analyze-btn" disabled
                             aria-label="Run OCR and AI analysis on selected image"
                             aria-describedby="analyze-description">🔬 Run analysis</button>

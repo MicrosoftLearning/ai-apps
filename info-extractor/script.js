@@ -32,6 +32,7 @@ class InfoExtractorApp {
         this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
         this.wllamaShouldFailoverToBasic = false; // Set to true when wllama fails, triggers failover to pattern-based mode
         this.debugConfig = { enabled: false, forceWllamaGenerationFail: false }; // Debug flags for testing
+        this.analysisMode = 'ocr-read'; // Default to OCR/Read mode
 
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -121,6 +122,7 @@ class InfoExtractorApp {
         this.uploadArea = document.getElementById('uploadArea');
         this.thumbnailsContainer = document.getElementById('thumbnailsContainer');
         this.analyzeBtn = document.getElementById('analyzeBtn');
+        this.analysisModeSel = document.getElementById('analysisMode');
         this.progressSection = document.getElementById('progressSection');
         this.progressFill = document.getElementById('progressFill');
         this.progressText = document.getElementById('progressText');
@@ -211,6 +213,9 @@ class InfoExtractorApp {
             this.cancelModelLoading();
         });
 
+        // Analysis mode change
+        this.analysisModeSel.addEventListener('change', (e) => this.handleModeChange(e));
+
         // Drag and drop functionality
         this.setupDragAndDrop();
     }
@@ -227,6 +232,53 @@ class InfoExtractorApp {
         } else if (!this.useAI) {
             console.log('AI disabled, using basic mode');
         }
+    }
+
+    async handleModeChange(event) {
+        const newMode = event.target.value;
+        console.log('Analysis mode changed:', newMode);
+        this.analysisMode = newMode;
+
+        // Clear all uploaded images
+        this.uploadedImages.forEach(img => URL.revokeObjectURL(img.url));
+        this.uploadedImages = [];
+        this.thumbnailsContainer.innerHTML = '';
+        this.selectedImageIndex = -1;
+        this.imageContainer.style.display = 'none';
+        this.imagePlaceholder.style.display = 'flex';
+        this.analyzeBtn.disabled = true;
+        this.resetResults();
+
+        // Load appropriate sample and configure UI
+        if (newMode === 'ocr-read') {
+            // OCR/Read mode: load biz-card.png and hide Fields tab
+            this.hideFieldsTab();
+            await this.loadSampleImage('./biz-card.png', 'biz-card.png');
+        } else if (newMode === 'receipt-fields') {
+            // Receipt fields mode: load receipt.png and show Fields tab
+            this.showFieldsTab();
+            await this.loadSampleImage('./receipt.png', 'receipt.png');
+        }
+    }
+
+    hideFieldsTab() {
+        const fieldsTabBtn = document.querySelector('[data-tab="fields"]');
+        if (fieldsTabBtn) {
+            fieldsTabBtn.style.display = 'none';
+        }
+        // Switch to Result tab if currently on Fields tab
+        if (this.fieldsTab.classList.contains('active')) {
+            this.switchTab('result');
+        }
+    }
+
+    showFieldsTab() {
+        const fieldsTabBtn = document.querySelector('[data-tab="fields"]');
+        if (fieldsTabBtn) {
+            fieldsTabBtn.style.display = '';
+        }
+        // Switch back to Fields tab
+        this.switchTab('fields');
     }
 
     applyTheme() {
@@ -392,11 +444,48 @@ class InfoExtractorApp {
         // Enable analyze button (OCR works even without AI model)
         this.analyzeBtn.disabled = false;
 
-        // Reset zoom level
-        this.resetZoom();
+        // Set zoom to fit the image in the viewing area
+        this.fitImageToView();
 
         // Reset results
         this.resetResults();
+    }
+
+    fitImageToView() {
+        // Wait for image to load before calculating zoom
+        if (this.selectedImage.complete && this.selectedImage.naturalWidth > 0) {
+            this.calculateFitZoom();
+        } else {
+            this.selectedImage.onload = () => {
+                this.calculateFitZoom();
+            };
+        }
+    }
+
+    calculateFitZoom() {
+        const viewer = this.imageViewer;
+        const img = this.selectedImage;
+
+        if (!viewer || !img.naturalWidth || !img.naturalHeight) return;
+
+        const viewerWidth = viewer.clientWidth;
+        const viewerHeight = viewer.clientHeight;
+        const imageWidth = img.naturalWidth;
+        const imageHeight = img.naturalHeight;
+
+        // Calculate zoom to fit within viewer (with some padding)
+        const padding = 40; // pixels of padding
+        const scaleX = (viewerWidth - padding) / imageWidth;
+        const scaleY = (viewerHeight - padding) / imageHeight;
+
+        // Use the smaller scale to ensure the entire image fits
+        let fitZoom = Math.min(scaleX, scaleY, 1.0); // Don't zoom in beyond 100%
+
+        // Clamp to min/max zoom levels
+        fitZoom = Math.max(this.minZoom, Math.min(this.maxZoom, fitZoom));
+
+        this.zoomLevel = fitZoom;
+        this.updateZoom();
     }
 
     zoomIn() {
@@ -481,36 +570,46 @@ class InfoExtractorApp {
         }
     }
 
-    async loadDefaultReceipt() {
+    async loadSampleImage(imagePath, imageName) {
         try {
-            // Check if default receipt is already loaded
-            const hasDefaultReceipt = this.uploadedImages.some(img => img.isSample);
-            if (hasDefaultReceipt) {
-                console.log('Default receipt already loaded, skipping...');
-                return;
-            }
-
-            console.log('Attempting to load default receipt image...');
-            // Load the default receipt.png file
-            const response = await fetch('./receipt.png');
+            console.log(`Attempting to load sample image: ${imagePath}`);
+            const response = await fetch(imagePath);
             if (!response.ok) {
-                console.log('Default receipt image not found, status:', response.status);
+                console.log('Sample image not found, status:', response.status);
                 return;
             }
 
-            console.log('Receipt image fetched successfully, creating file object...');
+            console.log('Sample image fetched successfully, creating file object...');
             const blob = await response.blob();
-            const file = new File([blob], 'receipt.png', { type: 'image/png' });
+            const file = new File([blob], imageName, { type: 'image/png' });
 
             console.log('File object created, adding image to app...');
-            // Add the image to the app with sample flag
-            await this.addImage(file, true); // true indicates this is a sample image
-            console.log('Default receipt image loaded and displayed successfully');
+            await this.addImage(file, true);
+            console.log('Sample image loaded and displayed successfully');
 
         } catch (error) {
-            console.log('Could not load default receipt image:', error.message);
+            console.log('Could not load sample image:', error.message);
             console.error('Full error:', error);
-            // Don't show error to user, just log it
+        }
+    }
+
+    async loadDefaultReceipt() {
+        // Check if default sample is already loaded
+        const hasSample = this.uploadedImages.some(img => img.isSample);
+        if (hasSample) {
+            console.log('Default sample already loaded, skipping...');
+            return;
+        }
+
+        // Load appropriate sample based on current mode
+        if (this.analysisMode === 'ocr-read') {
+            // Hide Fields tab for OCR/Read mode
+            this.hideFieldsTab();
+            await this.loadSampleImage('./biz-card.png', 'biz-card.png');
+        } else {
+            // Show Fields tab for Receipt fields mode
+            this.showFieldsTab();
+            await this.loadSampleImage('./receipt.png', 'receipt.png');
         }
     }
 
@@ -722,6 +821,22 @@ class InfoExtractorApp {
             this.updateProgress(10, 'Extracting text with OCR...');
             await this.performOCR(imageData.file);
 
+            // Check analysis mode
+            if (this.analysisMode === 'ocr-read') {
+                // OCR/Read mode: Only display OCR results, no field extraction
+                console.log('OCR/Read mode: Displaying OCR results only');
+                this.updateProgress(90, 'Preparing results...');
+                this.displayOCRResultOnly();
+
+                this.updateProgress(100, 'Analysis complete!');
+                setTimeout(() => {
+                    this.hideProgress();
+                    this.enableUploadAndSelection();
+                }, 1000);
+                return;
+            }
+
+            // Receipt fields mode: Continue with field extraction
             // Step 2: Extract fields with LLM (only if model is loaded AND user wants to use AI)
             if (this.isModelLoaded && this.wllama && this.useAI) {
                 console.log('Model is loaded and AI is enabled, proceeding with field extraction');
@@ -834,6 +949,17 @@ class InfoExtractorApp {
             this.hideProgress();
             this.enableUploadAndSelection();
         }
+    }
+
+    displayOCRResultOnly() {
+        // Show annotated image with bounding boxes
+        this.createAnnotatedImage();
+
+        // Display full OCR result
+        this.displayOCRResult();
+
+        // Switch to result tab (Fields tab is hidden in OCR/Read mode)
+        this.switchTab('result');
     }
 
     async performOCR(file) {
