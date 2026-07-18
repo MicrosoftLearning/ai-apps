@@ -978,8 +978,16 @@ class InfoExtractorApp {
 
             // Perform OCR
             console.log('Performing OCR recognition...');
-            const result = await worker.recognize(file);
+            const result = await worker.recognize(file, {}, { blocks: true });
             this.ocrData = result.data;
+
+            // Tesseract.js v6+ no longer provides a flat words array — extract from blocks
+            if (this.ocrData.blocks) {
+                this.ocrData.words = this.ocrData.blocks
+                    .flatMap(block => block.paragraphs
+                        .flatMap(para => para.lines
+                            .flatMap(line => line.words)));
+            }
 
             console.log('OCR completed. Text length:', this.ocrData.text?.length || 0);
             console.log('OCR text preview:', this.ocrData.text?.substring(0, 200) || 'No text');
@@ -1431,7 +1439,7 @@ Respond as a list of fields with their values.`;
             ctx.fillStyle = 'rgba(74, 144, 226, 0.1)';
 
             this.ocrData.words.forEach(word => {
-                if (word.confidence > 30) {
+                if (word.text && word.text.trim().length > 0) {
                     const { x0, y0, x1, y1 } = word.bbox;
                     const margin = 3; // Small margin in pixels
                     const width = (x1 - x0) + (margin * 2);
