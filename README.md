@@ -54,7 +54,7 @@ All in-browser LLM-based apps include a *minimal* content moderation solution in
 
 In addition to Wllama and the Microsoft Phi model described above for generative AI, the apps make use of the following models and technologies under the terms of their respective licenses:
 
-- [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
+- [MobileNet-V2](https://huggingface.co/docs/timm/en/models/mobilenet-v2) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.
 - [Vosk Speech Recognition](https://github.com/alphacep/vosk-api) is used as a fallback speech-to-text solution when WebSpeech speech recognition is unavailable.
 - [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) to support named entity recognition.

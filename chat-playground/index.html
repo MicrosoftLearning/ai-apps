@@ -342,12 +342,12 @@
                         apps and agents. It's based on the user interface in Microsoft Foundry portal, but does not use
                         any Azure cloud services.</p>
 
-                    <p>The app uses Microsoft's <strong>Phi 4-mini</strong> on wllama (works on any device
-                        without requiring a GPU). You can switch between Phi 4-mini and None (Wikipedia) using the Model
+                    <p>The app uses Microsoft's <strong>Phi 3.5-mini</strong> on wllama (works on any device
+                        without requiring a GPU). You can switch between Phi 3.5-mini and None (Wikipedia) using the Model
                         dropdown.
                     </p>
 
-                    <p>The app also makes use of the MobileNetV3 model and the TensorFlow.js framework to implement
+                    <p>The app also makes use of the MobileNetV2 model and the TensorFlow.js framework to implement
                         image classification.</p>
 
                     <p>If AI mode responses are too slow or become unresponsive on older or lower-spec
@@ -356,11 +356,11 @@
 
                     <h3>Known issues</h3>
                     <ul>
-                        <li>The initial download of the Microsoft Phi 4-mini model may take a few minutes - particularly on
+                        <li>The initial download of the Microsoft Phi 3.5-mini model may take a few minutes - particularly on
                             low-bandwidth connections. Subsequent downloads should be quicker.</li>
-                        <li>Phi 4-mini response times may be slower on lower-spec devices since the model runs
+                        <li>Phi 3.5-mini response times may be slower on lower-spec devices since the model runs
                             locally through WebAssembly. Use the Model dropdown to switch to None if needed.</li>
-                        <li>Image analysis is based on MobileNetV3, which is a general-purpose image classification
+                        <li>Image analysis is based on MobileNetV2, which is a general-purpose image classification
                             model. It may not accurately identify all images or provide detailed descriptions.</li>
                         <li>Voice mode depends on browser-support for speech recognition. A
                             fallback offline speech-to-text model will be used in the event of a speech recognition
