@@ -152,8 +152,8 @@ class ChatPlayground {
     static STOPWORDS = new Set([
         // Articles, prepositions, conjunctions
         'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-        'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-        'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+        'in', 'is', 'it', 'its', 'it\'s', 'of', 'on', 'that', 'the', 'to', 'with',
+        'or', 'but', 'if', 'than', 'then', 'so', 'yet', 'that\'s',
         'after', 'before', 'between', 'during', 'into', 'through', 'over',
         'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
         // Pronouns
@@ -583,11 +583,11 @@ class ChatPlayground {
         const stopwords = new Set([
             'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
             'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet', 'that\'s', 'what\'s',
             'after', 'before', 'between', 'during', 'into', 'through', 'over',
             'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
             'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
-            'us', 'them', 'my', 'your', 'his', 'our', 'their',
+            'us', 'them', 'my', 'your', 'his', 'our', 'their', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
             'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
             'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
             'own', 'same', 'other', 'another', 'much', 'many',
@@ -1981,31 +1981,14 @@ class ChatPlayground {
             // History already stores first-sentence-only content, so no truncation needed here
             messages.push(...this.conversationHistory.slice(-2));
 
-            // Add user message with image analysis and file context if available
+            // Add user message with image analysis if available
             let finalUserMessage = userMessage;
             if (imageAnalysis) {
                 finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
             }
 
-            // If file is uploaded, extract the most relevant line and append to user message
-            this.fileContentUsedInPrompt = false;
-            if (this.config.fileUpload.content) {
-                const keywords = this.extractKeywords(userMessage);
-                console.log('Extracted keywords from user prompt:', keywords);
-
-                const relevantLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
-
-                if (relevantLine) {
-                    console.log('Found most relevant line from file:', relevantLine);
-                    finalUserMessage += '\nAnswer with a single, succinct sentence based on this information:\n' + relevantLine;
-                    this.fileContentUsedInPrompt = true;
-                } else {
-                    console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
-                }
-            }
-
             // If system prompt indicates short response is wanted and there's no image/file context, guide the model
-            if (!imageAnalysis && !this.fileContentUsedInPrompt) {
+            if (!imageAnalysis && !this.config.fileUpload.content) {
                 const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
                 const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
                 if (wantsShortResponse) {
@@ -2213,19 +2196,40 @@ class ChatPlayground {
             if (!results || results.length === 0) return null;
 
             const title = results[0].title;
-            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-            const summaryResponse = await fetch(summaryUrl);
-            if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
 
-            const summaryData = await summaryResponse.json();
-            const extract = summaryData?.extract;
-            if (!extract || extract.length < 20) return null;
+            // Check if shortening is requested
+            const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
+            const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
 
-            const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
-            const extractedSentences = this.extractLeadingSentences(firstParagraph, 2);
-            const result = extractedSentences || firstParagraph.substring(0, 300).trim();
+            if (wantsShortResponse) {
+                // Return just the first paragraph (using summary endpoint)
+                const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+                const summaryResponse = await fetch(summaryUrl);
+                if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
 
-            return result.length >= 20 ? result : null;
+                const summaryData = await summaryResponse.json();
+                const extract = summaryData?.extract;
+                if (!extract || extract.length < 20) return null;
+
+                const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
+                return firstParagraph.trim();
+            } else {
+                // Return the full lead section using the extracts API (plain text)
+                const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=extracts&exintro=1&explaintext=1&format=json&origin=*`;
+                const extractResponse = await fetch(extractUrl);
+                if (!extractResponse.ok) throw new Error('Wikipedia extract request failed');
+
+                const extractData = await extractResponse.json();
+                const pages = extractData?.query?.pages;
+                if (!pages) return null;
+
+                // Get the first (and only) page from the result
+                const pageId = Object.keys(pages)[0];
+                const extract = pages[pageId]?.extract;
+
+                if (!extract || extract.length < 20) return null;
+                return extract.trim();
+            }
         } catch (error) {
             console.error('Wikipedia lookup failed:', error);
             return null;
@@ -2237,14 +2241,22 @@ class ChatPlayground {
 
         if (this.config.fileUpload.content) {
             const keywords = this.extractKeywords(firstLine);
-            const bestLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
-            if (bestLine) {
-                this.fileContentUsedInPrompt = true;
-                return bestLine;
+            if (keywords && keywords.length > 0) {
+                const lines = this.config.fileUpload.content.split('\n');
+                const matchingLines = lines
+                    .filter(line => {
+                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+                        return keywords.some(keyword => lineWords.includes(keyword));
+                    })
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+
+                if (matchingLines.length > 0) {
+                    this.fileContentUsedInPrompt = true;
+                    return matchingLines.join('\n');
+                }
             }
-
-            return "I couldn't find a relevant line in the uploaded file for your prompt keywords.";
         }
 
         const wikiResponse = await this.generateWithWikipedia(query, imageClassName);
@@ -2293,19 +2305,11 @@ class ChatPlayground {
     }
 
     maybeShortenNoneModeResponse(text) {
-        const isNoneMode = this.currentMode === 'none' || this.usingWikipedia;
-        if (!isNoneMode || !text) {
-            return text;
-        }
-
-        const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
-        const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
-
-        if (!wantsShortResponse) {
-            return text;
-        }
-
-        return this.extractLeadingSentences(text, 1);
+        // Shortening is now handled within the respective functions:
+        // - File content: never shortened (we want all matching lines)
+        // - Wikipedia: shortened based on prompt inside generateWithWikipedia
+        // So this function now just passes through the text
+        return text;
     }
 
     /**
@@ -2462,13 +2466,21 @@ class ChatPlayground {
 
         this.fileContentUsedInPrompt = false;
         if (this.config.fileUpload.content) {
-            const keywords = this.extractKeywords(userMessage);
-            const relevantLines = this.extractRelevantLines(this.config.fileUpload.content, keywords);
-            if (relevantLines) {
-                this.fileContentUsedInPrompt = true;
-                const lastMsg = messages[messages.length - 1];
-                if (lastMsg && lastMsg.role === 'user') {
-                    lastMsg.content += '\nRespond based only on the following information:\n' + relevantLines;
+            const fileKeywords = this.extractKeywords(userMessage);
+            if (fileKeywords && fileKeywords.length > 0) {
+                const matchingLines = this.config.fileUpload.content.split('\n')
+                    .filter(line => {
+                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+                        return fileKeywords.some(keyword => lineWords.includes(keyword));
+                    })
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                if (matchingLines.length > 0) {
+                    this.fileContentUsedInPrompt = true;
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg && lastMsg.role === 'user') {
+                        lastMsg.content += '\nUse the following information to answer:\n' + matchingLines.join('\n');
+                    }
                 }
             }
         }
