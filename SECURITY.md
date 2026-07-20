@@ -6,4 +6,4 @@ The apps in this repo are designed purely for educational use, and should be con
 
 ## Reporting a Vulnerability
 
-If you encounter a security vulnerability in this app, please raise an issue in this repo
+If you encounter a security vulnerability in this app, please raise an issue in this repo.
