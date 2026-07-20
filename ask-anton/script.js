@@ -718,7 +718,6 @@ class AskAnton {
             };
 
             const baseModelConfig = {
-                n_ctx: 712,
                 n_threads: preferredThreads,
                 progressCallback: progressCb
             };
@@ -731,7 +730,8 @@ class AskAnton {
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
-                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
+                const n_ctx = 1024;
+                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${navigator.deviceMemory ?? 'unknown'}GB)`);
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
@@ -1440,9 +1440,14 @@ class AskAnton {
             return bScore - aScore; // Higher score first
         });
 
-        // Build context from all matched documents - use full content, no summarization
+        // Build context from matched documents.
+        // On low-memory devices (<16GB), inject only the first sentence of each document
+        // to keep the prompt short and reduce prefill time on slow CPUs.
+        const isLowMemory = (navigator.deviceMemory || 0) < 16;
         const contextParts = rankedMatches.map(match => {
-            return match.document.content;
+            return isLowMemory
+                ? this.extractFirstSentence(match.document.content) || match.document.content
+                : match.document.content;
         });
 
         const categories = [...new Set(rankedMatches.map(m => m.category))];
@@ -2600,7 +2605,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: this.wllama_usedGPU ? 400 : 250,
+                max_tokens: this.wllama_usedGPU ? 400 : (navigator.deviceMemory || 0) >= 16 ? 250 : 175,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,

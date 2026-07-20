@@ -24,6 +24,7 @@ let mobilenetReady = false; // Track if MobileNet is initialized
 let mobilenetLoadPromise = null; // Coalesce concurrent lazy-load requests
 let conversationHistory = []; // Track conversation for context
 let inappropriateWords = []; // Loaded from moderation file
+let pcbInfoLines = []; // Loaded from data/pcb_info.txt
 let currentMode = 'basic'; // Track which engine is active: 'cpu' or 'basic'
 const availableModes = { cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
@@ -254,6 +255,7 @@ async function init() {
 
     try {
         await loadInappropriateWords();
+        await loadPcbInfo();
 
         // Pre-load MobileNet + classifier up front so the first image upload
         // doesn't have to wait for it (and so any load failure surfaces here
@@ -939,26 +941,56 @@ function addMessage(text, sender, imageUrl = null, options = {}) {
     return { message: div, bubble };
 }
 
-function getBoardIdentificationMessage(text) {
-    const lowerText = String(text || '').toLowerCase();
-
-    if (lowerText.includes('assy 250')) {
-        return 'The assembly number indicates that the board may have come from a Commodore 64.';
+/**
+ * Loads the PCB info data file for board identification lookups
+ */
+async function loadPcbInfo() {
+    try {
+        const response = await fetch('./data/pcb_info.txt');
+        if (!response.ok) return;
+        const text = await response.text();
+        pcbInfoLines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        console.log('Loaded PCB info lines:', pcbInfoLines.length);
+    } catch (error) {
+        console.error('Error loading PCB info data:', error);
     }
+}
 
-    if (lowerText.includes('820-')) {
-        return 'Serial numbers beginning 820- are commonly found in Apple computers.';
-    }
+/**
+ * Searches pcb_info.txt for lines that contain keywords extracted from the OCR text and user prompt.
+ * Returns all matching lines joined by newlines, or null if no matches found.
+ * @param {string} ocrText - Text extracted from the PCB image via OCR
+ * @param {string} userText - Text entered by the user alongside the image
+ * @returns {string|null} Matched lines joined by newlines, or null if no matches found
+ */
+function searchPcbInfo(ocrText, userText) {
+    if (pcbInfoLines.length === 0) return null;
 
-    if (lowerText.includes('z-80')) {
-        return 'The Zilog Z-80 processor is common in Sinclair computers, such as the ZX-80, ZX-81, and ZX Spectrum.';
-    }
+    // Domain-specific high-frequency words excluded to avoid over-broad matches
+    const PCB_COMMON = new Set(['pcb', 'board', 'circuit', 'computer', 'chip', 'text', 'number', 'numbers', 'printed']);
 
-    if ((lowerText.includes('88-') || lowerText.includes('880-')) && lowerText.includes('mits')) {
-        return 'The markings on the board are consistent with an Altair 8800.';
-    }
+    // Build keyword tokens from OCR text and user text.
+    // Split on whitespace AND hyphens so part numbers like "Z-80A" yield tokens ["z", "80a"],
+    // both of which can match substrings in the info file.
+    const combined = `${ocrText || ''} ${userText || ''}`.toLowerCase();
+    const tokens = new Set(
+        combined
+            .split(/[\s\-]+/)
+            .map(t => t.replace(/[^\w]/g, ''))
+            .filter(t => t.length >= 3 && /[a-zA-Z0-9]/.test(t) && !STOPWORDS.has(t) && !PCB_COMMON.has(t))
+    );
 
-    return "I can't determine what kind of computer this came from.";
+    if (tokens.size === 0) return null;
+
+    const matchedLines = pcbInfoLines.filter(line => {
+        const lowerLine = line.toLowerCase();
+        for (const token of tokens) {
+            if (lowerLine.includes(token)) return true;
+        }
+        return false;
+    });
+
+    return matchedLines.length > 0 ? matchedLines.join('\n') : null;
 }
 
 /**
@@ -1792,11 +1824,10 @@ async function performClassification(imgEl, userText = "") {
                 const rawText = data.text || '';
                 const baseReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
                 let ocrMessage = '';
-                let boardIdMessage = '';
+                let ocrCleanText = '';
 
                 if (!rawText || rawText.trim().length === 0) {
                     ocrMessage = `I couldn't extract any text from the board.`;
-                    boardIdMessage = getBoardIdentificationMessage('');
                 } else {
                     // Clean the text - preserve hyphens, underscores, dots for part numbers
                     const cleanText = rawText
@@ -1812,26 +1843,71 @@ async function performClassification(imgEl, userText = "") {
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
                         ocrMessage = `There are details printed on the board.`;
-                        boardIdMessage = getBoardIdentificationMessage(cleanText);
+                        ocrCleanText = cleanText;
                     } else {
                         ocrMessage = `I couldn't extract any text from the board.`;
-                        boardIdMessage = getBoardIdentificationMessage('');
                     }
                 }
+
+                // Search pcb_info.txt for lines matching keywords from the OCR text and user prompt
+                const matched = ocrCleanText ? searchPcbInfo(ocrCleanText, userText) : null;
+                const fallbackIdMessage = "I can't determine what kind of computer this came from.";
 
                 // Update bubble to show confidence message without scanning indicator
                 setBubbleContent(bubble, baseReply);
                 scrollToBottom();
 
-                // Type only the OCR results below the confidence message
-                const ocrResults = `<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
-                await typeTextInBubble(bubble, baseReply + ocrResults, 20, baseReply);
+                // AI mode with matched lines: stream a model-generated response
+                if (matched && currentMode === 'cpu' && wllamaReady && wllama) {
+                    const ocrPrefix = baseReply + `<br><br>${ocrMessage}<br><br>`;
 
-                if (isVoiceInput) {
-                    speakText(bubble);
-                    isVoiceInput = false;
+                    // Show thinking indicator while the model generates
+                    setBubbleContent(bubble, ocrPrefix +
+                        '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
+                        '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow on some devices. Thanks for your patience!)</p>');
+                    scrollToBottom();
+
+                    const aiPrompt = `Answer concisely in one succinct sentence based on the following information:\n${matched}`;
+                    const aiResponse = await generateComputingInfo(aiPrompt, null, bubble, ocrPrefix);
+
+                    if (checkStopResponse()) return;
+
+                    // Handle wllama failover: switch to basic mode and display matched lines directly
+                    if (wllamaShouldFailoverToBasic && !shouldStopResponse) {
+                        wllamaShouldFailoverToBasic = false;
+                        wllamaReady = false;
+                        currentMode = 'basic';
+                        availableModes.cpu = false;
+                        updateModelName('Wikipedia API (Basic)');
+                        updateModeSelect();
+                        setBubbleContent(bubble, ocrPrefix + escapeHtml(matched));
+                        scrollToBottom();
+                        if (isVoiceInput) { speakText(bubble); isVoiceInput = false; }
+                        else endResponse();
+                        return;
+                    }
+
+                    if (!aiResponse) {
+                        // AI returned nothing - fall back to showing matched lines directly
+                        setBubbleContent(bubble, ocrPrefix + escapeHtml(matched));
+                        scrollToBottom();
+                    }
+
+                    if (isVoiceInput) { speakText(bubble); isVoiceInput = false; }
+                    else endResponse();
+
                 } else {
-                    endResponse();
+                    // Basic mode or no matched lines: display results with typewriter animation
+                    const boardIdMessage = matched ? escapeHtml(matched) : fallbackIdMessage;
+                    const ocrResults = `<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
+                    await typeTextInBubble(bubble, baseReply + ocrResults, 20, baseReply);
+
+                    if (isVoiceInput) {
+                        speakText(bubble);
+                        isVoiceInput = false;
+                    } else {
+                        endResponse();
+                    }
                 }
             } catch (e) {
                 console.error("OCR Failed", e);
@@ -1843,8 +1919,8 @@ async function performClassification(imgEl, userText = "") {
                     setBubbleContent(bubble, baseReply);
                     scrollToBottom();
 
-                    // Type only the error message and identification
-                    const errorResults = `<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
+                    // Type only the error message and fallback identification
+                    const errorResults = `<br><br>I couldn't extract any text from the board.<br><br>I can't determine what kind of computer this came from.`;
                     await typeTextInBubble(bubble, baseReply + errorResults, 20, baseReply);
 
                     if (isVoiceInput) {
@@ -2121,7 +2197,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         const completion = await wllama.createChatCompletion({
             messages,
             max_tokens: 512,
-            temperature: 0.3,
+            temperature: 0.1,
             top_k: 30,
             top_p: 0.9,
             repeat_penalty: 1.1,

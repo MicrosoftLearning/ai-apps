@@ -14,7 +14,7 @@
                     "define ai",
                     "cognitive computing"
                 ],
-                "content": "Artificial Intelligence (AI) simulates human intelligence in machines, enabling them to think, learn, and solve problems. It is built on machine learning and includes sub-areas such as generative AI, text analysis, speech, computer vision, and information extraction."
+                "content": "Artificial Intelligence (AI) enables machines to simulate human thinking and problem-solving. It is built on machine learning and spans sub-areas such as generative AI, text analysis, speech, computer vision, and information extraction."
             },
             {
                 "id": 2,
@@ -57,7 +57,7 @@
                     "features",
                     "label"
                 ],
-                "content": "Machine Learning is a subset of AI where computers learn from data to make predictions without explicit programming. Models are trained on inputs called features and produce predicted outputs called labels. It divides into supervised learning (labeled examples) and unsupervised learning (pattern discovery without labels)."
+                "content": "Machine Learning is a subset of AI where computers learn from data to make predictions without explicit programming. Models learn from inputs called features to predict outputs called labels. The main approaches are supervised learning (using labeled examples) and unsupervised learning (finding patterns without labels)."
             },
             {
                 "id": 4,
@@ -148,7 +148,7 @@
                     "agent",
                     "agentic"
                 ],
-                "content": "AI agents perform tasks on behalf of users by combining a large language model, behavioral instructions, and tools that connect to external systems. For example, an agent might answer expense questions and automatically submit expense claims."
+                "content": "AI agents perform tasks on behalf of users. They combine a large language model, behavioral instructions, and tools connected to external systems."
             },
             {
                 "id": 11,
@@ -197,7 +197,7 @@
                     "custom models",
                     "transfer learning"
                 ],
-                "content": "Fine-tuning adapts a pre-trained model to a specific task by training on a smaller, task-specific dataset, requiring far less data than training from scratch. It tailors models to specific terminology or workflows, producing a custom model."
+                "content": "Fine-tuning adapts a pre-trained AI model to a specific task or domain. It requires far less data than training from scratch and tailors the model to specific terminology or workflows, producing a custom model."
             },
             {
                 "id": 14,
@@ -226,7 +226,7 @@
                     "external knowledge",
                     "contextual information"
                 ],
-                "content": "Retrieval-Augmented Generation (RAG) combines a generative AI model with external knowledge retrieval. Relevant documents are retrieved at query time and added to the prompt. This improves accuracy when answers depend on current or domain-specific information."
+                "content": "Retrieval-Augmented Generation combines a generative AI model with external knowledge retrieval. Relevant documents are retrieved at query time and added to the prompt. This improves accuracy when answers depend on current or domain-specific information."
             },
             {
                 "id": 16,
@@ -237,7 +237,7 @@
                     "skills",
                     "skill"
                 ],
-                "content": "In the context of an AI agent, tools are external capabilities that the agent can use to perform tasks, while skills are specific instructions that guide the agent on how to use those tools to achieve particular goals."
+                "content": "AI agents use tools and skills to extend their capabilities. Tools are external connections to systems and data sources; skills are instructions that guide the agent on how to use those tools to achieve specific goals."
             },
             {
                 "id": 17,
@@ -462,7 +462,7 @@
                     "shared vector space",
                     "image captioning"
                 ],
-                "content": "Vision Transformers divide images into fixed-size patches, convert each to an embedding vector, and use self-attention to capture relationships across the image. Multimodal models represent images and text in a shared embedding space, enabling image captioning and visual question answering."
+                "content": "Vision Transformers apply the transformer architecture to images for tasks like classification and captioning. Images are split into fixed-size patches, each converted to an embedding vector, with self-attention capturing relationships across patches. Multimodal models extend this by sharing an embedding space between images and text."
             },
             {
                 "id": 30,
@@ -509,7 +509,7 @@
                     "receipt processing",
                     "form processing"
                 ],
-                "content": "Information extraction pulls structured data from unstructured documents like invoices and contracts. The workflow uses OCR to read text, field extraction to identify data points, and normalization into a consistent format. It automates document-heavy workflows in finance, healthcare, and legal services."
+                "content": "Information extraction pulls structured data from unstructured documents. The workflow uses OCR to read text, field extraction to identify data points, and normalization into a consistent format. It automates document-heavy workflows in finance, healthcare, and legal services."
             },
             {
                 "id": 32,
@@ -523,7 +523,7 @@
                     "character recognition",
                     "text region"
                 ],
-                "content": "Optical character recognition (OCR) converts images of text into digital text by detecting text regions and recognizing characters. Modern OCR uses deep learning to handle handwritten text, low-quality scans, skewed pages, and complex layouts. It is foundational for digitizing printed documents."
+                "content": "Optical character recognition (OCR) identifies text in images. It converts images into digital text by detecting text regions and recognizing characters. Modern OCR uses deep learning to handle handwritten text, low-quality scans, skewed pages, and complex layouts. It is foundational for digitizing printed documents."
             },
             {
                 "id": 33,
@@ -534,7 +534,7 @@
                     "data extraction",
                     "key-value"
                 ],
-                "content": "Field extraction identifies information like dates, amounts, and names using named entity recognition and pattern matching. Field mapping links extracted values to target database fields. Normalization converts values to consistent formats for use in downstream systems."
+                "content": "Field extraction identifies specific data values in documents. Field mapping links extracted values to target database fields. Normalization converts values to consistent formats for use in downstream systems."
             }
         ]
     },
@@ -561,7 +561,7 @@
                     "azure ai services",
                     "cognitive services"
                 ],
-                "content": "Microsoft Foundry tools include Azure Language for NLP; Azure Speech with Voice Live, Text-to-Speech, and Speech-to-Text; Azure Translator for translation; and Azure Content Understanding for extracting insights from documents, images, audio, and video."
+                "content": "Microsoft Foundry Tools includes pre-built AI models for common capabilities. These include Azure Language for NLP, Azure Speech for voice tasks, Azure Translator for translation, and Azure Content Understanding for extracting insights from documents, images, audio, and video."
             },
             {
                 "id": 36,
@@ -571,7 +571,7 @@
                     "foundry models",
                     "model catalog"
                 ],
-                "content": "Foundry Models is a model catalog that includes models from Microsoft, OpenAI, Anthropic, and other model providers."
+                "content": "Foundry Models is a model catalog offering a broad selection of AI models. It includes models from Microsoft, OpenAI, Anthropic, and other providers, spanning language, vision, and specialized tasks."
             },
             {
                 "id": 37,
@@ -589,7 +589,7 @@
                     "develop agents",
                     "create agents"
                 ],
-                "content": "Create AI agents that use the provided large language models (LLMs) in Microsoft Foundry. Use the Foundry Agent Service to create agents in Foundry, or use an agent development SDK (such as the Microsoft Agent Framework) and host your agent in Foundry. Connect your agent to tools and knowledge sources to enable it to perform tasks."
+                "content": "Foundry supports building AI agents powered by large language models. Agents can be created using the Foundry Agent Service or an SDK such as the Microsoft Agent Framework, then hosted in Foundry. Connect your agent to tools and knowledge sources to enable it to perform tasks."
             },
             {
                 "id": 38,
@@ -603,7 +603,7 @@
                     "chatcompletions api",
                     "azureprojects"
                 ],
-                "content": "Developers use the Foundry SDK for programmatic access to projects and agents. The OpenAI ChatCompletions and Responses APIs enable conversations with large language models and agents."
+                "content": "Foundry provides SDKs and APIs for programmatic access to AI models and agents. The Foundry SDK gives access to projects and agents; the OpenAI ChatCompletions and Responses APIs enable conversational interactions with large language models."
             },
             {
                 "id": 39,
@@ -646,7 +646,7 @@
                     "openai",
                     "gpt"
                 ],
-                "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
+                "content": "OpenAI models are available in Microsoft Foundry Models. These include multiple generations of GPT models suited to tasks such as text generation, summarization, translation, and question answering."
             },
             {
                 "id": 42,
@@ -655,7 +655,7 @@
                     "anthropic",
                     "claude"
                 ],
-                "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+                "content": "Anthropic models are available in Microsoft Foundry Models. These include Claude and other powerful language models suited to content generation, code generation, and conversational agent development."
             },
             {
                 "id": 43,
@@ -691,7 +691,7 @@
                     "azure speech",
                     "azure voice"
                 ],
-                "content": "Azure Speech in Microsoft Foundry Tools includes Text-to-Speech (speech synthesis), Speech-to-Text (speech synthesis), Voice Live (realtime spoken conversation), and Speech Translation."
+                "content": "Azure Speech in Microsoft Foundry Tools provides AI speech capabilities. It includes Text-to-Speech (speech synthesis), Speech-to-Text (speech recognition), Voice Live (realtime spoken conversation), and Speech Translation."
             },
             {
                 "id": 45,
@@ -702,7 +702,7 @@
                     "conversational language understanding",
                     "luis"
                 ],
-                "content": "Azure Language in Microsoft Foundry Tools provides NLP capabilities like language detection, entity recognition, and personally identifiable information (PII) detection."
+                "content": "Azure Language in Microsoft Foundry Tools provides text processing functionality. Its natural language processing capabilities include language detection, entity recognition, and personally identifiable information (PII) detection."
             },
             {
                 "id": 46,
@@ -711,7 +711,7 @@
                 "keywords": [
                     "content understanding"
                 ],
-                "content": "Azure Content Understanding in Microsoft Foundry Tools provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
+                "content": "Azure Content Understanding in Microsoft Foundry Tools enables information extraction. It provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
             {
                 "id": 47,
