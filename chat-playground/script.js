@@ -2515,6 +2515,7 @@ class ChatPlayground {
                 top_p: this.config.modelParameters.top_p,
                 repeat_penalty: this.config.modelParameters.repetition_penalty,
                 repeat_last_n: 64,
+                stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                 cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
                 stream: true
@@ -3834,6 +3835,7 @@ class ChatPlayground {
                     top_p: this.config.modelParameters.top_p,
                     repeat_penalty: this.config.modelParameters.repetition_penalty,
                     repeat_last_n: 64,
+                    stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                     stream: false
                 };
 
