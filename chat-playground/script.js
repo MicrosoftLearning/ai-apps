@@ -1984,7 +1984,11 @@ class ChatPlayground {
             // Add user message with image analysis if available
             let finalUserMessage = userMessage;
             if (imageAnalysis) {
-                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
+                if (!userMessage) {
+                    finalUserMessage = 'Tell me about this [Current image shows: ' + imageAnalysis + ']';
+                } else {
+                    finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
+                }
             }
 
             // If system prompt indicates short response is wanted and there's no image/file context, guide the model
