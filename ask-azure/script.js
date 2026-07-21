@@ -1542,7 +1542,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     promptConfigureFoundry() {
-        this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+        this.addMessage('assistant', 'Hi!\nBefore we can chat, you need to configure your Foundry settings.\nUse the ⚙️ button above to enter your Foundry project endpoint, model deployment, and authentication credentials.');
         this.elements.configBtn.focus();
     }
 
