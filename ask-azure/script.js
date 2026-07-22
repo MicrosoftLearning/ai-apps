@@ -76,7 +76,7 @@ IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing.
 - Explain concepts clearly and concisely, using examples and analogies when helpful.
 - When context is provided, use it to inform your answer.
-- When additional information is needed, use the Microsoft Learn MCP server and rely on Microsoft Learn content only.
+- When additional information is needed, use the Microsoft Learn MCP server or web search.
 - Only provide code examples when specifically asked, and only from official documentation found using the Microsoft Learn MCP server.`;
 
         this.initialize();
@@ -1681,7 +1681,8 @@ IMPORTANT: Follow these guidelines when responding:
                     server_description: 'Microsoft Learn MCP server for searching and fetching Microsoft documentation, and provide links to relevant pages that you find.',
                     server_url: 'https://learn.microsoft.com/api/mcp',
                     require_approval: 'never'
-                }
+                },
+                { type: "web_search" }
             ],
             tool_choice: 'auto'
         };
