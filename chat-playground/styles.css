@@ -502,6 +502,13 @@ header h1 {
     display: flex;
     flex-direction: column;
     flex: 1;
+    min-width: 0;
+}
+
+.file-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .file-name {
@@ -509,6 +516,26 @@ header h1 {
     font-size: 13px;
     color: #333;
     margin-bottom: 2px;
+    overflow-wrap: anywhere;
+}
+
+.file-index-btn {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #605e5c;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.file-index-btn:hover,
+.file-index-btn:focus-visible {
+    background: #e9ecef;
+    color: #323130;
 }
 
 .file-size {
@@ -1042,6 +1069,43 @@ header h1 {
     border-top: 1px solid #e1e1e1;
     background: #faf9f8;
     flex-shrink: 0;
+}
+
+.file-index-modal-content {
+    max-width: 720px;
+}
+
+.file-index-summary {
+    margin-bottom: 16px;
+    color: #605e5c;
+    font-size: 14px;
+}
+
+.file-index-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.file-index-table th,
+.file-index-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #e1e1e1;
+    text-align: left;
+    vertical-align: top;
+}
+
+.file-index-table th:first-child,
+.file-index-table td:first-child {
+    width: 45%;
+    overflow-wrap: anywhere;
+}
+
+.file-index-table th {
+    position: sticky;
+    top: -24px;
+    background: white;
+    color: #323130;
 }
 
 .speech-section h3 {
@@ -2010,6 +2074,16 @@ body.dark-mode .remove-file-btn:hover {
     background: #555;
 }
 
+body.dark-mode .file-index-btn {
+    color: #b0b0b0;
+}
+
+body.dark-mode .file-index-btn:hover,
+body.dark-mode .file-index-btn:focus-visible {
+    background: #444;
+    color: #e0e0e0;
+}
+
 body.dark-mode .upload-constraints small {
     color: #b0b0b0;
 }
@@ -2126,6 +2200,20 @@ body.dark-mode .modal-content h2 {
 }
 
 body.dark-mode .modal-content h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .file-index-summary {
+    color: #b0b0b0;
+}
+
+body.dark-mode .file-index-table th,
+body.dark-mode .file-index-table td {
+    border-bottom-color: #444;
+}
+
+body.dark-mode .file-index-table th {
+    background: #2d2d2d;
     color: #e0e0e0;
 }
 

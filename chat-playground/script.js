@@ -56,6 +56,7 @@ class ChatPlayground {
             fileUpload: {
                 content: null,
                 fileName: null,
+                index: null,
                 maxSize: 3 * 1024, // 3KB
                 allowedTypes: ['.txt']
             },
@@ -526,6 +527,20 @@ class ChatPlayground {
 
     initializeFileUpload() {
         this.addEventListenerTracked('fileInput', 'change', (e) => this.handleFileUpload(e));
+
+        const indexButton = document.getElementById('file-index-btn');
+        const indexModal = document.getElementById('file-index-modal');
+        const indexCloseButton = document.getElementById('file-index-close');
+        const indexDoneButton = document.getElementById('file-index-done');
+
+        if (indexButton) indexButton.addEventListener('click', () => this.openFileIndexModal());
+        if (indexCloseButton) indexCloseButton.addEventListener('click', () => this.closeFileIndexModal());
+        if (indexDoneButton) indexDoneButton.addEventListener('click', () => this.closeFileIndexModal());
+        if (indexModal) {
+            indexModal.addEventListener('click', (e) => {
+                if (e.target === indexModal) this.closeFileIndexModal();
+            });
+        }
     }
 
     handleFileUpload(event) {
@@ -550,6 +565,7 @@ class ChatPlayground {
         reader.onload = (e) => {
             this.config.fileUpload.content = e.target.result;
             this.config.fileUpload.fileName = file.name;
+            this.config.fileUpload.index = this.buildFileIndex(e.target.result);
             this.displayFileInfo(file);
             this.showToast(`${ChatPlayground.MESSAGES.SUCCESS.FILE_UPLOADED}: ${file.name}`);
 
@@ -566,7 +582,7 @@ class ChatPlayground {
     }
 
     displayFileInfo(file) {
-        this.setElementText('fileName', '🗒 ' + file.name);
+        this.setElementText('fileName', file.name);
         this.setElementText('fileSize', `${(file.size / 1024).toFixed(1)}KB`);
         this.setElementStyle('fileInfo', 'display', 'flex');
         this.hideElement('addDataBtn');
@@ -609,9 +625,12 @@ class ChatPlayground {
     }
 
     removeFile() {
+        this.closeFileIndexModal();
+
         // Clear file data
         this.config.fileUpload.content = null;
         this.config.fileUpload.fileName = null;
+        this.config.fileUpload.index = null;
 
         // Update UI using utility functions
         this.hideElement('fileInfo');
@@ -1744,81 +1763,103 @@ class ChatPlayground {
 
 
 
-    // Extract keywords from text (excluding common stopwords)
-    extractKeywords(text) {
-        const stopwords = new Set([
-            // Articles, prepositions, conjunctions
-            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
-            'after', 'before', 'between', 'during', 'into', 'through', 'over',
-            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
-            // Pronouns
-            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her',
-            'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'i\'m',
-            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
-            // Determiners and quantifiers
-            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
-            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
-            'own', 'same', 'other', 'another', 'much', 'many',
-            // Verbs (auxiliary, modal, and common generic)
-            'am', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has',
-            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
-            'may', 'might', 'must', 'shall', 'ought', 'will',
-            'be', 'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
-            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
-            'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
-            'describe', 'define',
-            // Question words
-            'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
-            'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
-            'hows',
-            // Common adverbs
-            'also', 'just', 'now', 'here', 'there', 'then', 'very', 'too',
-            'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
-            'perhaps', 'about',
-            // Other common words
-            'yes', 'no', 'thing', 'something', 'anything', 'nothing',
-            'everything', 'someone', 'anyone', 'everyone', 'understand', 'know',
-            'think', 'believe', 'feel', 'appear',
-        ]);
-
-        // Extract words, convert to lowercase, filter stopwords and short words
-        const words = text.toLowerCase()
+    tokenizeText(text) {
+        return text.toLowerCase()
             .replace(/[^a-z0-9\s]/g, ' ')
             .split(/\s+/)
-            .filter(word => word.length > 2 && !stopwords.has(word));
-
-        // Return unique keywords
-        return [...new Set(words)];
+            .filter(word => word.length > 2 && !ChatPlayground.STOPWORDS.has(word));
     }
 
-    // Strip punctuation from text, keeping only alphanumeric and whitespace
-    stripPunctuation(text) {
-        return text.replace(/[^a-z0-9\s]/g, ' ');
+    // Extract unique keywords using the same normalization as the file index.
+    extractKeywords(text) {
+        return [...new Set(this.tokenizeText(text))];
     }
 
-    // Extract relevant lines from file content based on keywords
-    extractRelevantLines(fileContent, keywords) {
-        if (!fileContent || !keywords || keywords.length === 0) {
-            return '';
-        }
+    buildFileIndex(fileContent) {
+        const lines = fileContent.split(/\r?\n/)
+            .map((text, lineIndex) => ({
+                lineNumber: lineIndex + 1,
+                text: text.trim(),
+                words: new Set(this.tokenizeText(text))
+            }))
+            .filter(line => line.text.length > 0);
 
-        const lines = fileContent.split('\n');
-        let bestLine = '';
-        let bestCount = 0;
+        const words = new Map();
+        lines.forEach(line => {
+            line.words.forEach(word => {
+                if (!words.has(word)) words.set(word, []);
+                words.get(word).push(line.lineNumber);
+            });
+        });
 
-        for (const line of lines) {
-            // Strip punctuation and lowercase for comparison
-            const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
-            const count = keywords.filter(keyword => lineWords.includes(keyword)).length;
-            if (count > bestCount) {
-                bestCount = count;
-                bestLine = line.trim();
-            }
-        }
+        return { lines, words };
+    }
 
-        return bestLine;
+    findMatchingFileLines(keywords) {
+        const fileIndex = this.config.fileUpload.index;
+        if (!fileIndex || !keywords || keywords.length === 0) return [];
+
+        const matchingLineNumbers = new Set();
+        keywords.forEach(keyword => {
+            const lineNumbers = fileIndex.words.get(keyword) || [];
+            lineNumbers.forEach(lineNumber => matchingLineNumbers.add(lineNumber));
+        });
+
+        return fileIndex.lines
+            .filter(line => matchingLineNumbers.has(line.lineNumber))
+            .map(line => line.text);
+    }
+
+    openFileIndexModal() {
+        const modal = document.getElementById('file-index-modal');
+        const title = document.getElementById('file-index-modal-title');
+        const modalBody = document.getElementById('file-index-content');
+        const fileIndex = this.config.fileUpload.index;
+        if (!modal || !title || !modalBody || !fileIndex) return;
+
+        title.textContent = `File index: ${this.config.fileUpload.fileName}`;
+        modalBody.replaceChildren();
+
+        const summary = document.createElement('p');
+        summary.className = 'file-index-summary';
+        summary.textContent = `${fileIndex.words.size} indexed terms across ${fileIndex.lines.length} non-empty lines.`;
+        modalBody.appendChild(summary);
+
+        const table = document.createElement('table');
+        table.className = 'file-index-table';
+        const header = table.createTHead().insertRow();
+        ['Term', 'Lines'].forEach(label => {
+            const heading = document.createElement('th');
+            heading.scope = 'col';
+            heading.textContent = label;
+            header.appendChild(heading);
+        });
+
+        const tableBody = table.createTBody();
+        [...fileIndex.words.entries()]
+            .sort(([firstWord], [secondWord]) => firstWord.localeCompare(secondWord))
+            .forEach(([word, lineNumbers]) => {
+                const row = tableBody.insertRow();
+                row.insertCell().textContent = word;
+                row.insertCell().textContent = lineNumbers.join(', ');
+            });
+        modalBody.appendChild(table);
+
+        this.fileIndexLastFocusedElement = document.activeElement;
+        modal.style.display = 'flex';
+        modalBody.scrollTop = 0;
+        document.body.style.overflow = 'hidden';
+        document.getElementById('file-index-close')?.focus();
+    }
+
+    closeFileIndexModal() {
+        const modal = document.getElementById('file-index-modal');
+        if (!modal || modal.style.display === 'none') return;
+
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+        this.fileIndexLastFocusedElement?.focus();
+        this.fileIndexLastFocusedElement = null;
     }
 
     async handleSendMessage() {
@@ -2247,14 +2288,7 @@ class ChatPlayground {
             const keywords = this.extractKeywords(firstLine);
 
             if (keywords && keywords.length > 0) {
-                const lines = this.config.fileUpload.content.split('\n');
-                const matchingLines = lines
-                    .filter(line => {
-                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
-                        return keywords.some(keyword => lineWords.includes(keyword));
-                    })
-                    .map(line => line.trim())
-                    .filter(line => line.length > 0);
+                const matchingLines = this.findMatchingFileLines(keywords);
 
                 if (matchingLines.length > 0) {
                     this.fileContentUsedInPrompt = true;
@@ -2472,13 +2506,7 @@ class ChatPlayground {
         if (this.config.fileUpload.content) {
             const fileKeywords = this.extractKeywords(userMessage);
             if (fileKeywords && fileKeywords.length > 0) {
-                const matchingLines = this.config.fileUpload.content.split('\n')
-                    .filter(line => {
-                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
-                        return fileKeywords.some(keyword => lineWords.includes(keyword));
-                    })
-                    .map(line => line.trim())
-                    .filter(line => line.length > 0);
+                const matchingLines = this.findMatchingFileLines(fileKeywords);
                 if (matchingLines.length > 0) {
                     this.fileContentUsedInPrompt = true;
                     const lastMsg = messages[messages.length - 1];
@@ -4840,6 +4868,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const voiceInputErrorModal = document.getElementById('voice-input-error-modal');
             if (voiceInputErrorModal && voiceInputErrorModal.style.display !== 'none') {
                 window.chatPlaygroundApp?.closeVoiceInputErrorModal();
+                return;
+            }
+
+            const fileIndexModal = document.getElementById('file-index-modal');
+            if (fileIndexModal && fileIndexModal.style.display !== 'none') {
+                window.chatPlaygroundApp?.closeFileIndexModal();
                 return;
             }
 

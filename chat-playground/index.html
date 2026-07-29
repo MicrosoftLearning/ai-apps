@@ -102,7 +102,11 @@
                                 <div class="file-info" id="file-info" style="display: none;" role="status"
                                     aria-live="polite">
                                     <div class="file-details">
-                                        <span class="file-name" id="file-name" aria-label="Uploaded file name"></span>
+                                        <div class="file-name-row">
+                                            <button class="file-index-btn" id="file-index-btn" type="button"
+                                                title="View file index" aria-label="View index for uploaded file">🗒</button>
+                                            <span class="file-name" id="file-name" aria-label="Uploaded file name"></span>
+                                        </div>
                                         <span class="file-size" id="file-size" aria-label="File size"></span>
                                     </div>
                                     <button class="remove-file-btn" id="remove-file-btn" onclick="removeFile()"
@@ -253,6 +257,22 @@
                             role="status">AI-generated content may be incorrect</span>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Index Modal -->
+    <div class="modal-overlay" id="file-index-modal" style="display: none;" role="dialog" aria-modal="true"
+        aria-labelledby="file-index-modal-title">
+        <div class="modal-content file-index-modal-content">
+            <div class="modal-header">
+                <h2 id="file-index-modal-title">File index</h2>
+                <button class="modal-close-btn" id="file-index-close" type="button"
+                    aria-label="Close file index dialog">✕</button>
+            </div>
+            <div class="modal-body" id="file-index-content"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="file-index-done" type="button">Close</button>
             </div>
         </div>
     </div>
@@ -476,7 +496,7 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=49"></script>
+    <script type="module" src="script.js?v=51"></script>
 </body>
 
 </html>
