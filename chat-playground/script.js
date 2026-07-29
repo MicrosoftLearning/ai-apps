@@ -2043,19 +2043,6 @@ class ChatPlayground {
 
             messages.push({ role: "user", content: finalUserMessage });
 
-            // Log the complete prompt being sent to the model
-            console.log('=== COMPLETE PROMPT BEING SENT TO MODEL ===');
-            console.log('Current System Message (from UI):', this.currentSystemMessage);
-            console.log('Effective System Message (with file data):', this.getEffectiveSystemMessage());
-            console.log('Model:', this.currentModelId);
-            console.log('Total messages:', messages.length);
-            console.log('Messages:');
-            messages.forEach((msg, index) => {
-                console.log(`\n[${index}] Role: ${msg.role}`);
-                console.log(`Content: ${msg.content}`);
-            });
-            console.log('\n=== END PROMPT ===\n');
-
             // Remove typing indicator
             typingIndicator.remove();
 
@@ -2233,6 +2220,7 @@ class ChatPlayground {
             if (!keywords) return null;
 
             const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
+            console.log('Wikipedia search request:', { method: 'GET', url: searchUrl, query: keywords });
             const searchResponse = await fetch(searchUrl);
             if (!searchResponse.ok) throw new Error('Wikipedia search request failed');
 
@@ -2249,6 +2237,7 @@ class ChatPlayground {
             if (wantsShortResponse) {
                 // Return just the first paragraph (using summary endpoint)
                 const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+                console.log('Wikipedia summary request:', { method: 'GET', url: summaryUrl, title });
                 const summaryResponse = await fetch(summaryUrl);
                 if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
 
@@ -2261,6 +2250,7 @@ class ChatPlayground {
             } else {
                 // Return the full lead section using the extracts API (plain text)
                 const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=extracts&exintro=1&explaintext=1&format=json&origin=*`;
+                console.log('Wikipedia extract request:', { method: 'GET', url: extractUrl, title });
                 const extractResponse = await fetch(extractUrl);
                 if (!extractResponse.ok) throw new Error('Wikipedia extract request failed');
 
@@ -2539,7 +2529,7 @@ class ChatPlayground {
                 return;  // Return early to trigger failover
             }
 
-            completion = await this.wllama.createChatCompletion({
+            const completionParams = {
                 messages,
                 max_tokens: this.config.modelParameters.max_tokens,
                 temperature: this.config.modelParameters.temperature,
@@ -2551,7 +2541,9 @@ class ChatPlayground {
                 cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
                 stream: true
-            });
+            };
+            console.log('Wllama chat completion request:', completionParams);
+            completion = await this.wllama.createChatCompletion(completionParams);
 
             this.currentStream = completion;
 
@@ -3879,10 +3871,12 @@ class ChatPlayground {
                     }
 
                     this.currentAbortController = new AbortController();
-                    const completion = await this.wllama.createChatCompletion({
+                    const voiceCompletionRequest = {
                         ...voiceCompletionParams,
                         abortSignal: this.currentAbortController.signal
-                    });
+                    };
+                    console.log('Wllama voice completion request:', voiceCompletionRequest);
+                    const completion = await this.wllama.createChatCompletion(voiceCompletionRequest);
                     this.currentAbortController = null;
                     responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
                     console.log('Wllama voice completion finished, response length:', responseText.length);
@@ -3901,10 +3895,12 @@ class ChatPlayground {
                             await this.initializeWllama();
                             if (this.wllama && !this.stopRequested) {
                                 this.currentAbortController = new AbortController();
-                                const retryCompletion = await this.wllama.createChatCompletion({
+                                const voiceRetryRequest = {
                                     ...voiceCompletionParams,
                                     abortSignal: this.currentAbortController.signal
-                                });
+                                };
+                                console.log('Wllama voice CPU retry request:', voiceRetryRequest);
+                                const retryCompletion = await this.wllama.createChatCompletion(voiceRetryRequest);
                                 this.currentAbortController = null;
                                 responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
                                 console.log('CPU voice retry finished, response length:', responseText.length);
