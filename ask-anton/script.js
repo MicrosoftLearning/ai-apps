@@ -303,7 +303,8 @@ class AskAnton {
         const threshold = token.length <= 3 ? 0.90 : (token.length <= 5 ? 0.88 : 0.85);
 
         for (const vocabWord of this.vocabList) {
-            // Skip if length difference is too large (optimization)
+            // Do not turn natural-language words into short acronym keywords.
+            if (token.length > 3 && vocabWord.length <= 3) continue;
             if (Math.abs(vocabWord.length - token.length) > 3) continue;
 
             const score = this.jaroWinkler(token, vocabWord);
@@ -1296,7 +1297,8 @@ class AskAnton {
 
         // Normalize the question: remove punctuation, extra spaces
         const normalizedQuestion = this.normalizeSearchText(lowerQuestion);
-        let words = normalizedQuestion.split(' ');
+        const originalWords = normalizedQuestion.split(' ');
+        let words = [...originalWords];
 
         // Apply fuzzy correction to each word before n-gram matching
         if (this.vocabList) {
@@ -1331,6 +1333,37 @@ class AskAnton {
                     text: word,
                     length: 1
                 });
+            }
+        });
+
+        // Allow one fuzzy token only when the rest of a multi-word keyword
+        // matches exactly. Phrase components never become standalone hits.
+        const nGramTexts = new Set(nGrams.map(ngram => ngram.text));
+        this.keywordMap.forEach((entries, keyword) => {
+            const keywordWords = keyword.split(' ');
+            if (keywordWords.length < 2 || keywordWords.length > originalWords.length) return;
+
+            for (let start = 0; start <= originalWords.length - keywordWords.length; start++) {
+                let fuzzyMatches = 0;
+                let isMatch = true;
+
+                for (let offset = 0; offset < keywordWords.length; offset++) {
+                    const questionWord = originalWords[start + offset];
+                    const keywordWord = keywordWords[offset];
+                    if (questionWord === keywordWord) continue;
+
+                    fuzzyMatches++;
+                    if (fuzzyMatches > 1 || this.jaroWinkler(questionWord, keywordWord) < 0.85) {
+                        isMatch = false;
+                        break;
+                    }
+                }
+
+                if (isMatch && fuzzyMatches === 1 && !nGramTexts.has(keyword)) {
+                    nGrams.push({ text: keyword, length: keywordWords.length });
+                    nGramTexts.add(keyword);
+                    break;
+                }
             }
         });
 
