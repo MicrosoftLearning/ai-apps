@@ -2624,7 +2624,7 @@ class AskAnton {
             if (!firstChunkReceived && !this.stopRequested) {
                 timeoutMessageAdded = true;
                 // Add a waiting message with animated dots
-                const waitingHtml = 'I\'m looking for information on that...<br><span class="typing-indicator" aria-label="Searching">●●●</span>';
+                const waitingHtml = 'I\'m looking for information on that...<br><span class="typing-indicator" aria-label="Searching">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(If my responses are too slow, try switching the model to <strong>None</strong>.)</p>';
                 messageTextDiv.innerHTML = waitingHtml;
                 this.scrollToBottom();
                 if (usedVoiceInput) {
