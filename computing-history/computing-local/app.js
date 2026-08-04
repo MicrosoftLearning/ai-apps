@@ -2186,7 +2186,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             if (!firstChunkReceived && !shouldStopResponse && bubbleElement) {
                 waitingMessageShown = true;
                 const waitingHtml = bubblePrefix + '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
-                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">I\'m working on a response. Please continue to wait...</p>';
+                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">I\'m working on a response. Please continue to wait, or stop and retry in <strong>Basic (Wikipedia)mode</strong>.</p>';
                 setBubbleContent(bubbleElement, waitingHtml);
                 scrollToBottom();
                 console.log('Wllama slow response: showing waiting message after 20 seconds');
