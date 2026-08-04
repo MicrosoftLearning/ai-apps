@@ -6,7 +6,7 @@
             {
                 "id": 1,
                 "title": "What is Artificial Intelligence?",
-                "video_id": "4512c9aa-12b9-4cd5-a77b-612a9202d253",
+                "video_id": "https://share.synthesia.io/embeds/videos/4512c9aa-12b9-4cd5-a77b-612a9202d253",
                 "keywords": [
                     "artificial intelligence",
                     "explain ai",
@@ -18,7 +18,7 @@
             {
                 "id": 2,
                 "title": "Responsible AI",
-                "video_id": "d170e076-b913-424c-a0a0-44a47c0d7ceb",
+                "video_id": "https://share.synthesia.io/embeds/videos/d170e076-b913-424c-a0a0-44a47c0d7ceb",
                 "keywords": [
                     "responsible ai",
                     "ethics",
@@ -44,7 +44,7 @@
             {
                 "id": 3,
                 "title": "Introduction to Machine Learning",
-                "video_id": "12719512-1cb0-430c-b09e-2798d6989012",
+                "video_id": "https://share.synthesia.io/embeds/videos/12719512-1cb0-430c-b09e-2798d6989012",
                 "keywords": [
                     "machine learning",
                     "ml",
@@ -61,7 +61,7 @@
             {
                 "id": 4,
                 "title": "Regression",
-                "video_id": "951d39cc-8866-41ad-8780-819dab65488f",
+                "video_id": "https://share.synthesia.io/embeds/videos/951d39cc-8866-41ad-8780-819dab65488f",
                 "keywords": [
                     "regression",
                     "regressor",
@@ -115,7 +115,7 @@
             {
                 "id": 8,
                 "title": "Introduction to Generative AI",
-                "video_id": "904e700e-4549-42ac-8056-7e4dfd505966",
+                "video_id": "https://share.synthesia.io/embeds/videos/904e700e-4549-42ac-8056-7e4dfd505966",
                 "keywords": [
                     "generative ai",
                     "genai",
@@ -128,7 +128,7 @@
             {
                 "id": 9,
                 "title": "Large Language Models",
-                "video_id": "298e27ef-f5b0-4ed7-ade5-623d8465105a",
+                "video_id": "https://share.synthesia.io/embeds/videos/298e27ef-f5b0-4ed7-ade5-623d8465105a",
                 "keywords": [
                     "large language model",
                     "large language models",
@@ -141,7 +141,7 @@
             {
                 "id": 10,
                 "title": "AI Agents",
-                "video_id": "17ea5149-8d84-4d51-8c46-e1a86d21815f",
+                "video_id": "https://share.synthesia.io/embeds/videos/17ea5149-8d84-4d51-8c46-e1a86d21815f",
                 "keywords": [
                     "agents",
                     "agent",
@@ -173,7 +173,7 @@
             {
                 "id": 12,
                 "title": "Prompt Engineering",
-                "video_id": "2330092e-48b9-4d41-905b-e1b4fd002356",
+                "video_id": "https://share.synthesia.io/embeds/videos/2330092e-48b9-4d41-905b-e1b4fd002356",
                 "keywords": [
                     "prompt engineering",
                     "prompt",
@@ -188,7 +188,7 @@
             {
                 "id": 13,
                 "title": "Fine-tuning and Custom Models",
-                "video_id": "4955a5e7-d701-469a-a845-93bb0b070003",
+                "video_id": "https://share.synthesia.io/embeds/videos/4955a5e7-d701-469a-a845-93bb0b070003",
                 "keywords": [
                     "fine tuning",
                     "fine-tune",
@@ -201,7 +201,7 @@
             {
                 "id": 14,
                 "title": "Evaluation of Generative AI Models",
-                "video_id": "e24b97c9-21ac-4465-bf20-ec0a35e55ed7",
+                "video_id": "https://share.synthesia.io/embeds/videos/e24b97c9-21ac-4465-bf20-ec0a35e55ed7",
                 "keywords": [
                     "evaluation",
                     "evaluate",
@@ -217,7 +217,7 @@
             {
                 "id": 15,
                 "title": "Retrieval-Augmented Generation (RAG)",
-                "video_id": "68942c8a-ca1e-490f-840f-6a15d0c7b8f7",
+                "video_id": "https://share.synthesia.io/embeds/videos/1101153e-8d13-4c60-bf09-d44eafc02c27",
                 "keywords": [
                     "retrieval augmented generation",
                     "rag",
@@ -241,7 +241,7 @@
             {
                 "id": 17,
                 "title": "Model Context Protocol (MCP)",
-                "video_id": "6285aa6e-5787-4375-914a-ab4e1f54a400",
+                "video_id": "https://share.synthesia.io/embeds/videos/6285aa6e-5787-4375-914a-ab4e1f54a400",
                 "keywords": [
                     "model context protocol",
                     "mcp"
@@ -257,7 +257,7 @@
             {
                 "id": 18,
                 "title": "Common Text Analysis Techniques",
-                "video_id": "0ce04283-6436-44f0-9838-1a9b293e5ed1",
+                "video_id": "https://share.synthesia.io/embeds/videos/0ce04283-6436-44f0-9838-1a9b293e5ed1",
                 "keywords": [
                     "text analysis",
                     "text analytics",
@@ -332,7 +332,7 @@
             {
                 "id": 23,
                 "title": "Overview of Speech",
-                "video_id": "882f1af7-944c-4be0-97c3-889dd985df68",
+                "video_id": "https://share.synthesia.io/embeds/videos/882f1af7-944c-4be0-97c3-889dd985df68",
                 "keywords": [
                     "speech",
                     "voice",
@@ -347,7 +347,7 @@
             {
                 "id": 24,
                 "title": "Speech Recognition (Speech to Text)",
-                "video_id": "cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
+                "video_id": "https://share.synthesia.io/embeds/videos/cb7fbb9d-e62b-455e-9fa6-b6ac79ed3cf1",
                 "keywords": [
                     "speech to text",
                     "speech-to-text",
@@ -367,7 +367,7 @@
             {
                 "id": 25,
                 "title": "Speech Synthesis (Text to Speech)",
-                "video_id": "a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
+                "video_id": "https://share.synthesia.io/embeds/videos/a83e3e97-a8ad-4368-9fa1-b7aef21f4e7c",
                 "keywords": [
                     "tts",
                     "text to speech",
@@ -392,7 +392,7 @@
             {
                 "id": 26,
                 "title": "Computer Vision Overview",
-                "video_id": "4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
+                "video_id": "https://share.synthesia.io/embeds/videos/4258ffd7-61d5-4cc2-992b-7cf059a32c0a",
                 "keywords": [
                     "computer vision",
                     "vision",
@@ -411,7 +411,7 @@
             {
                 "id": 27,
                 "title": "Image Processing",
-                "video_id": "a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
+                "video_id": "https://share.synthesia.io/embeds/videos/a2224506-2db8-4fbe-b1c9-1af29fc7b16d",
                 "keywords": [
                     "image processing",
                     "pixel",
@@ -427,7 +427,7 @@
             {
                 "id": 28,
                 "title": "Convolutional Neural Networks",
-                "video_id": "2fae02ed-55bc-44df-b37f-f7ce2373fe73",
+                "video_id": "https://share.synthesia.io/embeds/videos/2fae02ed-55bc-44df-b37f-f7ce2373fe73",
                 "keywords": [
                     "convolutional neural network",
                     "convolutional neural networks",
@@ -443,7 +443,7 @@
             {
                 "id": 29,
                 "title": "Vision Transformers",
-                "video_id": "9157a9d9-290b-4a2a-99c4-a28eab3369ad",
+                "video_id": "https://share.synthesia.io/embeds/videos/9157a9d9-290b-4a2a-99c4-a28eab3369ad",
                 "keywords": [
                     "visual transformer",
                     "visual transformers",
@@ -465,7 +465,7 @@
             {
                 "id": 30,
                 "title": "Image Generation",
-                "video_id": "5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
+                "video_id": "https://share.synthesia.io/embeds/videos/5fcc62e3-0757-4eea-a995-c57b3f89ea3b",
                 "keywords": [
                     "image generation",
                     "diffusion",
@@ -494,7 +494,7 @@
             {
                 "id": 31,
                 "title": "Overview of Information Extraction",
-                "video_id": "a9cbad65-a964-47fe-8bfc-fcb12257fd29",
+                "video_id": "https://share.synthesia.io/embeds/videos/a9cbad65-a964-47fe-8bfc-fcb12257fd29",
                 "keywords": [
                     "information extraction",
                     "document processing",
@@ -512,7 +512,7 @@
             {
                 "id": 32,
                 "title": "Optical Character Recognition (OCR)",
-                "video_id": "1c411668-84d6-494f-9d17-1090705e549f",
+                "video_id": "https://share.synthesia.io/embeds/videos/1c411668-84d6-494f-9d17-1090705e549f",
                 "keywords": [
                     "optical character recognition",
                     "ocr",
@@ -526,7 +526,7 @@
             {
                 "id": 33,
                 "title": "Field Extraction and Mapping",
-                "video_id": "f09417e1-0a82-4667-a7f5-0081f21d6a77",
+                "video_id": "https://share.synthesia.io/embeds/videos/f09417e1-0a82-4667-a7f5-0081f21d6a77",
                 "keywords": [
                     "field mapping",
                     "data extraction",
@@ -543,7 +543,7 @@
             {
                 "id": 34,
                 "title": "Microsoft Foundry",
-                "video_id": "ba14d7e5-71c8-4be0-8895-15db1d726756",
+                "video_id": "https://share.synthesia.io/embeds/videos/ba14d7e5-71c8-4be0-8895-15db1d726756",
                 "keywords": [
                     "foundry",
                     "azure"
@@ -553,7 +553,7 @@
             {
                 "id": 35,
                 "title": "Foundry Tools",
-                "video_id": "d4d80d65-8863-4184-a738-c5814802a1e7",
+                "video_id": "https://share.synthesia.io/embeds/videos/d4d80d65-8863-4184-a738-c5814802a1e7",
                 "keywords": [
                     "foundry tools",
                     "azure ai services",
@@ -564,7 +564,7 @@
             {
                 "id": 36,
                 "title": "Foundry Models",
-                "video_id": "916a346d-d084-48ae-8db7-2544f1200a9d",
+                "video_id": "https://share.synthesia.io/embeds/videos/916a346d-d084-48ae-8db7-2544f1200a9d",
                 "keywords": [
                     "foundry models",
                     "model catalog"
@@ -574,7 +574,7 @@
             {
                 "id": 37,
                 "title": "Foundry Agent Development",
-                "video_id": "1fbe6d33-f5bf-4803-8809-3a8eb518573c",
+                "video_id": "https://share.synthesia.io/embeds/videos/1fbe6d33-f5bf-4803-8809-3a8eb518573c",
                 "keywords": [
                     "foundry agent",
                     "foundry agents",
@@ -606,7 +606,7 @@
             {
                 "id": 39,
                 "title": "Foundry Toolkit for Visual Studio Code",
-                "video_id": "e4dd3172-8749-40d1-a009-d4c521424dc7",
+                "video_id": "https://share.synthesia.io/embeds/videos/e4dd3172-8749-40d1-a009-d4c521424dc7",
                 "keywords": [
                     "foundry toolkit",
                     "visual studio code",
@@ -622,7 +622,7 @@
             {
                 "id": 40,
                 "title": "Foundry IQ",
-                "video_id": "7595b77c-7a4e-41ec-9a9c-ccc93a5f4a1c",
+                "video_id": "https://share.synthesia.io/embeds/videos/0ee9925f-e4ee-4009-92ed-d0d0549565ed",
                 "keywords": [
                     "foundry iq",
                     "foundryiq",
@@ -681,7 +681,7 @@
             {
                 "id": 44,
                 "title": "Azure Speech",
-                "video_id": "66992e19-2df4-4287-b707-76e7c91b95a0",
+                "video_id": "https://share.synthesia.io/embeds/videos/66992e19-2df4-4287-b707-76e7c91b95a0",
                 "keywords": [
                     "voice live",
                     "live voice",
@@ -694,7 +694,7 @@
             {
                 "id": 45,
                 "title": "Azure Language",
-                "video_id": "785ec168-9609-473f-a5f0-a7cc9aaa5029",
+                "video_id": "https://share.synthesia.io/embeds/videos/785ec168-9609-473f-a5f0-a7cc9aaa5029",
                 "keywords": [
                     "azure language",
                     "conversational language understanding",
@@ -705,7 +705,7 @@
             {
                 "id": 46,
                 "title": "Azure Content Understanding",
-                "video_id": "614dd91c-98d3-4009-9b19-0423e812c4c8",
+                "video_id": "https://share.synthesia.io/embeds/videos/614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
                     "content understanding"
                 ],
@@ -714,7 +714,7 @@
             {
                 "id": 47,
                 "title": "Azure Translator",
-                "video_id": "2f839b96-b2a4-4fb8-ae20-4bffcfe4e92d",
+                "video_id": "https://share.synthesia.io/embeds/videos/2f839b96-b2a4-4fb8-ae20-4bffcfe4e92d",
                 "keywords": [
                     "azure translator",
                     "azure translation"
