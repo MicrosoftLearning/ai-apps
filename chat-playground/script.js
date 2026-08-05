@@ -48,7 +48,7 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.5,
+                temperature: 0.3,
                 top_p: 0.7,
                 max_tokens: 400,
                 repetition_penalty: 1.1
@@ -326,7 +326,7 @@ class ChatPlayground {
     // Get model-specific default parameters
     getModelDefaults() {
         return {
-            temperature: 0.5,
+            temperature: 0.3,
             top_p: 0.7,
             max_tokens: 768,
             repetition_penalty: 1.1
@@ -2488,7 +2488,7 @@ class ChatPlayground {
             contentEl = assistantMessageEl.querySelector('.message-content');
         }
 
-        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I\'m working on a response. Thanks for your patience!)</p>';
+        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">I\'m working on a response. Thanks for your patience!<br/>(If I take too long, try switching the model to <strong>None</strong>)</p>';
         contentEl.style.width = 'fit-content';
         contentEl.style.whiteSpace = 'normal';
 
@@ -2684,7 +2684,7 @@ class ChatPlayground {
     addThinkingIndicator() {
         const thinkingDiv = document.createElement('div');
         thinkingDiv.className = 'message assistant-message thinking-indicator';
-        thinkingDiv.innerHTML = `<div class="message-content" style="width: fit-content; white-space: normal"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I'm working on a response. Thanks for your patience!)</p></div>`;
+        thinkingDiv.innerHTML = `<div class="message-content" style="width: fit-content; white-space: normal"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">I'm working on a response. Thanks for your patience!<br/>(If I take too long, try switching the model to <strong>None</strong>)</p></div>`;
         this.chatMessages.appendChild(thinkingDiv);
 
         // Auto-scroll to bottom
@@ -4738,8 +4738,8 @@ function handleModalParameterChange(e) {
 window.resetParametersFromModal = function () {
     // Get model-specific defaults
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
-        temperature: 0.5,
-        top_p: 0.9,
+        temperature: 0.3,
+        top_p: 0.7,
         max_tokens: 768,
         repetition_penalty: 1.1
     };
