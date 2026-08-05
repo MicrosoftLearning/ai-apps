@@ -1377,11 +1377,11 @@ IMPORTANT: Follow these guidelines when responding:
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
 
-        // Extract videos from documents that have video_id
+        // Extract videos from documents that have video_url
         const videos = documents
-            .filter(doc => doc.video_id)
+            .filter(doc => doc.video_url)
             .map(doc => ({
-                video_id: doc.video_id,
+                video_url: doc.video_url,
                 title: doc.title
             }));
 
@@ -1626,12 +1626,12 @@ IMPORTANT: Follow these guidelines when responding:
             if (videos && videos.length > 0) {
                 if (videos.length === 1) {
                     formattedResponse += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">';
-                    formattedResponse += `<p>Watch this video for more details: <a href="#" class="video-link" data-video-id="${videos[0].video_id}" data-video-title="${videos[0].title}">${videos[0].title}</a></p>`;
+                    formattedResponse += `<p>Watch this video for more details: <a href="#" class="video-link" data-video-id="${videos[0].video_url}" data-video-title="${videos[0].title}">${videos[0].title}</a></p>`;
                 } else {
                     formattedResponse += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">';
                     formattedResponse += '<p><strong>These videos might provide more information:</strong></p><ul>';
                     videos.forEach(video => {
-                        formattedResponse += `<li><a href="#" class="video-link" data-video-id="${video.video_id}" data-video-title="${video.title}">${video.title}</a></li>`;
+                        formattedResponse += `<li><a href="#" class="video-link" data-video-id="${video.video_url}" data-video-title="${video.title}">${video.title}</a></li>`;
                     });
                     formattedResponse += '</ul>';
                 }

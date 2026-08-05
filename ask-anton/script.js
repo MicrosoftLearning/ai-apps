@@ -1486,8 +1486,8 @@ class AskAnton {
         const categories = [...new Set(rankedMatches.map(m => m.category))];
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
-        const videos = documents.filter(doc => doc.video_id).map(doc => ({
-            video_id: doc.video_id,
+        const videos = documents.filter(doc => doc.video_url).map(doc => ({
+            video_url: doc.video_url,
             title: doc.title
         }));
 
@@ -1912,12 +1912,12 @@ class AskAnton {
         if (videos && videos.length > 0) {
             if (videos.length === 1) {
                 const video = videos[0];
-                const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
+                const videoUrl = this.getSynthesiaVideoUrl(video.video_url);
                 const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
             } else {
                 const videoLinksHtml = videos.map(video => {
-                    const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
+                    const videoUrl = this.getSynthesiaVideoUrl(video.video_url);
                     return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 }).join('<br>');
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
