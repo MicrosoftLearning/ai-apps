@@ -593,15 +593,15 @@
                 "id": 38,
                 "title": "Foundry SDKs and APIs",
                 "keywords": [
-                    "foundry sdks",
-                    "foundry apis",
-                    "openai api",
-                    "openai sdk",
-                    "responses api",
-                    "chatcompletions api",
+                    "sdk",
+                    "sdks",
+                    "api",
+                    "apis",
+                    "responses",
+                    "chatcompletions",
                     "azureprojects"
                 ],
-                "content": "Foundry provides SDKs and APIs for programmatic access to AI models and agents. The Foundry SDK gives access to projects and agents; the OpenAI ChatCompletions and Responses APIs enable conversational interactions with large language models."
+                "content": "Foundry SDKs and APIs enable programmatic access to AI models, agents, and tools. The Foundry SDK gives access to projects and agents; the OpenAI ChatCompletions and Responses APIs enable conversational interactions with large language models; the Microsoft Agent Framework SDK provides an API for building agents. Foundry Tools SDKs enable integration with services like speech, language, translation, and content understanding."
             },
             {
                 "id": 39,
@@ -639,6 +639,38 @@
             },
             {
                 "id": 41,
+                "title": "Work IQ",
+                "video_url": "https://share.synthesia.io/embeds/videos/e521afb9-a673-41b7-a489-d4834912d69c",
+                "keywords": [
+                    "work iq",
+                    "workiq",
+                    "microsoft 365",
+                    "m365"
+                ],
+                "content": "Work IQ is a managed knowledge layer that agents can use to access information in documents, email, and other corporate sources. With Work IQ, you can integrate information from Microsoft 365 into your agent."
+            },
+            {
+                "id": 42,
+                "title": "Fabric IQ",
+                "keywords": [
+                    "fabric iq",
+                    "fabriciq",
+                    "fabric"
+                ],
+                "content": "Fabric IQ is a managed knowledge layer that agents can use to access data in Microsoft Fabric."
+            },
+            {
+                "id": 43,
+                "title": "Web IQ",
+                "keywords": [
+                    "web iq",
+                    "webiq",
+                    "bing"
+                ],
+                "content": "Web IQ is a managed knowledge layer that agents can use to access information on the web. With Web IQ, you can integrate search results from Bing into your agent."
+            },
+            {
+                "id": 44,
                 "title": "Open AI models in Foundry",
                 "keywords": [
                     "openai",
@@ -647,16 +679,22 @@
                 "content": "OpenAI models are available in Microsoft Foundry Models. These include multiple generations of GPT models suited to tasks such as text generation, summarization, translation, and question answering."
             },
             {
-                "id": 42,
+                "id": 45,
                 "title": "Anthropic models in Foundry",
+                "video_url": "https://share.synthesia.io/embeds/videos/fa093200-6ac4-436b-85e9-f1f6df1c48ee",
                 "keywords": [
                     "anthropic",
-                    "claude"
+                    "claude",
+                    "sonnet",
+                    "haiku",
+                    "opus",
+                    "fable",
+                    "mythos"
                 ],
-                "content": "Anthropic models are available in Microsoft Foundry Models. These include Claude and other powerful language models suited to content generation, code generation, and conversational agent development."
+                "content": "Anthropic Claude models are available in Microsoft Foundry Models. These include models suited to content generation, code generation, and conversational agent development; like Haiku, Sonnet, Opus, Fable, and Mythos."
             },
             {
-                "id": 43,
+                "id": 46,
                 "title": "Authentication in Foundry",
                 "keywords": [
                     "authentication",
@@ -679,7 +717,7 @@
                 "content": "Microsoft Foundry secures access to its resources through robust authentication mechanisms, including key-based authentication and integration with Microsoft Entra ID. Client applications must authenticate using API keys or managed identity credentials to access models and agents."
             },
             {
-                "id": 44,
+                "id": 47,
                 "title": "Azure Speech",
                 "video_url": "https://share.synthesia.io/embeds/videos/66992e19-2df4-4287-b707-76e7c91b95a0",
                 "keywords": [
@@ -692,7 +730,7 @@
                 "content": "Azure Speech in Microsoft Foundry Tools provides AI speech capabilities. It includes Text-to-Speech (speech synthesis), Speech-to-Text (speech recognition), Voice Live (realtime spoken conversation), and Speech Translation."
             },
             {
-                "id": 45,
+                "id": 48,
                 "title": "Azure Language",
                 "video_url": "https://share.synthesia.io/embeds/videos/785ec168-9609-473f-a5f0-a7cc9aaa5029",
                 "keywords": [
@@ -703,16 +741,17 @@
                 "content": "Azure Language in Microsoft Foundry Tools provides text processing functionality. Its natural language processing capabilities include language detection, entity recognition, and personally identifiable information (PII) detection."
             },
             {
-                "id": 46,
+                "id": 49,
                 "title": "Azure Content Understanding",
                 "video_url": "https://share.synthesia.io/embeds/videos/614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
-                    "content understanding"
+                    "content understanding",
+                    "document intelligence"
                 ],
                 "content": "Azure Content Understanding in Microsoft Foundry Tools enables information extraction. It provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
             {
-                "id": 47,
+                "id": 50,
                 "title": "Azure Translator",
                 "video_url": "https://share.synthesia.io/embeds/videos/2f839b96-b2a4-4fb8-ae20-4bffcfe4e92d",
                 "keywords": [
@@ -728,7 +767,7 @@
         "link": "https://aiskillsnavigator.microsoft.com/credentials",
         "documents": [
             {
-                "id": 48,
+                "id": 51,
                 "title": "Microsoft AI Certifications",
                 "keywords": [
                     "certification",
@@ -750,7 +789,7 @@
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
             {
-                "id": 49,
+                "id": 52,
                 "title": "Microsoft AI Credentials",
                 "keywords": [
                     "microsoft applied skill",
