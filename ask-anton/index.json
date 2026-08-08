@@ -691,7 +691,7 @@
                     "fable",
                     "mythos"
                 ],
-                "content": "Anthropic Claude models are available in Microsoft Foundry Models. These include models suited to content generation, code generation, and conversational agent development; like Haiku, Sonnet, Opus, Fable, and Mythos."
+                "content": "Anthropic Claude models are available in Microsoft Foundry Models. These include Haiku, Sonnet, Opus, Fable, and Mythos; and provide frontier AI capabilities."
             },
             {
                 "id": 46,
