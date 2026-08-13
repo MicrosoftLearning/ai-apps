@@ -1,5 +1,7 @@
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
+const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
+
 // Delay (ms) before clearing the search-status hint shown beneath the input
 // after a response finishes streaming. Tuned to stay visible long enough to read.
 const SEARCH_STATUS_CLEAR_DELAY = 2000;
@@ -552,13 +554,12 @@ class AskAnton {
             return false;
         }
 
-        const deviceMemory = navigator.deviceMemory || 0;
         const cores = navigator.hardwareConcurrency || 0;
 
-        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Hardware check: ${DEVICE_MEMORY_GB}GB RAM, ${cores} cores`);
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
-        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+        if (DEVICE_MEMORY_GB < MIN_MEMORY_GB || cores < MIN_CORES) {
             console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
@@ -732,7 +733,7 @@ class AskAnton {
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 const n_ctx = 1024;
-                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${navigator.deviceMemory ?? 'unknown'}GB)`);
+                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${DEVICE_MEMORY_GB}GB)`);
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
@@ -1476,9 +1477,8 @@ class AskAnton {
         // Build context from matched documents.
         // On low-memory devices (<16GB), inject only the first sentence of each document
         // to keep the prompt short and reduce prefill time on slow CPUs.
-        const isLowMemory = (navigator.deviceMemory || 0) < 16;
         const contextParts = rankedMatches.map(match => {
-            return isLowMemory
+            return DEVICE_MEMORY_GB < 16
                 ? this.extractFirstSentence(match.document.content) || match.document.content
                 : match.document.content;
         });
@@ -1964,6 +1964,16 @@ class AskAnton {
         return true;
     }
 
+    /** Store one complete turn on low-memory devices, otherwise store two. */
+    rememberConversationTurn(userMessage, assistantMessage) {
+        this.conversationHistory.push(
+            { role: 'user', content: userMessage },
+            { role: 'assistant', content: assistantMessage }
+        );
+        const historyEntryLimit = DEVICE_MEMORY_GB < 16 ? 2 : 4;
+        this.conversationHistory = this.conversationHistory.slice(-historyEntryLimit);
+    }
+
     // === Microsoft Learn MCP server integration ============================
     // Mirrors the streamable HTTP client used by learn-mcp-client: lazy
     // initialize → tools/list → tools/call, parses the returned JSON envelope,
@@ -2217,10 +2227,7 @@ class AskAnton {
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
-            this.conversationHistory = [
-                { role: 'user', content: userMessage },
-                { role: 'assistant', content: historyAssistantMessage }
-            ];
+            this.rememberConversationTurn(userMessage, historyAssistantMessage);
 
             // Track keywords for next potential no-results search
             this.previousKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
@@ -2298,10 +2305,7 @@ class AskAnton {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
                     messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
 
-                    this.conversationHistory = [
-                        { role: 'user', content: userMessage },
-                        { role: 'assistant', content: modelResponse.trim() }
-                    ];
+                    this.rememberConversationTurn(userMessage, modelResponse.trim());
                     return;
                 }
             }
@@ -2401,10 +2405,8 @@ class AskAnton {
 
             // Only add to conversation history if not stopped (to prevent corruption)
             if (!this.stopRequested && assistantMessage.trim()) {
-                this.conversationHistory = [
-                    { role: 'user', content: userMessage }, // Store original question, not the one with context
-                    { role: 'assistant', content: assistantMessage }
-                ];
+                // Store the original question, not the version augmented with context.
+                this.rememberConversationTurn(userMessage, assistantMessage);
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
@@ -2581,18 +2583,15 @@ class AskAnton {
             { role: 'system', content: this.SYSTEM_PROMPT }
         ];
 
-        // Add truncated previous conversation if available
-        if (this.conversationHistory.length >= 2) {
-            const prevUser = this.conversationHistory[this.conversationHistory.length - 2];
-            const prevAssistant = this.conversationHistory[this.conversationHistory.length - 1];
+        // Add the first sentence from each of the two most recent complete turns.
+        for (let i = 0; i + 1 < this.conversationHistory.length; i += 2) {
+            const previousUser = this.conversationHistory[i];
+            const previousAssistant = this.conversationHistory[i + 1];
 
-            if (prevUser.role === 'user' && prevAssistant.role === 'assistant') {
-                const prevUserSentence = this.extractFirstSentence(prevUser.content);
-                const prevAssistantSentence = this.extractFirstSentence(prevAssistant.content);
-
+            if (previousUser.role === 'user' && previousAssistant.role === 'assistant') {
                 messages.push(
-                    { role: 'user', content: prevUserSentence },
-                    { role: 'assistant', content: prevAssistantSentence }
+                    { role: 'user', content: this.extractFirstSentence(previousUser.content) },
+                    { role: 'assistant', content: this.extractFirstSentence(previousAssistant.content) }
                 );
             }
         }
@@ -2638,7 +2637,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: this.wllama_usedGPU ? 400 : (navigator.deviceMemory || 0) >= 16 ? 250 : 175,
+                max_tokens: this.wllama_usedGPU ? 400 : DEVICE_MEMORY_GB >= 16 ? 250 : 175,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
