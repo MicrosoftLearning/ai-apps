@@ -2,7 +2,6 @@ const CONTENT_FILTER_MESSAGE = "I'm sorry, I can't help with that because it tri
 
 class AskAnton {
     constructor() {
-        this.conversationHistory = [];
         this.isGenerating = false;
         this.indexData = null; // Contains the category structure from index.json
         this.vocabulary = null;  // Set of unique words from keyphrases, used for fuzzy correction
@@ -1672,16 +1671,6 @@ IMPORTANT: Follow these guidelines when responding:
                 });
             }
 
-            // Add to conversation history
-            this.conversationHistory.push({
-                role: 'user',
-                content: userMessage
-            });
-            this.conversationHistory.push({
-                role: 'assistant',
-                content: response
-            });
-
         } catch (error) {
             console.error('Error generating response:', error);
             responseMessage.remove();
@@ -2310,8 +2299,6 @@ IMPORTANT: Follow these guidelines when responding:
 
     restartConversation() {
         if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
-            // Clear conversation history
-            this.conversationHistory = [];
             this.previousResponseId = null;
 
             // Clear chat messages (keep welcome message)
