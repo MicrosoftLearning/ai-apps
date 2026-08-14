@@ -11,7 +11,7 @@ Most of the apps (with two Azure-based exceptions) are designed to run locally i
 - [Ask Anton (Azure-based and browser-based variants)](./choose-anton/)
 - [Computing History Agent (Azure-based and browser-based variants)](./computing-history/)
 - [Chat Playground](./chat-playground/)
-- [Model Coder (model client coding sandbox)](./model-coder/)
+- [Model Coder (Python OpenAI API coding sandbox)](./model-coder/)
 - [Language Playground](./language-playground/)
 - [Information Extractor](./info-extractor/)
 - [Python ScriptBook](./scriptbook/)
