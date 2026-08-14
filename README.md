@@ -17,6 +17,7 @@ Most of the apps (with two Azure-based exceptions) are designed to run locally i
 - [Python ScriptBook](./scriptbook/)
 - [ML Lite](./ml-lite/)
 - [Python Coder (python coding sandbox)](./python-coder/)
+- [C# Minor (C# coding sandbox)](http://aka.ms/c-sharp-minor)
 
 ## Transparency Notes
 
@@ -61,6 +62,7 @@ In addition to Wllama and the Microsoft Phi model described above for generative
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by Model Coder, Python Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
+- [Microsoft.CodeAnalysis.CSharp (Roslyn)](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/) used by C# Minor to provide in-browser C# code compilation.
 - [Microsoft Learn MCP Server](https://learn.microsoft.com/training/support/mcp) is used by Ask Anton (both variants) to retrieve information from Microsoft Learn documentation.
 - [Wikipedia API](https://www.mediawiki.org/wiki/Wikimedia_APIs) used in the computing history, chat playground, and model coder app as a failsafe model alternative when Wllama isn't available.
 
