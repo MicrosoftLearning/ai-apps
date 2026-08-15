@@ -45,9 +45,11 @@ The Azure-based **Ask Anton** and **Computing History** apps use a model that yo
 
 #### Local (in-browser) LLMs
 
-Browser-based apps use a [Microsoft Phi](https://azure.microsoft.com/products/phi) model; specifically *Microsoft Phi 3.5-mini*.
+Browser-based apps use a [Microsoft Phi](https://azure.microsoft.com/products/phi) model; specifically *Microsoft Phi 4-mini*.
 
-In computer and browser combinations that support the minimum specifications, the Phi model is loaded and run using the [Wllama](https://github.com/ngxson/wllama/blob/master/README.md) WASM-based runtime, with GPU-accelleration where available, or running on CPU (which may be considerably slower). In most apps, a failsafe "basic" mode in which no model is used and queries are processed using simple string-handling logic and JavaScript libraries is also available as an "option of last resort".
+In computer and browser combinations that support the minimum specifications, the Phi model is loaded and run using the [Wllama](https://github.com/ngxson/wllama/blob/master/README.md) WASM-based runtime, with GPU-accelleration where available, or running on CPU (which may be considerably slower). In most apps, a failsafe "basic" mode in which no model is used and queries are processed using simple string-handling logic and JavaScript libraries is also available.
+
+> **NOTE**: AI models are resource-intensive, and may run slowly (or not at all) on some hardware configurations. In some cases, the operating system may "throttle" CPU activity to prevent damage from overheating. Where possible, use a *balanced* power configuration. If responses from the model become slower over time, it may be because your system resources are being over-utilized. Switching to *basic* mode enables you to reduce processing overhead and improve responsiveness, while still exploring core AI concepts using simplified functionality.
 
 All in-browser LLM-based apps include a *minimal* content moderation solution in which the app validates input for common potentially offensive or harmful terms, and returns an appropriate message without submitting the prompt to the model. In some cases, legitimately non-offensive and non-harmful prompts may be blocked by this mechanism.
 

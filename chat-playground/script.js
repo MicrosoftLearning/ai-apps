@@ -1,4 +1,60 @@
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction('get_result', {
+                _name: 'gres_req'
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === 'null') {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error('Model returned an error:', jsonData);
+                throw new WllamaError(
+                    jsonData.message || 'Unknown inference error',
+                    'inference_error'
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -15,7 +71,7 @@ class ChatPlayground {
         this.usingWikipedia = false; // Track if no-model Wikipedia mode is active
         this.currentMode = 'none'; // 'phi-cpu' or 'none'
         this.wllamaLoaded = false; // Track if wllama is initialized
-        this.wllamaFailed = false; // Track if Phi 3.5-mini failed to load
+        this.wllamaFailed = false; // Track if Phi 4-mini failed to load
         this.wllamaUsedGPU = false; // True if current wllama instance was loaded with GPU layers
         this.gpuFailed = false; // True after a GPU session crash; suppresses future GPU attempts
         this.isModelLoaded = false;
@@ -48,7 +104,7 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.3,
+                temperature: 0.2,
                 top_p: 0.7,
                 max_tokens: 400,
                 repetition_penalty: 1.1
@@ -326,7 +382,7 @@ class ChatPlayground {
     // Get model-specific default parameters
     getModelDefaults() {
         return {
-            temperature: 0.3,
+            temperature: 0.2,
             top_p: 0.7,
             max_tokens: 768,
             repetition_penalty: 1.1
@@ -1265,7 +1321,7 @@ class ChatPlayground {
 
     /**
      * Check if the device meets minimum hardware requirements for running
-     * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+     * the Phi 4-mini model. Returns false if device memory or CPU cores
      * are below the minimum thresholds.
      * @returns {boolean} true if hardware meets requirements, false otherwise.
      */
@@ -1280,7 +1336,7 @@ class ChatPlayground {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
             return false;
         }
 
@@ -1393,7 +1449,7 @@ class ChatPlayground {
             this.currentMode = 'phi-cpu';
             this.wllamaLoaded = true;
             this.wllamaFailed = false;
-            this.currentModelId = 'Phi-3.5-mini-GGUF';
+            this.currentModelId = 'Phi-4-mini-GGUF';
 
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
@@ -1424,7 +1480,7 @@ class ChatPlayground {
         this.wllamaLoaded = false;
 
         const CONFIG_PATHS = {
-            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
+            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm',
         };
 
         const useMultiThread = window.crossOriginIsolated === true;
@@ -1433,8 +1489,8 @@ class ChatPlayground {
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
         const modelRef = {
-            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
-            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+            repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            //repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
             quant: 'Q4_K_M'
         };
 
@@ -1444,7 +1500,7 @@ class ChatPlayground {
                 if (this.modelLoadingCancelled) return;
                 const percentage = Math.round((loaded / total) * 100);
                 const adjusted = Math.round(20 + percentage * 0.8);
-                this.updateProgress(adjusted, `Loading Phi 3.5-mini: ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+                this.updateProgress(adjusted, `Loading Phi 4-mini: ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
                 this.showCancelLink();
                 if (progressCallback) progressCallback(loaded, total);
             }
@@ -1464,11 +1520,6 @@ class ChatPlayground {
                         // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                         console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
                         GPU_ENABLED = false;
-                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
-                        // which predates the fix. Fall back to CPU until wllama is upgraded.
-                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
-                        GPU_ENABLED = false;
                     }
                 } else {
                     GPU_ENABLED = false; // requestAdapter returned null — no WebGPU
@@ -1481,7 +1532,7 @@ class ChatPlayground {
 
         // Helper: create a fresh Wllama instance and load the model.
         const attemptLoad = async (n_gpu_layers, n_threads) => {
-            this.wllama = new Wllama(CONFIG_PATHS);
+            this.wllama = new FixedWllama(CONFIG_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
         };
 
@@ -1489,7 +1540,7 @@ class ChatPlayground {
             throw new Error('Model loading cancelled by user');
         }
 
-        this.updateProgress(10, 'Loading Phi 3.5-mini...');
+        this.updateProgress(10, 'Loading Phi 4-mini...');
         this.updateProgress(20, 'Downloading model...');
 
         const loadWithFallback = async () => {
@@ -1624,7 +1675,7 @@ class ChatPlayground {
 
         if (selectedValue === 'phi-cpu') {
             if (this.wllamaFailed) {
-                alert('Phi 3.5-mini is not available because it previously failed to load.');
+                alert('Phi 4-mini is not available because it previously failed to load.');
                 this.populateModelDropdown();
                 return;
             }
@@ -1641,7 +1692,7 @@ class ChatPlayground {
                     this.usingWllama = true;
                     this.usingWikipedia = false;
                     this.currentMode = 'phi-cpu';
-                    this.currentModelId = 'Phi-3.5-mini-GGUF';
+                    this.currentModelId = 'Phi-4-mini-GGUF';
                     this.wllamaFailed = false;
 
                     this.config.modelParameters = this.getModelDefaults();
@@ -1649,9 +1700,9 @@ class ChatPlayground {
                     this.setParameterControlsEnabled(true);
 
                     await this.clearChat();
-                    this.showToast('Switched to Phi 3.5-mini - Conversation restarted');
+                    this.showToast('Switched to Phi 4-mini - Conversation restarted');
 
-                    console.log('Switched to Phi 3.5-mini');
+                    console.log('Switched to Phi 4-mini');
                 } catch (error) {
                     console.error('Failed to load wllama:', error);
 
@@ -1669,14 +1720,14 @@ class ChatPlayground {
                     this.config.modelParameters = this.getModelDefaults();
                     this.updateParameterUI();
                     this.populateModelDropdown();
-                    alert('Failed to load Phi 3.5-mini. Switching to None (Wikipedia mode).');
+                    alert('Failed to load Phi 4-mini. Switching to None (Wikipedia mode).');
                     this.enableUI();
                 }
             } else {
                 this.usingWllama = true;
                 this.usingWikipedia = false;
                 this.currentMode = 'phi-cpu';
-                this.currentModelId = 'Phi-3.5-mini-GGUF';
+                this.currentModelId = 'Phi-4-mini-GGUF';
 
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
@@ -1684,10 +1735,10 @@ class ChatPlayground {
 
                 if (previousMode !== this.currentMode) {
                     await this.clearChat();
-                    this.showToast('Switched to Phi 3.5-mini - Conversation restarted');
+                    this.showToast('Switched to Phi 4-mini - Conversation restarted');
                 }
 
-                console.log('Switched to Phi 3.5-mini');
+                console.log('Switched to Phi 4-mini');
             }
         } else if (selectedValue === 'none') {
             this.usingWllama = false;
@@ -1713,10 +1764,10 @@ class ChatPlayground {
         // Clear existing options
         this.modelSelect.innerHTML = '';
 
-        // Add Phi 3.5-mini option
+        // Add Phi 4-mini option
         const cpuOption = document.createElement('option');
         cpuOption.value = 'phi-cpu';
-        cpuOption.textContent = 'Phi 3.5-mini';
+        cpuOption.textContent = 'Phi 4-mini';
         cpuOption.disabled = this.wllamaFailed;
         this.modelSelect.appendChild(cpuOption);
 
@@ -2083,7 +2134,7 @@ class ChatPlayground {
                     }
                 }
             } else {
-                throw new Error('No AI model available. Please wait for Phi 3.5-mini to load or switch to Wikipedia mode.');
+                throw new Error('No AI model available. Please wait for Phi 4-mini to load or switch to Wikipedia mode.');
             }
 
         } catch (error) {
@@ -2501,7 +2552,7 @@ class ChatPlayground {
                     this.fileContentUsedInPrompt = true;
                     const lastMsg = messages[messages.length - 1];
                     if (lastMsg && lastMsg.role === 'user') {
-                        lastMsg.content += '\nUse the following information to answer:\n' + matchingLines.join('\n');
+                        lastMsg.content += '\nAnswer succinctly, using only the following information:\n' + matchingLines.join('\n');
                     }
                 }
             }
@@ -2511,7 +2562,6 @@ class ChatPlayground {
         this.currentAbortController = controller;
 
         let fullResponse = '';
-        let completion = null;
 
         try {
             // 🧪 DEBUG: Force generation failure for testing failover to Wikipedia mode
@@ -2529,47 +2579,47 @@ class ChatPlayground {
                 return;  // Return early to trigger failover
             }
 
+            let firstChunkReceived = false;
             const completionParams = {
                 messages,
                 max_tokens: this.config.modelParameters.max_tokens,
                 temperature: this.config.modelParameters.temperature,
-                top_k: 30,
+                top_k: 50,
                 top_p: this.config.modelParameters.top_p,
-                repeat_penalty: this.config.modelParameters.repetition_penalty,
-                repeat_last_n: 64,
+                penalty_repeat: this.config.modelParameters.repetition_penalty,
+                penalty_last_n: 64,
                 stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                 cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
-                stream: true
+                stream: true,
+                onData: (chunk) => {
+                    if (this.stopRequested) {
+                        return;
+                    }
+
+                    const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                    if (tokenText) {
+                        if (!firstChunkReceived) {
+                            firstChunkReceived = true;
+                            contentEl.textContent = '';
+                            contentEl.style.width = '';
+                            contentEl.style.whiteSpace = '';
+                        }
+                        fullResponse += tokenText;
+                        contentEl.textContent = fullResponse;
+                        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                    }
+                }
             };
             console.log('Wllama chat completion request:', completionParams);
-            completion = await this.wllama.createChatCompletion(completionParams);
 
-            this.currentStream = completion;
-
-            let firstChunkReceived = false;
-
-            for await (const chunk of completion) {
-                if (this.stopRequested) {
-                    console.log('Wllama generation stopped by user');
-                    break;
-                }
-
-                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
-                if (tokenText) {
-                    if (!firstChunkReceived) {
-                        firstChunkReceived = true;
-                        contentEl.textContent = '';
-                        contentEl.style.width = '';
-                        contentEl.style.whiteSpace = '';
-                    }
-                    fullResponse += tokenText;
-                    contentEl.textContent = fullResponse;
-                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-                }
-            }
+            // Keep polling through has_more=false. Aborting callback streaming can
+            // leave native output queued and prepend it to the next response.
+            this.currentStream = { type: 'wllama-callback-stream' };
+            await this.wllama.createChatCompletion(completionParams);
 
             this.currentAbortController = null;
+            this.currentStream = null;
 
             if (fullResponse.trim() && !this.stopRequested) {
                 const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
@@ -2635,9 +2685,7 @@ class ChatPlayground {
             }
             this.currentAbortController = null;
         } finally {
-            if (this.currentStream === completion) {
-                this.currentStream = null;
-            }
+            this.currentStream = null;
         }
     }
 
@@ -2684,7 +2732,7 @@ class ChatPlayground {
     addThinkingIndicator() {
         const thinkingDiv = document.createElement('div');
         thinkingDiv.className = 'message assistant-message thinking-indicator';
-        thinkingDiv.innerHTML = `<div class="message-content" style="width: fit-content; white-space: normal"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">I'm working on a response. Thanks for your patience!<br/>(If I take too long, try switching the model to <strong>None</strong>)</p></div>`;
+        thinkingDiv.innerHTML = `<div class="message-content" style="width: fit-content; white-space: normal"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I'm working on a response. Thanks for your patience!)</p></div>`;
         this.chatMessages.appendChild(thinkingDiv);
 
         // Auto-scroll to bottom
@@ -2884,14 +2932,21 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
 
-        // Abort the generation using AbortController
-        if (this.currentAbortController) {
+        const isWllamaCallbackStream = this.currentStream?.type === 'wllama-callback-stream';
+
+        // Callback streams must keep polling until has_more is false, or pending
+        // native output can appear at the start of the next response.
+        if (this.currentAbortController && !isWllamaCallbackStream) {
             console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
 
-        this.currentStream = null;
+        if (isWllamaCallbackStream) {
+            console.log('Stop requested; draining remaining wllama output');
+        } else {
+            this.currentStream = null;
+        }
 
         this.updateUIForGeneration(false);
     }
@@ -3843,7 +3898,7 @@ class ChatPlayground {
                     responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
             } else if (this.usingWllama && this.wllama) {
-                // Use wllama (Phi 3.5-mini)
+                // Use wllama (Phi 4-mini)
                 console.log('Using Wllama for voice response generation');
                 const voiceMessages = [
                     { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
@@ -3855,10 +3910,10 @@ class ChatPlayground {
                     messages: voiceMessages,
                     max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
                     temperature: this.config.modelParameters.temperature,
-                    top_k: 30,
+                    top_k: 50,
                     top_p: this.config.modelParameters.top_p,
-                    repeat_penalty: this.config.modelParameters.repetition_penalty,
-                    repeat_last_n: 64,
+                    penalty_repeat: this.config.modelParameters.repetition_penalty,
+                    penalty_last_n: 64,
                     stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                     stream: false
                 };
@@ -4738,7 +4793,7 @@ function handleModalParameterChange(e) {
 window.resetParametersFromModal = function () {
     // Get model-specific defaults
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
-        temperature: 0.3,
+        temperature: 0.2,
         top_p: 0.7,
         max_tokens: 768,
         repetition_penalty: 1.1

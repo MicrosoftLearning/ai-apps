@@ -1,10 +1,66 @@
-import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction("get_result", {
+                _name: "gres_req"
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === "null") {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error("Model returned an error:", jsonData);
+                throw new WllamaError(
+                    jsonData.message || "Unknown inference error",
+                    "inference_error"
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 const WASM_PATHS = {
-    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm"
 };
 
-const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 const MODEL_N_CTX = 712;
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
@@ -241,7 +297,7 @@ function validateMessages(messages, label = "messages") {
 
 class ModelCoderLLM {
     constructor() {
-        this.wllama = null;  // wllama engine for Phi 3.5-mini
+        this.wllama = null;  // wllama engine for Phi 4-mini
         this.usingWllama = false;  // Track if wllama is active
         this.usingBasic = false;  // Basic Chat Wikipedia mode
         this.availableModes = { cpu: true, basic: true };
@@ -284,7 +340,7 @@ class ModelCoderLLM {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
             return false;
         }
         return true;
@@ -655,7 +711,7 @@ class ModelCoderLLM {
             return;
         }
 
-        this._status("loading", "Initializing Phi 3.5-mini...");
+        this._status("loading", "Initializing Phi 4-mini...");
         this.usingBasic = false;
 
         try {
@@ -717,7 +773,7 @@ class ModelCoderLLM {
                     throw new Error('Loading cancelled by user');
                 }
 
-                this._status("ready", "Model ready: Phi 3.5-mini");
+                this._status("ready", "Model ready: Phi 4-mini");
                 return;
             } catch (error) {
                 // If cancelled, rethrow immediately
@@ -751,10 +807,6 @@ class ModelCoderLLM {
                         // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
                         console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
                         gpuEnabled = false;
-                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                        // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
-                        console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
-                        gpuEnabled = false;
                     }
                 } else {
                     gpuEnabled = false;
@@ -771,18 +823,18 @@ class ModelCoderLLM {
 
         const progressCallback = ({ loaded, total }) => {
             if (!total) {
-                this._status("loading", "Loading Phi 3.5-mini...");
+                this._status("loading", "Loading Phi 4-mini...");
                 return;
             }
             const pct = Math.round((loaded / total) * 100);
-            this._status("loading", `Downloading Phi 3.5-mini: ${pct}%`);
+            this._status("loading", `Downloading Phi 4-mini: ${pct}%`);
         };
 
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
         const attemptLoad = async (n_gpu_layers, n_threads) => {
             if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
-            this.wllama = new Wllama(WASM_PATHS);
+            this.wllama = new FixedWllama(WASM_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { n_ctx: MODEL_N_CTX, n_gpu_layers, n_threads, progressCallback });
         };
 
@@ -832,7 +884,7 @@ class ModelCoderLLM {
 
         const tryLoad = async (n_threads) => {
             if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
-            this.wllama = new Wllama(WASM_PATHS);
+            this.wllama = new FixedWllama(WASM_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { n_ctx: MODEL_N_CTX, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
         };
 
@@ -939,7 +991,7 @@ class ModelCoderLLM {
 
     async _completeWithWllama(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
         const useStreaming = typeof onDelta === "function";
-        console.log(`[wllama] Phi 3.5-mini (${useStreaming ? "stream" : "sync"}):`, messages);
+        console.log(`[wllama] Phi 4-mini (${useStreaming ? "stream" : "sync"}):`, messages);
 
         // Debug mode: Force failure for testing failover
         if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
@@ -949,25 +1001,25 @@ class ModelCoderLLM {
 
         if (useStreaming) {
             let fullText = "";
-            const completion = await this.wllama.createChatCompletion({
+            await this.wllama.createChatCompletion({
                 messages,
                 max_tokens: 512,
                 temperature: 0.2,
                 top_k: 30,
                 top_p: 0.85,
-                repeat_penalty: 1.1,
-                repeat_last_n: 64,
+                penalty_repeat: 1.1,
+                penalty_last_n: 64,
                 cache_prompt: false,
-                stream: true
-            });
-            for await (const chunk of completion) {
-                if (expectedSessionVersion !== this.sessionVersion) break;
-                const token = chunk.choices?.[0]?.delta?.content ?? '';
-                if (token) {
-                    fullText += token;
-                    onDelta(token);
+                stream: true,
+                onData: (chunk) => {
+                    if (expectedSessionVersion !== this.sessionVersion) return;
+                    const token = chunk.choices?.[0]?.delta?.content ?? '';
+                    if (token) {
+                        fullText += token;
+                        onDelta(token);
+                    }
                 }
-            }
+            });
             const trimmed = fullText.trim();
             if (!trimmed) {
                 throw new Error('Empty response from AI model');
@@ -982,8 +1034,8 @@ class ModelCoderLLM {
             temperature: 0.2,
             top_k: 30,
             top_p: 0.85,
-            repeat_penalty: 1.1,
-            repeat_last_n: 64,
+            penalty_repeat: 1.1,
+            penalty_last_n: 64,
             cache_prompt: false,
             stream: false
         });

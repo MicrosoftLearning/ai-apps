@@ -1,4 +1,60 @@
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction('get_result', {
+                _name: 'gres_req'
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === 'null') {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error('Model returned an error:', jsonData);
+                throw new WllamaError(
+                    jsonData.message || 'Unknown inference error',
+                    'inference_error'
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 const chatContainer = document.getElementById('chat-messages');
 const textInput = document.getElementById('text-input');
@@ -202,7 +258,7 @@ function buildClassInfoPrompt(classIndex) {
 
 /**
  * Check if the device meets minimum hardware requirements for running
- * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+ * the Phi 4-mini model. Returns false if device memory or CPU cores
  * are below the minimum thresholds.
  * @returns {boolean} true if hardware meets requirements, false otherwise.
  */
@@ -217,7 +273,7 @@ function checkHardwareRequirements() {
     console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
     if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-        console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+        console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
         return false;
     }
 
@@ -275,7 +331,7 @@ async function init() {
             availableModes.cpu = false;
             updateModelName('Wikipedia API (Basic)');
             updateLoadingStatus('phi', 'ready', 'Basic');
-            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. Using Basic (Wikipedia) mode.';
+            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 4-mini model. Using Basic (Wikipedia) mode.';
             hideLoadingOverlay();
             updateModeSelect();
             setTimeout(() => {
@@ -680,12 +736,12 @@ async function initWllama(progressCallback = null) {
         }
 
         console.log("Initializing wllama...");
-        updateModelName('Phi 3.5-mini (AI mode)');
+        updateModelName('Phi 4-mini (AI mode)');
         updateLoadingStatus('phi', 'loading', '10%');
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
-            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
+            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm',
         };
 
         const internalProgressCallback = ({ loaded, total }) => {
@@ -715,8 +771,8 @@ async function initWllama(progressCallback = null) {
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
         const modelRef = {
-            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
-            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+            repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            //repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
             quant: 'Q4_K_M'
         };
 
@@ -733,11 +789,6 @@ async function initWllama(progressCallback = null) {
                     if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
                         // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                         console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
-                        GPU_ENABLED = false;
-                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
-                        // which predates the fix. Fall back to CPU until wllama is upgraded.
-                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
                         GPU_ENABLED = false;
                     }
                 } else {
@@ -756,7 +807,7 @@ async function initWllama(progressCallback = null) {
 
         // Helper: create a fresh Wllama instance and load the model.
         const attemptLoad = async (n_gpu_layers, n_threads) => {
-            wllama = new Wllama(CONFIG_PATHS);
+            wllama = new FixedWllama(CONFIG_PATHS);
             await wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
         };
 
@@ -1235,6 +1286,7 @@ async function handleSend() {
     if (isStoppingResponse) {
         return;
     }
+    shouldStopResponse = false;
 
     const text = textInput.value.trim();
 
@@ -2144,8 +2196,6 @@ async function generateComputingInfo(query, _onChunk = null, bubbleElement = nul
  */
 async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
     let slowResponseTimeout;
-    let stallDetectionTimer = null;  // Fires if no new token arrives mid-stream
-    let stalledMidStream = false;    // Set when the stall timer fires
     let responseText = '';           // Declared here so catch block can read partial content
     try {
         lastWllamaCompletionErrored = false;
@@ -2180,6 +2230,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         // Track if first chunk has been received
         let firstChunkReceived = false;
         let waitingMessageShown = false;
+        let rafPending = false;
 
         // Set up 20-second timeout for slow responses
         slowResponseTimeout = setTimeout(() => {
@@ -2193,77 +2244,58 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             }
         }, 20000);
 
-        // Generate response using createChatCompletion with streaming
-        const completion = await wllama.createChatCompletion({
+        // Callback streaming must be allowed to drain through has_more=false. Aborting
+        // early can leave native output queued and prepend it to the next response.
+        currentStream = { type: 'wllama-callback-stream' };
+        await wllama.createChatCompletion({
             messages,
             max_tokens: 512,
             temperature: 0.1,
             top_k: 30,
             top_p: 0.9,
-            repeat_penalty: 1.1,
-            repeat_last_n: 64,
+            penalty_repeat: 1.1,
+            penalty_last_n: 64,
             cache_prompt: false,
             stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
             abortSignal: currentAbortController.signal,
-            stream: true
+            stream: true,
+            onData: (chunk) => {
+                if (shouldStopResponse) {
+                    return;
+                }
+
+                const text = chunk.choices?.[0]?.delta?.content;
+                if (text) {
+                    // Clear timeout on first chunk
+                    if (!firstChunkReceived) {
+                        clearTimeout(slowResponseTimeout);
+                        firstChunkReceived = true;
+                        // If we showed the waiting message, clear it before showing the real response
+                        if (waitingMessageShown && bubbleElement) {
+                            setBubbleContent(bubbleElement, bubblePrefix);
+                        }
+                    }
+
+                    responseText += text;
+
+                    // Stream to bubble if provided, throttled to one DOM update per frame
+                    if (bubbleElement && !rafPending) {
+                        rafPending = true;
+                        requestAnimationFrame(() => {
+                            setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+                            scrollToBottom();
+                            rafPending = false;
+                        });
+                    }
+                }
+            }
         });
-
-        // Store stream reference for cleanup
-        currentStream = completion;
-
-        // Throttle DOM updates to the browser's render cycle to prevent
-        // layout-reflow stuttering as the chat history grows.
-        let rafPending = false;
-
-        for await (const chunk of completion) {
-            if (shouldStopResponse) {
-                console.log('Wllama generation stopped by user');
-                break;
-            }
-            if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta?.content) {
-                const text = chunk.choices[0].delta.content;
-                // Clear timeout on first chunk
-                if (!firstChunkReceived) {
-                    clearTimeout(slowResponseTimeout);
-                    firstChunkReceived = true;
-                    // If we showed the waiting message, clear it before showing the real response
-                    if (waitingMessageShown && bubbleElement) {
-                        setBubbleContent(bubbleElement, bubblePrefix);
-                    }
-                }
-
-                // Reset the mid-stream stall timer on every content chunk.
-                // If no new token arrives within 30 s the generation is aborted
-                // and whatever partial text was received is returned to the caller.
-                if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
-                stallDetectionTimer = setTimeout(() => {
-                    stalledMidStream = true;
-                    console.warn('Wllama stream stalled (no new token for 30s), aborting');
-                    if (currentAbortController) {
-                        currentAbortController.abort();
-                    }
-                }, 30000);
-
-                responseText += text;
-
-                // Stream to bubble if provided, throttled to one DOM update per frame
-                if (bubbleElement && !rafPending) {
-                    rafPending = true;
-                    requestAnimationFrame(() => {
-                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
-                        scrollToBottom();
-                        rafPending = false;
-                    });
-                }
-            }
-        }
 
         currentAbortController = null;
         currentStream = null;
 
-        // Clear both timeouts now that the stream has finished
+        // Clear the timeout now that the stream has finished
         clearTimeout(slowResponseTimeout);
-        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
 
         // If stopped by user, return null
         if (shouldStopResponse) {
@@ -2289,26 +2321,8 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
     } catch (error) {
         clearTimeout(slowResponseTimeout);
-        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
         currentStream = null;
-        if (error.name === 'AbortError') {
-            if (stalledMidStream) {
-                // Stream stalled after partial content was received.
-                // Return whatever we have so the user sees something useful.
-                const partial = trimIncompleteSentence(responseText.trim());
-                if (partial && partial.length >= 10) {
-                    console.warn('Returning partial response from stalled stream');
-                    if (bubbleElement) {
-                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(partial));
-                        scrollToBottom();
-                    }
-                    return partial;
-                }
-                // No usable partial content – fall through to the error path
-                console.warn('Stream stalled with no usable partial response');
-                lastWllamaCompletionErrored = true;
-                return null;
-            }
+        if (shouldStopResponse || error.name === 'AbortError' || error.message?.includes('abort')) {
             console.log('Generation aborted by user');
             lastWllamaCompletionErrored = false;
             return null;
@@ -2329,42 +2343,11 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }
 
         return null;
-    }
-}
-
-/**
- * Safely stop and drain a wllama stream to leave WASM state clean
- * @param {AsyncIterator} stream - The wllama completion stream to stop
- */
-async function safeStopWllamaStream(stream) {
-    if (!stream) {
-        return;
-    }
-
-    // Try to drain a couple pending chunks
-    for (let i = 0; i < 2; i++) {
-        try {
-            const nextPromise = stream.next?.();
-            if (!nextPromise || typeof nextPromise.then !== 'function') {
-                break;
-            }
-
-            await Promise.race([
-                nextPromise,
-                new Promise((resolve) => setTimeout(resolve, 120))
-            ]);
-        } catch (error) {
-            break;
-        }
-    }
-
-    // Call return() to properly close the iterator
-    try {
-        if (typeof stream.return === 'function') {
-            await stream.return();
-        }
-    } catch (error) {
-        console.warn('Stream return() failed:', error);
+    } finally {
+        clearTimeout(slowResponseTimeout);
+        currentAbortController = null;
+        currentStream = null;
+        isStoppingResponse = false;
     }
 }
 
@@ -2551,7 +2534,7 @@ function selectMode() {
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
+                    setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 4-mini)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2593,7 +2576,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
+                        setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 4-mini)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -2625,7 +2608,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to AI mode (Phi 3.5-mini)', 'bot');
+        addMessage('Switched to AI mode (Phi 4-mini)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2650,14 +2633,14 @@ function updateModeSelect() {
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟢 AI mode (Phi 3.5-mini)' : '⚫ AI mode (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟢 AI mode (Phi 4-mini)' : '⚫ AI mode (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'cpu' ? 'AI mode (Phi 3.5-mini)' : 'Basic (Wikipedia)';
+    const modeLabel = currentMode === 'cpu' ? 'AI mode (Phi 4-mini)' : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
 }
@@ -3067,19 +3050,20 @@ async function handleStopResponse() {
     shouldStopResponse = true;
     isStoppingResponse = true;
 
-    // Abort Wllama generation if active
-    if (currentAbortController) {
+    const isWllamaCallbackStream = currentStream?.type === 'wllama-callback-stream';
+
+    // Wllama callback streams must keep polling until has_more is false, or
+    // pending native output can appear at the start of the next response.
+    if (currentAbortController && !isWllamaCallbackStream) {
         currentAbortController.abort();
         currentAbortController = null;
     }
 
-    // Drain wllama stream to clean up WASM state
-    if (currentStream && currentMode === 'cpu') {
-        safeStopWllamaStream(currentStream).catch(err => {
-            console.warn('Wllama stream cleanup failed:', err);
-        }).finally(() => {
-            currentStream = null;
-        });
+    if (isWllamaCallbackStream) {
+        console.log('Stop requested; draining remaining wllama output');
+    } else {
+        currentStream = null;
+        isStoppingResponse = false;
     }
 
     // Stop speech if playing
@@ -3094,8 +3078,6 @@ async function handleStopResponse() {
     typingAnimationsInProgress = 0;
 
     // Reset flags and button state
-    isStoppingResponse = false;
-    shouldStopResponse = false;
     isResponding = false;
 
     sendBtn.classList.remove('stop-mode');
@@ -3166,7 +3148,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 3.5-mini';
+            modelNameElement.textContent = 'Phi 4-mini';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'None (Wikipedia API)';
         } else {

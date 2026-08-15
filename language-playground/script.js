@@ -1,9 +1,65 @@
-import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction("get_result", {
+                _name: "gres_req"
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === "null") {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error("Model returned an error:", jsonData);
+                throw new WllamaError(
+                    jsonData.message || "Unknown inference error",
+                    "inference_error"
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 const WASM_PATHS = {
-    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm"
 };
-const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 
 (function () {
@@ -302,12 +358,18 @@ const MODEL_QUANT = "Q4_K_M";
     }
 
     function extractPeople(text) {
-        if (typeof window.nlp !== "function") {
-            return [];
+        const people = [];
+        if (typeof window.nlp === "function") {
+            const doc = window.nlp(text);
+            people.push.apply(people, doc.people().out("array"));
         }
 
-        const doc = window.nlp(text);
-        return dedupeStrings(doc.people().out("array"));
+        const labeledNameRegex = /\b(?:Customer|Name)\s*:\s*(?:\r?\n\s*)?([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,3})/gu;
+        for (const match of text.matchAll(labeledNameRegex)) {
+            people.push(match[1]);
+        }
+
+        return dedupeStrings(people);
     }
 
     function extractEmails(text) {
@@ -316,7 +378,7 @@ const MODEL_QUANT = "Q4_K_M";
     }
 
     function extractPhones(text) {
-        const matches = text.match(/\b(?:\d{3} \d{3} \d{4}|\d{3}-\d{3}-\d{4}|\d{3} \d{3}-\d{4})\b/g) || [];
+        const matches = text.match(/(?<!\w)(?:\+?\d{1,3}[ .-]?)?(?:\(?\d{2,5}\)?[ .-])\d{3,4}[ .-]\d{3,4}(?!\w)/g) || [];
         return dedupeStrings(matches);
     }
 
@@ -326,6 +388,11 @@ const MODEL_QUANT = "Q4_K_M";
         const matches = Array.from(text.matchAll(addressRegex)).map(function (match) {
             return match[1];
         });
+
+        const ukAddressRegex = /^\s*(\d{1,5}\s+[^\n\r,]+(?:Street|Road|Lane|Avenue|Place|Boulevard|Way),[^\n\r]*\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s*$/gim;
+        for (const match of text.matchAll(ukAddressRegex)) {
+            matches.push(match[1]);
+        }
 
         return dedupeStrings(matches.map(function (match) {
             return match.trim();
@@ -512,6 +579,40 @@ const MODEL_QUANT = "Q4_K_M";
         }
     }
 
+    function dedupePiiEntities(entities) {
+        const uniqueEntities = [];
+
+        entities.forEach(function (entity) {
+            const value = String(entity.value || "").trim();
+            if (!value) return;
+
+            const normalizedValue = value.toLowerCase().replace(/[\s,.;:]+$/g, "");
+            const overlapIndex = entity.type === "Address"
+                ? uniqueEntities.findIndex(function (existing) {
+                    if (existing.type !== "Address") return false;
+                    const normalizedExisting = String(existing.value).toLowerCase().replace(/[\s,.;:]+$/g, "");
+                    return normalizedExisting.includes(normalizedValue) || normalizedValue.includes(normalizedExisting);
+                })
+                : -1;
+
+            if (overlapIndex !== -1) {
+                if (value.length > String(uniqueEntities[overlapIndex].value).length) {
+                    uniqueEntities[overlapIndex] = { type: entity.type, value: value };
+                }
+                return;
+            }
+
+            const isDuplicate = uniqueEntities.some(function (existing) {
+                return existing.type === entity.type && String(existing.value).toLowerCase() === value.toLowerCase();
+            });
+            if (!isDuplicate) {
+                uniqueEntities.push({ type: entity.type, value: value });
+            }
+        });
+
+        return uniqueEntities;
+    }
+
     async function detectPii(text) {
         const entities = [];
         const phones = extractPhones(text);
@@ -522,16 +623,7 @@ const MODEL_QUANT = "Q4_K_M";
         extractEmails(text).forEach(function (value) { addEntity(entities, value, "Email"); });
         extractAddresses(textWithoutPhones).forEach(function (value) { addEntity(entities, value, "Address"); });
 
-        // Remove duplicates
-        const uniqueEntities = [];
-        const seen = new Set();
-        entities.forEach(function (entity) {
-            const key = entity.type + '|' + entity.value.toLowerCase();
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueEntities.push(entity);
-            }
-        });
+        const uniqueEntities = dedupePiiEntities(entities);
 
         const replacements = {
             Person: "[PERSON]",
@@ -758,7 +850,7 @@ const MODEL_QUANT = "Q4_K_M";
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
             return false;
         }
         return true;
@@ -782,7 +874,7 @@ const MODEL_QUANT = "Q4_K_M";
         modelLoadingAbortController = new AbortController();
         disableUI();
         setupCancelLink();
-        updateModelStatus("Loading Phi 3.5-mini...", true);
+        updateModelStatus("Loading Phi 4-mini...", true);
 
         try {
             // Detect GPU vendor and skip WebGPU for known-problematic GPUs
@@ -796,10 +888,6 @@ const MODEL_QUANT = "Q4_K_M";
                         if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
                             // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
                             console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
-                            gpuEnabled = false;
-                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
-                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
                             gpuEnabled = false;
                         }
                     } else {
@@ -818,11 +906,11 @@ const MODEL_QUANT = "Q4_K_M";
             const progressCallback = function ({ loaded, total }) {
                 if (modelLoadingCancelled) return;
                 if (!total) {
-                    updateModelStatus("Loading Phi 3.5-mini...", true);
+                    updateModelStatus("Loading Phi 4-mini...", true);
                     return;
                 }
                 const pct = Math.round((loaded / total) * 100);
-                updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
+                updateModelStatus("Phi 4-mini: " + pct + "%", true);
                 showCancelLink();
             };
 
@@ -830,7 +918,7 @@ const MODEL_QUANT = "Q4_K_M";
 
             const attemptLoad = async function (n_gpu_layers, n_threads) {
                 if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
-                wllamaInstance = new Wllama(WASM_PATHS);
+                wllamaInstance = new FixedWllama(WASM_PATHS);
                 await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
             };
 
@@ -874,13 +962,13 @@ const MODEL_QUANT = "Q4_K_M";
             isModelLoaded = true;
             isLoadingModel = false;
             if (elements.cancelLink) elements.cancelLink.style.display = "none";
-            updateModelStatus("Phi 3.5-mini ready", false);
+            updateModelStatus("Phi 4-mini ready", false);
             enableUI();
-            console.log("Phi 3.5-mini loaded successfully");
+            console.log("Phi 4-mini loaded successfully");
 
         } catch (error) {
             if (modelLoadingCancelled) return;
-            console.error("Failed to load Phi 3.5-mini:", error);
+            console.error("Failed to load Phi 4-mini:", error);
             isModelLoaded = false;
             isLoadingModel = false;
             if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
@@ -956,7 +1044,7 @@ const MODEL_QUANT = "Q4_K_M";
                 },
                 {
                     role: "user",
-                    content: "Extract all personally identifiable information (PII) from the following text. Find: person names, email addresses, phone numbers, and physical postal addresses.\n\nRespond with ONLY a JSON array of objects, each with \"type\" (one of: \"Person\", \"Email\", \"Phone\", \"Address\") and \"value\" (exact text as it appears).\n\nText:\n---\n" + inputText + "\n---"
+                    content: "Extract all personally identifiable information (PII) from the following text. Find: person names, email addresses, phone numbers, and complete physical postal addresses. Inspect labeled fields such as Customer, Name, Telephone, Phone, Email, and Address. Treat a customer name, a telephone number in any national format, and a street address with its locality and postal code as PII. Do not return an empty array when any such value is present.\n\nRespond with ONLY a JSON array of objects, each with \"type\" (one of: \"Person\", \"Email\", \"Phone\", \"Address\") and \"value\" (exact text as it appears). Return the complete address as one value, not both a full address and a partial address.\n\nText:\n---\n" + inputText + "\n---"
                 }
             ],
             max_tokens: 300,
@@ -977,14 +1065,23 @@ const MODEL_QUANT = "Q4_K_M";
         const parsed = JSON.parse(jsonMatch[0]);
         if (!Array.isArray(parsed)) throw new Error("Model response is not an array");
 
-        const seen = new Set();
-        const uniqueEntities = parsed.filter(function (entity) {
+        const typeAliases = {
+            person: "Person",
+            name: "Person",
+            email: "Email",
+            phone: "Phone",
+            "phone number": "Phone",
+            telephone: "Phone",
+            address: "Address",
+            "postal address": "Address"
+        };
+        const modelEntities = parsed.filter(function (entity) {
             if (!entity.type || !entity.value) return false;
-            const key = entity.type + "|" + String(entity.value).toLowerCase();
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
+            entity.type = typeAliases[String(entity.type).toLowerCase()];
+            if (!entity.type) return false;
+            return text.includes(String(entity.value));
         });
+        const uniqueEntities = dedupePiiEntities(modelEntities);
 
         const replacements = {
             Person: "[PERSON]",
@@ -1070,7 +1167,7 @@ const MODEL_QUANT = "Q4_K_M";
                 lockEditor();
             } else {
                 const usingAI = isUsingAI();
-                showStatus(usingAI ? "Detecting PII with Phi 3.5-mini..." : "Detecting PII using rules...", false);
+                showStatus(usingAI ? "Detecting PII with Phi 4-mini..." : "Detecting PII using rules...", false);
 
                 let result;
                 if (usingAI) {
@@ -1158,7 +1255,7 @@ const MODEL_QUANT = "Q4_K_M";
         if (elements.modeSelect) {
             elements.modeSelect.addEventListener("change", function () {
                 const isAI = elements.modeSelect.value === "ai";
-                announce(isAI ? "Switched to Phi 3.5-mini mode" : "Switched to basic pattern matching mode");
+                announce(isAI ? "Switched to Phi 4-mini mode" : "Switched to basic pattern matching mode");
             });
         }
 
