@@ -97,7 +97,7 @@ let wllamaShouldFailoverToBasic = false; // Flag to trigger failover from wllama
 let debugConfig = { enabled: false, forceWllamaGenerationFail: false };
 
 // Shared prompt constants for Wllama and Wikipedia modes
-const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond with a single paragraph, using short sentences.';
+const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Use succinct language and short sentences. Use multiple paragraphs or bulleted or numbered lists when they make the response clearer.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -249,7 +249,7 @@ function buildClassInfoPrompt(classIndex) {
         return null;
     }
 
-    return `Provide a concise paragraph describing the ${className} computer using the following information:\nINFORMATION:\n---\n${classInfo}\n---`;
+    return `Provide a concise description of the ${className} computer using the following information:\nINFORMATION:\n---\n${classInfo}\n---`;
 }
 
 // ============================================================================
@@ -608,15 +608,34 @@ function trimIncompleteSentence(text) {
         return text;
     }
 
-    // If text already ends with sentence-ending punctuation, it's complete
-    if (/[.!?]$/.test(text)) {
+    const trailingLine = text.slice(text.lastIndexOf('\n') + 1);
+
+    // A bare ordered-list marker such as "2." is not a complete ending.
+    if (/[.!?]$/.test(text) && !/^\s*\d+\.$/.test(trailingLine)) {
         return text;
     }
 
-    // Text doesn't end with sentence-ending punctuation - trim to the last complete sentence
-    const lastCompleteMatch = text.match(/([\s\S]*[.!?])/);
-    if (lastCompleteMatch) {
-        const trimmed = lastCompleteMatch[1].trim();
+    // Find the last sentence ending, excluding decimal points and ordered-list
+    // markers such as "1." at the start of a line.
+    let lastCompleteIndex = -1;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (char !== '.' && char !== '!' && char !== '?') continue;
+
+        if (char === '.' && /\d/.test(text[i - 1] || '') && /\d/.test(text[i + 1] || '')) {
+            continue;
+        }
+
+        const lineStart = text.lastIndexOf('\n', i - 1) + 1;
+        if (char === '.' && /^\s*\d+$/.test(text.slice(lineStart, i))) {
+            continue;
+        }
+
+        lastCompleteIndex = i + 1;
+    }
+
+    if (lastCompleteIndex !== -1) {
+        const trimmed = text.slice(0, lastCompleteIndex).trim();
         if (trimmed.length >= 20) {
             console.log(`Trimmed incomplete sentence: ${text.length} -> ${trimmed.length} chars`);
             return trimmed;
@@ -2256,7 +2275,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             penalty_repeat: 1.1,
             penalty_last_n: 64,
             cache_prompt: false,
-            stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
+            stop: ['\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
             abortSignal: currentAbortController.signal,
             stream: true,
             onData: (chunk) => {
@@ -2353,9 +2372,9 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
 /**
  * Generates information using Wikipedia API (Basic mode)
- * Extracts keywords from the query and returns the first paragraph of the best-matching article.
+ * Extracts keywords from the query and returns the summary of the best-matching article.
  * @param {string} query - The query to look up
- * @returns {Promise<string|null>} First paragraph of the Wikipedia article, or null
+ * @returns {Promise<string|null>} Wikipedia article summary, or null
  */
 async function generateWithWikipedia(query) {
     try {
@@ -2383,10 +2402,7 @@ async function generateWithWikipedia(query) {
         const extract = summaryData?.extract;
         if (!extract || extract.length < 20) return null;
 
-        // Return the first non-empty paragraph, trimmed to 2 sentences for conciseness
-        const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
-        const extractedSentences = extractLeadingSentences(firstParagraph, 2);
-        const result = extractedSentences || firstParagraph.substring(0, 300).trim();
+        const result = trimIncompleteSentence(extract.trim());
 
         return result.length >= 20 ? result : null;
     } catch (error) {
