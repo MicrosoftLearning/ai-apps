@@ -476,14 +476,9 @@
                     "image creation",
                     "text to image",
                     "text-to-image",
-                    "video creation",
-                    "dalle",
-                    "dall-e",
-                    "sora",
-                    "mai-image",
-                    "maiimage"
+                    "video creation"
                 ],
-                "content": "Image generation uses AI to create images from text prompts. Diffusion models progressively refine random noise into a coherent image. This powers systems like DALL-E and Stable Diffusion, and has been extended to video generation."
+                "content": "Image generation uses AI to create images from text prompts. Diffusion models progressively refine random noise into a coherent image. This approach has been extended to video generation."
             }
         ]
     },
@@ -674,7 +669,13 @@
                 "title": "Open AI models in Foundry",
                 "keywords": [
                     "openai",
-                    "gpt"
+                    "gpt",
+                    "dalle",
+                    "dall-e",
+                    "sora",
+                    "sol",
+                    "terra",
+                    "luna"
                 ],
                 "content": "OpenAI models are available in Microsoft Foundry Models. These include multiple generations of GPT models suited to tasks such as text generation, summarization, translation, and question answering."
             },
@@ -695,6 +696,21 @@
             },
             {
                 "id": 46,
+                "title": "Microsoft models in Foundry",
+                "video_url": "https://share.synthesia.io/embeds/videos/fdca67ad-6406-47b4-8f53-ac925a7297c7",
+                "keywords": [
+                    "mai",
+                    "phi",
+                    "mai-thinking",
+                    "mai-image",
+                    "mai-voice",
+                    "mai-code",
+                    "mai-transcribe"
+                ],
+                "content": "Microsoft Phi and MAI models are available in Microsoft Foundry Models. Microsoft AI (MAI) models provide frontier AI capabilities for reasoning, coding, speech generation, transcription, and image-generation. Phi models are small language models (SLMs), optimized for local or edge deployment."
+            },
+            {
+                "id": 47,
                 "title": "Authentication in Foundry",
                 "keywords": [
                     "authentication",
@@ -717,7 +733,7 @@
                 "content": "Microsoft Foundry secures access to its resources through robust authentication mechanisms, including key-based authentication and integration with Microsoft Entra ID. Client applications must authenticate using API keys or managed identity credentials to access models and agents."
             },
             {
-                "id": 47,
+                "id": 48,
                 "title": "Azure Speech",
                 "video_url": "https://share.synthesia.io/embeds/videos/66992e19-2df4-4287-b707-76e7c91b95a0",
                 "keywords": [
@@ -730,7 +746,7 @@
                 "content": "Azure Speech in Microsoft Foundry Tools provides AI speech capabilities. It includes Text-to-Speech (speech synthesis), Speech-to-Text (speech recognition), Voice Live (realtime spoken conversation), and Speech Translation."
             },
             {
-                "id": 48,
+                "id": 49,
                 "title": "Azure Language",
                 "video_url": "https://share.synthesia.io/embeds/videos/785ec168-9609-473f-a5f0-a7cc9aaa5029",
                 "keywords": [
@@ -741,7 +757,7 @@
                 "content": "Azure Language in Microsoft Foundry Tools provides text processing functionality. Its natural language processing capabilities include language detection, entity recognition, and personally identifiable information (PII) detection."
             },
             {
-                "id": 49,
+                "id": 50,
                 "title": "Azure Content Understanding",
                 "video_url": "https://share.synthesia.io/embeds/videos/614dd91c-98d3-4009-9b19-0423e812c4c8",
                 "keywords": [
@@ -751,7 +767,7 @@
                 "content": "Azure Content Understanding in Microsoft Foundry Tools enables information extraction. It provides capabilities to analyze and extract information from unstructured content, such as documents, images, audio, and video."
             },
             {
-                "id": 50,
+                "id": 51,
                 "title": "Azure Translator",
                 "video_url": "https://share.synthesia.io/embeds/videos/2f839b96-b2a4-4fb8-ae20-4bffcfe4e92d",
                 "keywords": [
@@ -767,7 +783,7 @@
         "link": "https://aiskillsnavigator.microsoft.com/credentials",
         "documents": [
             {
-                "id": 51,
+                "id": 52,
                 "title": "Microsoft AI Certifications",
                 "keywords": [
                     "certification",
@@ -779,25 +795,25 @@
                     "ai901",
                     "ai200",
                     "ai300",
+                    "ai500",
                     "ai-102",
                     "ai-900",
                     "ai-103",
                     "ai-901",
                     "ai-200",
-                    "ai-300"
+                    "ai-300",
+                    "ai-500"
                 ],
                 "content": "Microsoft certifications provide a way to validate your competency in AI-related roles. AI-related certification exams cover a range of topics, including AI fundamentals, AI app and agent development, AI cloud solution architecture, and machine learning operations."
             },
             {
-                "id": 52,
+                "id": 53,
                 "title": "Microsoft AI Credentials",
                 "keywords": [
                     "microsoft applied skill",
                     "microsoft applied skills",
                     "applied skills credential",
                     "applied skills credentials",
-                    "mas",
-                    "apl",
                     "microsoft credential",
                     "microsoft credentials",
                     "microsoft ai credentials"
