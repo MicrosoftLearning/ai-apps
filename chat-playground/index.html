@@ -8,7 +8,8 @@
     <script src="coi-serviceworker.js"></script>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js"></script>
@@ -195,8 +196,11 @@
                     <div class="chat-controls">
                         <button class="icon-btn config-btn" title="Configuration" aria-label="Configuration"
                             tabindex="0"><b style="color: gray;">&#9881;</b></button>
-                        <button class="icon-btn" title="New chat" aria-label="Start new chat"
+                        <button class="icon-btn new-chat-btn" title="New chat" aria-label="Start new chat"
                             tabindex="0">&#128172;</button>
+                        <button class="icon-btn monitor-btn" title="Monitor" aria-label="Monitor"
+                            aria-haspopup="dialog" aria-controls="monitor-modal" type="button"
+                            onclick="openMonitorModal()"><span class="fa" aria-hidden="true">&#xf080;</span></button>
                         <button class="icon-btn help-btn" title="About this app" aria-label="About this app"
                             tabindex="0">?</button>
                     </div>
@@ -344,6 +348,39 @@
     </div>
 
     <!-- About Modal -->
+    <div class="modal-overlay" id="monitor-modal" style="display: none;" role="dialog" aria-modal="true"
+        aria-labelledby="monitor-modal-title" aria-describedby="monitor-description">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="monitor-modal-title">Monitor</h2>
+                <button class="modal-close-btn" onclick="closeMonitorModal()" type="button"
+                    aria-label="Close monitor dialog">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <p id="monitor-description">Usage across all chats in this app session. Phi uses actual model tokens,
+                    including instructions and conversation context. None (Wikipedia) uses whole-word counts.
+                    Totals reset when you reload or close the app.</p>
+                <div class="monitor-tiles" aria-live="polite" aria-atomic="true">
+                    <div class="monitor-tile">
+                        <h3>Input tokens</h3>
+                        <p id="monitor-input-tokens">0</p>
+                    </div>
+                    <div class="monitor-tile">
+                        <h3>Output tokens</h3>
+                        <p id="monitor-output-tokens">0</p>
+                    </div>
+                    <div class="monitor-tile">
+                        <h3>Total tokens</h3>
+                        <p id="monitor-total-tokens">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="closeMonitorModal()" type="button">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="about-modal" style="display: none;" role="dialog" aria-modal="true"
         aria-labelledby="about-modal-title">
         <div class="modal-content">
@@ -496,7 +533,7 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=52"></script>
+    <script type="module" src="script.js?v=53"></script>
 </body>
 
 </html>

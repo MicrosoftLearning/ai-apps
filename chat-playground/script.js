@@ -76,6 +76,7 @@ class ChatPlayground {
         this.gpuFailed = false; // True after a GPU session crash; suppresses future GPU attempts
         this.isModelLoaded = false;
         this.conversationHistory = [];
+        this.sessionUsage = { input: 0, output: 0 };
         this.isGenerating = false;
         this.stopRequested = false;
         this.currentStream = null; // Track current streaming completion
@@ -1137,7 +1138,7 @@ class ChatPlayground {
         });
 
         // Clear chat button (New Chat icon in header)
-        const newChatBtn = document.querySelector('.chat-controls .icon-btn:not(.help-btn):not(.config-btn)');
+        const newChatBtn = document.querySelector('.chat-controls .new-chat-btn');
         if (newChatBtn) {
             newChatBtn.addEventListener('click', async () => {
                 await this.clearChat();
@@ -1987,9 +1988,12 @@ class ChatPlayground {
                 const url = `https://www.bing.com/search?q=${encodeURIComponent(keywords)}`;
                 const plainText = `OK, I searched the web for you.\nHere's what I found.`;
                 const finalHtml = `OK, I searched the web for you.<br><a href="${url}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+                this.recordWordUsage(userMessage, plainText);
                 await this.typeResponseWithFinalHtml(contentEl, plainText, finalHtml);
             } else {
-                await this.typeResponse(contentEl, 'Please enter a more specific search query.');
+                const response = 'Please enter a more specific search query.';
+                this.recordWordUsage(userMessage, response);
+                await this.typeResponse(contentEl, response);
             }
             return;
         }
@@ -2031,6 +2035,7 @@ class ChatPlayground {
                 const assistantMessageEl = this.addMessage('assistant', '');
                 const contentEl = assistantMessageEl.querySelector('.message-content');
 
+                this.recordWordUsage(userMessage, summary);
                 await this.typeResponse(contentEl, summary);
 
                 // Add to conversation history
@@ -2445,6 +2450,36 @@ class ChatPlayground {
         return topIndices.map(i => sentences[i].trim()).join(' ');
     }
 
+    recordUsage(input, output) {
+        this.sessionUsage.input += input;
+        this.sessionUsage.output += output;
+        this.updateMonitor();
+    }
+
+    recordWordUsage(input, output) {
+        const countWords = text => Array.from(
+            new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)
+        ).filter(segment => segment.isWordLike).length;
+        this.recordUsage(countWords(input), countWords(output));
+    }
+
+    recordModelUsage(usage) {
+        if (!Number.isSafeInteger(usage?.prompt_tokens) || usage.prompt_tokens < 0 ||
+            !Number.isSafeInteger(usage?.completion_tokens) || usage.completion_tokens < 0) {
+            console.error('Phi completion did not report valid token usage:', usage);
+            this.showToast('Token usage unavailable for this response. Monitor totals exclude it.');
+            return;
+        }
+        this.recordUsage(usage.prompt_tokens, usage.completion_tokens);
+    }
+
+    updateMonitor() {
+        document.getElementById('monitor-input-tokens').textContent = this.sessionUsage.input.toLocaleString();
+        document.getElementById('monitor-output-tokens').textContent = this.sessionUsage.output.toLocaleString();
+        document.getElementById('monitor-total-tokens').textContent =
+            (this.sessionUsage.input + this.sessionUsage.output).toLocaleString();
+    }
+
     async handleWikipediaMode(thinkingIndicator, userMessage, imageAnalysis = '') {
         thinkingIndicator.remove();
 
@@ -2468,6 +2503,7 @@ class ChatPlayground {
             displayResponse = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
         }
 
+        this.recordWordUsage(userMessage, displayResponse);
         await this.typeResponse(contentEl, displayResponse);
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
@@ -2562,6 +2598,7 @@ class ChatPlayground {
         this.currentAbortController = controller;
 
         let fullResponse = '';
+        let usage = null;
 
         try {
             // 🧪 DEBUG: Force generation failure for testing failover to Wikipedia mode
@@ -2592,7 +2629,9 @@ class ChatPlayground {
                 cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
                 stream: true,
+                stream_options: { include_usage: true },
                 onData: (chunk) => {
+                    if (chunk.usage) usage = chunk.usage;
                     if (this.stopRequested) {
                         return;
                     }
@@ -2622,6 +2661,7 @@ class ChatPlayground {
             this.currentStream = null;
 
             if (fullResponse.trim() && !this.stopRequested) {
+                this.recordModelUsage(usage);
                 const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
 
                 let displayResponse = cleanedResponse;
@@ -3883,6 +3923,8 @@ class ChatPlayground {
 
         try {
             let responseText = '';
+            let usage = null;
+            let countWords = false;
 
             // Route to the appropriate engine based on current mode (same as text mode)
             if (this.currentMode === 'none' || this.usingWikipedia) {
@@ -3892,6 +3934,7 @@ class ChatPlayground {
                 responseText = await this.generateNoneModeResponse(userMessage);
                 responseText = this.maybeShortenNoneModeResponse(responseText);
                 responseText = this.maybeMutateNoneModeResponse(responseText);
+                countWords = true;
 
                 // Append file attribution if file content was used
                 if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
@@ -3932,6 +3975,7 @@ class ChatPlayground {
                     };
                     console.log('Wllama voice completion request:', voiceCompletionRequest);
                     const completion = await this.wllama.createChatCompletion(voiceCompletionRequest);
+                    usage = completion.usage;
                     this.currentAbortController = null;
                     responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
                     console.log('Wllama voice completion finished, response length:', responseText.length);
@@ -3956,6 +4000,7 @@ class ChatPlayground {
                                 };
                                 console.log('Wllama voice CPU retry request:', voiceRetryRequest);
                                 const retryCompletion = await this.wllama.createChatCompletion(voiceRetryRequest);
+                                usage = retryCompletion.usage;
                                 this.currentAbortController = null;
                                 responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
                                 console.log('CPU voice retry finished, response length:', responseText.length);
@@ -3995,6 +4040,7 @@ class ChatPlayground {
                         await this.generateNoneModeResponse(userMessage);
                     responseText = this.maybeShortenNoneModeResponse(responseText);
                     responseText = this.maybeMutateNoneModeResponse(responseText);
+                    countWords = true;
 
                     if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
                         responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
@@ -4005,6 +4051,14 @@ class ChatPlayground {
             }
 
             console.log('Response generation complete, length:', responseText.length);
+
+            if (responseText.trim() && !this.stopRequested) {
+                if (countWords) {
+                    this.recordWordUsage(userMessage, responseText);
+                } else if (this.usingWllama) {
+                    this.recordModelUsage(usage);
+                }
+            }
 
             // Add assistant message to chat (respecting current CC visibility)
             const assistantMessage = this.addMessage('assistant', responseText);
@@ -4612,6 +4666,24 @@ window.removeFile = function () {
     }
 };
 
+window.openMonitorModal = function () {
+    const modal = document.getElementById('monitor-modal');
+    window.chatPlaygroundApp.updateMonitor();
+    window.lastFocusedElement = document.activeElement;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    window.trapFocus(modal, window.closeMonitorModal);
+    modal.querySelector('button').focus();
+};
+
+window.closeMonitorModal = function () {
+    document.getElementById('monitor-modal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+    window.removeFocusTrap();
+    window.lastFocusedElement?.focus();
+    window.lastFocusedElement = null;
+};
+
 window.openAboutModal = function () {
     const modal = document.getElementById('about-modal');
     if (modal) {
@@ -4842,7 +4914,7 @@ window.resetParametersFromModal = function () {
 };
 
 // Focus trap functionality for modal accessibility
-window.trapFocus = function (modal) {
+window.trapFocus = function (modal, onClose) {
     const focusableElements = modal.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
@@ -4863,7 +4935,7 @@ window.trapFocus = function (modal) {
                 }
             }
         } else if (e.key === 'Escape') {
-            window.closeChatCapabilitiesModal(); // Modal removed
+            if (onClose) onClose();
         }
     };
 
@@ -4904,6 +4976,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Add parameters modal click-outside-to-close functionality
+    const monitorModal = document.getElementById('monitor-modal');
+    monitorModal.addEventListener('click', (e) => {
+        if (e.target === monitorModal) window.closeMonitorModal();
+    });
+
     const parametersModal = document.getElementById('parameters-modal');
     if (parametersModal) {
         parametersModal.addEventListener('click', (e) => {

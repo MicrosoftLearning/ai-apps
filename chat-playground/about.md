@@ -10,6 +10,12 @@ If your hardware does not meet the minimum required spec, or if wllama fails; A 
 
 The app also uses the **MobileNetV2** model (via TensorFlow.js) for image classification, and the **Web Speech API** for speech recognition and synthesis.
 
+### Monitor
+
+Select the chart icon next to **About this app** to view input, output, and total usage across all chats in the current page session, including voice chats. Phi counts the actual tokens reported by the model, including instructions and conversation context in the input and all generated tokens before display trimming. None (Wikipedia) counts whole words in the submitted prompt and displayed response instead. Built-in web search and summarization responses also use word counts because they do not call the model. The totals combine these units when switching models.
+
+Starting a new chat does not reset usage; reloading or closing the page does. Failed or cancelled model completions are not included. If Phi does not report usage, a notification indicates that the response is excluded rather than estimating its token count.
+
 ### Security
 
 All user input is sanitized using HTML escaping to prevent injection attacks. Uploaded files are validated for type and size before processing.

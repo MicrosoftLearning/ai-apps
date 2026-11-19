@@ -1075,6 +1075,48 @@ header h1 {
     max-width: 720px;
 }
 
+.monitor-btn {
+    color: #7c3aed;
+}
+
+.monitor-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.monitor-tile {
+    border: 1px solid #d8c9f3;
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    min-width: 0;
+}
+
+.monitor-tile h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.monitor-tile p {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    color: #7c3aed;
+    overflow-wrap: anywhere;
+}
+
+body.dark-mode .monitor-tile {
+    border-color: #66518a;
+}
+
+body.dark-mode .monitor-tile p,
+body.dark-mode .monitor-btn {
+    color: #c4b5fd;
+}
+
 .file-index-summary {
     margin-bottom: 16px;
     color: #605e5c;
