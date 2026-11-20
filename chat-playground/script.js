@@ -788,6 +788,12 @@ class ChatPlayground {
     async toggleVoiceMode(isEnabled) {
         this.voiceMode = isEnabled;
 
+        const configSettings = document.getElementById('config-settings');
+        if (configSettings) {
+            configSettings.disabled = !isEnabled;
+            configSettings.inert = !isEnabled;
+        }
+
         const chatPanel = document.querySelector('.chat-panel');
         const voiceControls = document.getElementById('voice-controls');
         const textInputWrapper = document.getElementById('text-input-wrapper');
